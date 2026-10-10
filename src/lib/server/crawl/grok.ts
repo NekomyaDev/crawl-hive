@@ -83,7 +83,8 @@ export async function grok(opts: { system: string; user: string; xSearch?: XSear
       ],
       ...(tools ? { tools, max_turns: 3 } : {}),
     }),
-    signal: AbortSignal.timeout(opts.timeoutMs ?? 90_000),
+    // x_search делает десятки обращений к X внутри одного запроса: 50–60 с — обычное время.
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 170_000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

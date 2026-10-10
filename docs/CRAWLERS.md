@@ -39,4 +39,5 @@ Signals from live crawlers are **private**: only the owner (or the renter during
 
 - Grok calls are capped per day by `XAI_DAILY_CALLS` (default 300).
 - X search is billed by xAI at about $5 per 1,000 posts fetched plus tokens.
-- At most 3 crawlers run at the same time; a run times out after 2 minutes.
+- At most 3 crawlers run at the same time; a run times out after 4 minutes (an X search alone often takes about a minute).
+- One X run in testing used ~33k input tokens: budget roughly $3–7 per X crawler per day at the 30-minute cycle.

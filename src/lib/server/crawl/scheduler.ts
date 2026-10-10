@@ -11,7 +11,7 @@ import type { SourceResult } from "./sources/types";
 
 const TICK_MS = 15_000;
 const MAX_PARALLEL = 3;
-const JOB_TIMEOUT_MS = 120_000;
+const JOB_TIMEOUT_MS = 240_000;
 // X через Grok стоит денег за каждый найденный пост, поэтому обходим не чаще раза в N минут,
 // даже если тир разрешает чаще.
 const xMinInterval = () => Number(process.env.X_MIN_INTERVAL_MIN ?? 30);
