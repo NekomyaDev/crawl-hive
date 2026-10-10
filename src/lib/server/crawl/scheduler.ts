@@ -8,13 +8,14 @@ import { crawlTelegram } from "./sources/telegram";
 import { crawlOnchain } from "./sources/onchain";
 import { crawlDocs } from "./sources/docs";
 import type { SourceResult } from "./sources/types";
+import { X_MIN_INTERVAL_MIN } from "../../economy";
 
 const TICK_MS = 15_000;
 const MAX_PARALLEL = 3;
 const JOB_TIMEOUT_MS = 240_000;
-// X через Grok стоит денег за каждый найденный пост, поэтому обходим не чаще раза в N минут,
-// даже если тир разрешает чаще.
-const xMinInterval = () => Number(process.env.X_MIN_INTERVAL_MIN ?? 30);
+// X через Grok стоит денег за каждый прогон, поэтому обходим не чаще интервала тира (economy.ts),
+// даже если частота краулера выше. X_MIN_INTERVAL_MIN поднимает нижнюю планку для всех тиров.
+const xMinInterval = (tier: LiveJob["tier"]) => Math.max(X_MIN_INTERVAL_MIN[tier], Number(process.env.X_MIN_INTERVAL_MIN ?? 0));
 
 const g = globalThis as unknown as { __crawlhiveScheduler?: { timer: ReturnType<typeof setInterval>; running: Set<string> } };
 
@@ -75,7 +76,7 @@ async function tick(running: Set<string>) {
   if (free <= 0) return;
   const jobs = dueCrawlers().filter((j) => !running.has(j.id)).slice(0, free);
   for (const job of jobs) {
-    claimRun(job.id, job.source === "x" ? xMinInterval() : 0);
+    claimRun(job.id, job.source === "x" ? xMinInterval(job.tier) : 0);
     void runJob(job, running);
   }
 }

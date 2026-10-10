@@ -2,7 +2,7 @@
 // Главная: живая карта роя, метрики сети и поток сигналов.
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Flame, Plus } from "lucide-react";
+import { Flame, Plus, Radar, ScrollText, Send } from "lucide-react";
 import { SwarmMap } from "@/components/swarm/swarm-map";
 import { SignalFeed } from "@/components/signal-feed";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
@@ -11,6 +11,12 @@ import { PageHeader } from "@/components/page-header";
 import { useStream } from "@/lib/client/use-stream";
 import { fmt, timeLeft } from "@/lib/utils";
 import type { NetworkStats, Signal } from "@/lib/types";
+
+const HOW = [
+  { icon: ScrollText, title: "Spawn & instruct", text: "Pick a source and write in plain words what your crawler should hunt for." },
+  { icon: Radar, title: "It crawls for you", text: "X via Grok search, Telegram channels, new on-chain pairs and project docs, on a schedule." },
+  { icon: Send, title: "Private signals", text: "Only you see what it finds, in My Signals or Telegram. Each call is scored against the price." },
+];
 
 export default function Dashboard() {
   const [stats, setStats] = useState<NetworkStats | null>(null);
@@ -52,16 +58,57 @@ export default function Dashboard() {
         <Stat label="Wallets" value={stats ? stats.wallets : "—"} />
         <Stat label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "—"} />
         <Stat label="Signals 24h" value={stats ? fmt(stats.signals24h) : "—"} />
-        <Stat label="Credits burned" value={stats ? fmt(stats.totalBurned) : "—"} accent />
-        <Stat
-          label="Epoch reward"
-          value={stats ? fmt(stats.epochReward) : "—"}
-          hint={stats ? timeLeft(stats.epochEndsAt) : ""}
-        />
+        {stats && !stats.demo ? (
+          <>
+            <Stat label="Signals scored" value={fmt(stats.scored)} hint="checked against price" />
+            <Stat
+              label="Hit rate"
+              value={stats.scored ? `${Math.round((stats.hits / stats.scored) * 100)}%` : "—"}
+              hint={stats.scored ? `${fmt(stats.hits)} hits` : "no scored signals yet"}
+              accent
+            />
+          </>
+        ) : (
+          <>
+            <Stat label="Credits burned" value={stats ? fmt(stats.totalBurned) : "—"} accent />
+            <Stat label="Epoch reward" value={stats ? fmt(stats.epochReward) : "—"} hint={stats ? timeLeft(stats.epochEndsAt) : ""} />
+          </>
+        )}
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-3">
+        {HOW.map(({ icon: Icon, title, text }, i) => (
+          <Card key={title} className="flex gap-3 p-4">
+            <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-honey/10 text-honey">
+              <Icon className="size-4" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold">
+                <span className="num text-muted">{i + 1}.</span> {title}
+              </div>
+              <div className="text-xs text-muted">{text}</div>
+            </div>
+          </Card>
+        ))}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <SwarmMap onStats={setStats} onSignals={onSignals} />
+        <div className="relative min-w-0">
+          <SwarmMap onStats={setStats} onSignals={onSignals} />
+          {stats && stats.totalCrawlers === 0 && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center">
+              <div className="pointer-events-auto rounded-xl border border-line bg-panel/90 p-6 backdrop-blur">
+                <div className="mb-1 font-semibold">The swarm is waiting for its first crawler</div>
+                <p className="mb-4 max-w-xs text-sm text-muted">Spawn one, write what it should look for, and it shows up here as the first dot.</p>
+                <Link href="/spawn">
+                  <Button>
+                    <Flame className="size-4" /> Spawn the first crawler
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
         <Card className="flex max-h-[680px] flex-col">
           <CardHeader
             title={

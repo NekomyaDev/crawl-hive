@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { Pause, Play, Store, Save, ArrowLeft } from "lucide-react";
+import { Pause, Play, Store, Save, ArrowLeft, RefreshCw, Hourglass } from "lucide-react";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Segmented } from "@/components/ui/field";
@@ -17,9 +17,10 @@ import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
 import { useConfig, explorerTx } from "@/lib/client/use-config";
 import { patch, post } from "@/lib/client/api";
+import { renewWithPayment, type BurnStep } from "@/lib/client/burn";
 import { TIERS, CREDITS } from "@/lib/economy";
 import type { CrawlerSpec, PublicCrawler, Signal } from "@/lib/types";
-import { fmt, short, timeAgo, timeLeft } from "@/lib/utils";
+import { cn, fmt, short, timeAgo, timeLeft } from "@/lib/utils";
 
 type Detail = PublicCrawler & { recentSignals: Signal[] };
 
@@ -67,7 +68,9 @@ export function CrawlerView() {
             <SourceBadge source={c.source} />
             <TierBadge tier={c.tier} />
             <StatusBadge status={c.status} />
-            {c.live ? (
+            {c.live && c.expiresAt && c.expiresAt <= Date.now() ? (
+              <Badge className="border-danger/40 text-danger">expired</Badge>
+            ) : c.live ? (
               <Badge className="border-honey/40 text-honey">live crawler</Badge>
             ) : (
               <Badge title="Part of the simulated demo network">demo</Badge>
@@ -152,14 +155,71 @@ export function CrawlerView() {
           </Card>
         </div>
         <div className="flex flex-col gap-5">
+          {c.live && c.expiresAt && <TermCard c={c} isOwner={!!isOwner} onRenewed={reload} />}
           {c.live && c.run && <RunCard c={c} />}
           <Card className="p-4">
             <RepBreakdown crawler={c} />
           </Card>
-          {isOwner && c.status !== "rented" && <ListForm c={c} />}
+          {isOwner && c.status !== "rented" && cfg?.demoNetwork && <ListForm c={c} />}
         </div>
       </div>
     </>
+  );
+}
+
+const STEP_LABEL: Record<BurnStep, string> = {
+  prepare: "Preparing transaction…",
+  sign: "Confirm in Phantom…",
+  confirm: "Checking payment on-chain…",
+};
+
+// Оплаченный срок: сколько осталось и продление ещё на один срок по цене спавна тира.
+function TermCard({ c, isOwner, onRenewed }: { c: Detail; isOwner: boolean; onRenewed: () => void }) {
+  const cfg = useConfig();
+  const toast = useToast();
+  const [step, setStep] = useState<BurnStep | null>(null);
+  const expired = c.expiresAt! <= Date.now();
+  const soon = !expired && c.expiresAt! - Date.now() < 3 * 86400_000;
+  const price = cfg ? cfg.prices[c.tier] : null;
+  const unit = cfg?.payment === "sol" ? "SOL" : cfg?.payment === "token" ? cfg.symbol : CREDITS;
+
+  const renew = async () => {
+    try {
+      if (cfg?.payment === "simulated") await post(`/api/crawlers/${c.id}/renew`, {});
+      else await renewWithPayment(c.id, setStep);
+      toast(`Renewed for ${cfg?.termDays ?? 30} more days`);
+      onRenewed();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setStep(null);
+    }
+  };
+
+  return (
+    <Card className={cn(expired && "border-danger/50", soon && "border-honey/50")}>
+      <CardHeader title="Paid term" sub={`Each payment buys ${cfg?.termDays ?? 30} days of crawling`} />
+      <div className="space-y-3 p-4 text-sm">
+        <div className="flex items-center gap-2">
+          <Hourglass className={cn("size-4", expired ? "text-danger" : soon ? "text-honey" : "text-muted")} />
+          {expired ? (
+            <span className="text-danger">Stopped {timeAgo(c.expiresAt!)}. Renew to resume crawling.</span>
+          ) : (
+            <span>
+              Crawls until <span className="num">{new Date(c.expiresAt!).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>{" "}
+              <span className="text-muted">({timeLeft(c.expiresAt!)})</span>
+            </span>
+          )}
+        </div>
+        {isOwner && (
+          <Button className="w-full" variant={expired || soon ? "primary" : "outline"} onClick={renew} disabled={!!step || !cfg}>
+            <RefreshCw className={cn("size-4", step && "animate-spin")} />
+            {step ? STEP_LABEL[step] : `Renew ${cfg?.termDays ?? 30} days${price !== null ? ` · ${unit === "SOL" ? price : fmt(price)} ${unit}` : ""}`}
+          </Button>
+        )}
+        {!!c.renewals?.length && <div className="text-xs text-muted">Renewed {c.renewals.length}×</div>}
+      </div>
+    </Card>
   );
 }
 

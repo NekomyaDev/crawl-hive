@@ -45,6 +45,9 @@ export interface Crawler {
   burned: number; // эквивалент тира в credits: вес «ставки» в репутации
   // On-chain оплата спавна: SOL (фаза 1) или сжигание токена проекта (фаза 2). Нет поля — спавн симулирован.
   payment?: { unit: string; amount: number; tx: string };
+  // Оплаченный срок работы. После него планировщик краулер не обходит, пока владелец не продлит.
+  expiresAt?: number;
+  renewals?: { unit: string; amount: number; tx: string; at: number }[];
   status: CrawlerStatus;
   createdAt: number;
   stats: CrawlerStats;
@@ -156,6 +159,9 @@ export interface NetworkStats {
   totalBurned: number;
   epochReward: number;
   epochEndsAt: number;
+  scored: number; // сигналов живых краулеров, сверенных с ценой
+  hits: number;
+  demo: boolean;
 }
 
 export interface SwarmNode {
@@ -198,4 +204,7 @@ export interface PublicConfig {
   buyback: boolean; // true, если получатель — казна проекта (будущий байбек токена)
   prices: Record<Tier, number>; // цена спавна по тирам в текущей единице (SOL или токен проекта)
   faucet: boolean; // на devnet можно получить тестовые средства
+  termDays: number; // сколько дней работы даёт спавн или продление
+  demoNetwork: boolean; // показывается ли симулированная демо-сеть рядом с живыми краулерами
+  telegramBot: string | null; // username бота для доставки сигналов, если настроен
 }

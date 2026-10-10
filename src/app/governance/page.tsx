@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { Check, Plus, X as Close } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ComingSoon } from "@/components/coming-soon";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,7 @@ const KIND_LABEL: Record<Proposal["kind"], string> = {
   params: "Network params",
 };
 
-export default function Governance() {
+function GovernancePage() {
   const { address, info, connect, mode } = useWallet();
   const toast = useToast();
   // Ключ зависит от кошелька, чтобы сервер вернул мой голос.
@@ -185,5 +186,13 @@ function CreateProposal({ onDone }: { onDone: () => void }) {
         Publish proposal
       </Button>
     </Card>
+  );
+}
+
+export default function Governance() {
+  return (
+    <ComingSoon title="Swarm Governance" what="Votes will be weighted by the project token. Until it launches there is nothing fair to vote with, so proposals are paused.">
+      <GovernancePage />
+    </ComingSoon>
   );
 }

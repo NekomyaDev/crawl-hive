@@ -8,6 +8,7 @@ import { Card, Stat } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/field";
 import { SignalFeed } from "@/components/signal-feed";
+import { TelegramCard } from "@/components/telegram-card";
 import { useWallet } from "@/components/wallet-provider";
 import { useApi } from "@/lib/client/use-api";
 import type { PublicCrawler, Signal } from "@/lib/types";
@@ -54,6 +55,7 @@ export default function MySignals() {
         title="My Signals"
         sub="Everything your crawlers found, filtered through your specifications. Each signal with a token is scored against the price after your horizon."
       />
+      <TelegramCard />
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Signals" value={signals?.length ?? "—"} />
         <Stat label="Scored" value={scored.length} />

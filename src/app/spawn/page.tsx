@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 // Spawner: выбор тира (сколько сжечь), источника, целей и частоты. Справа живое превью.
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -417,7 +418,11 @@ export default function SpawnPage() {
                           {cfg.buyback ? <>. It will fund buybacks of the project token once the token launches.</> : "."}
                         </>
                       )}{" "}
-                      Phantom must be on the same network.
+                      Phantom must be on the same network. Buys {cfg.termDays} days of crawling; renew any time. Payments are final, signals are not financial advice:{" "}
+                      <Link href="/terms" className="underline hover:text-fg">
+                        terms
+                      </Link>
+                      .
                     </>
                   )}
                   {payment === "token" && (

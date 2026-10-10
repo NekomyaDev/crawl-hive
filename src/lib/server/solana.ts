@@ -27,7 +27,8 @@ import {
 } from "@solana/spl-token";
 import { BUYBACK_TREASURY, SOL_INCINERATOR, TIERS, TIER_PRICE_SOL } from "../economy";
 import type { PaymentMode, PublicConfig, Tier } from "../types";
-import { ApiError, isSigUsed, markSigUsed, type SpawnInput } from "./store";
+import { ApiError, demoNetwork, isSigUsed, markSigUsed, termDays, type SpawnInput } from "./store";
+import { telegramBotName } from "./telegram";
 
 export const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const INTENT_TTL_MS = 10 * 60_000;
@@ -95,6 +96,9 @@ export function publicConfig(): PublicConfig {
         : { larva: TIERS.larva.burn, worker: TIERS.worker.burn, soldier: TIERS.soldier.burn, queen: TIERS.queen.burn },
     // Фосет только на devnet и только если у сервера есть ключ кошелька-фосета.
     faucet: e.payment !== "simulated" && e.cluster === "devnet" && !!e.faucetKey,
+    termDays: termDays(),
+    demoNetwork: demoNetwork(),
+    telegramBot: telegramBotName(),
   };
 }
 
@@ -108,8 +112,10 @@ export function spawnPrice(tier: Tier): { amount: number; unit: string } {
 
 interface Intent {
   id: string;
+  kind: IntentKind;
   wallet: string;
-  input: SpawnInput;
+  input?: SpawnInput; // для спавна
+  crawlerId?: string; // для продления
   payment: "sol" | "token";
   amountRaw: bigint; // лампорты или минимальные единицы токена
   createdAt: number;
@@ -176,28 +182,44 @@ export async function onchainBalances(wallet: string): Promise<{ tokens: number;
   return { tokens, sol: lamports / LAMPORTS_PER_SOL };
 }
 
-// ---------- спавн: намерение → подпись в кошельке → проверка ----------
+// ---------- оплата: намерение → подпись в кошельке → проверка ----------
+// Через намерения идут спавн и продление краулера. Memo в транзакции привязывает оплату к намерению.
 
-export function intentMemo(id: string) {
-  return `crawlhive:spawn:${id}`;
+export type IntentKind = "spawn" | "renew";
+
+export function intentMemo(id: string, kind: IntentKind = "spawn") {
+  return `crawlhive:${kind}:${id}`;
 }
 
-function memoIx(owner: PublicKey, id: string) {
+function memoIx(owner: PublicKey, id: string, kind: IntentKind) {
   // Подписант в memo: программа memo сама проверит, что его подписал владелец кошелька.
   return new TransactionInstruction({
     programId: MEMO_PROGRAM_ID,
     keys: [{ pubkey: owner, isSigner: true, isWritable: false }],
-    data: Buffer.from(intentMemo(id), "utf8"),
+    data: Buffer.from(intentMemo(id, kind), "utf8"),
   });
 }
 
-export async function createSpawnIntent(wallet: string, input: SpawnInput) {
+export function createSpawnIntent(wallet: string, input: SpawnInput) {
+  return createIntent(wallet, input.tier, { kind: "spawn", input });
+}
+
+// Продление стоит столько же, сколько спавн того же тира, и добавляет ещё один срок работы.
+export function createRenewIntent(wallet: string, crawlerId: string, tier: Tier) {
+  return createIntent(wallet, tier, { kind: "renew", crawlerId });
+}
+
+async function createIntent(
+  wallet: string,
+  tier: Tier,
+  what: { kind: "spawn"; input: SpawnInput } | { kind: "renew"; crawlerId: string },
+) {
   const e = env();
   if (e.payment === "simulated") throw new ApiError("On-chain payment is not enabled", 400);
   const c = chain();
   const owner = new PublicKey(wallet);
   const { tokens, sol } = await onchainBalances(wallet);
-  const price = spawnPrice(input.tier);
+  const price = spawnPrice(tier);
 
   const id = randomBytes(9).toString("base64url");
   const { blockhash, lastValidBlockHeight } = await c.conn.getLatestBlockhash("confirmed");
@@ -219,12 +241,12 @@ export async function createSpawnIntent(wallet: string, input: SpawnInput) {
     const ata = getAssociatedTokenAddressSync(mint, owner, false, program);
     tx.add(createBurnCheckedInstruction(ata, mint, owner, amountRaw, e.decimals, [], program));
   }
-  tx.add(memoIx(owner, id));
+  tx.add(memoIx(owner, id, what.kind));
 
   // Чистим протухшие намерения.
   const now = Date.now();
   for (const [k, v] of c.intents) if (now - v.createdAt > INTENT_TTL_MS) c.intents.delete(k);
-  c.intents.set(id, { id, wallet, input, payment: e.payment, amountRaw, createdAt: now, used: false });
+  c.intents.set(id, { id, ...what, wallet, payment: e.payment, amountRaw, createdAt: now, used: false });
 
   return {
     intentId: id,
@@ -253,46 +275,63 @@ async function paidAmount(tx: ParsedTransactionWithMeta, wallet: string, payment
   return total;
 }
 
-// Ждём транзакцию в RPC (она может появиться с задержкой) и проверяем, что это ровно наша оплата.
 export async function verifySpawnPayment(wallet: string, intentId: string, signature: string) {
+  const r = await verifyPayment(wallet, intentId, signature, "spawn");
+  return { ...r, input: r.intent.input! };
+}
+
+export async function verifyRenewPayment(wallet: string, intentId: string, signature: string, crawlerId: string) {
+  const c = chain().intents.get(intentId);
+  if (c && c.crawlerId !== crawlerId) throw new ApiError("This payment is for another crawler");
+  return verifyPayment(wallet, intentId, signature, "renew");
+}
+
+// Ждём транзакцию в RPC (она может появиться с задержкой) и проверяем, что это ровно наша оплата.
+async function verifyPayment(wallet: string, intentId: string, signature: string, kind: IntentKind) {
   const c = chain();
   const intent = c.intents.get(intentId);
-  if (!intent) throw new ApiError("Spawn intent expired or unknown, start again");
+  if (!intent || intent.kind !== kind) throw new ApiError("Payment intent expired or unknown, start again");
   if (intent.wallet !== wallet) throw new ApiError("Intent belongs to another wallet", 403);
   if (intent.used) throw new ApiError("This intent was already used");
   if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) throw new ApiError("Bad signature");
-  if (isSigUsed(signature)) throw new ApiError("This transaction was already used for a spawn");
-
-  let tx: ParsedTransactionWithMeta | null = null;
-  for (let i = 0; i < 20 && !tx; i++) {
-    tx = await c.conn.getParsedTransaction(signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
-    if (!tx) await new Promise((r) => setTimeout(r, 1500));
-  }
-  if (!tx) throw new ApiError(`Transaction not found on ${env().cluster}. Is your wallet on the same network?`, 404);
-  if (tx.meta?.err) throw new ApiError("Transaction failed on-chain, nothing was paid");
-
-  const signer = tx.transaction.message.accountKeys.find((k) => k.signer && k.pubkey.toBase58() === wallet);
-  if (!signer) throw new ApiError("Transaction was not signed by your wallet", 403);
-
-  const memoOk = tx.transaction.message.instructions.some(
-    (ix) => ix.programId.equals(MEMO_PROGRAM_ID) && "parsed" in ix && ix.parsed === intentMemo(intentId),
-  );
-  if (!memoOk) throw new ApiError("Transaction is not linked to this spawn (memo missing)");
-
-  const paid = await paidAmount(tx, wallet, intent.payment);
-  if (paid < intent.amountRaw)
-    throw new ApiError(intent.payment === "sol" ? "Transaction paid less SOL than the tier costs" : `Transaction burned less ${env().symbol} than the tier requires`);
-
+  if (isSigUsed(signature)) throw new ApiError("This transaction was already used");
+  // Занимаем намерение до сетевых запросов: второй параллельный confirm не должен пройти по той же оплате.
   intent.used = true;
-  markSigUsed(signature);
-  return {
-    input: intent.input,
-    payment: intent.payment,
-    // В статистику сети «сожжённого» идёт только реальное сжигание токена проекта.
-    burnedTokens: intent.payment === "token" ? Number(paid / BigInt(10) ** BigInt(env().decimals)) : 0,
-    paidSol: intent.payment === "sol" ? Number(paid) / LAMPORTS_PER_SOL : 0,
-    symbol: env().symbol,
-  };
+  try {
+    let tx: ParsedTransactionWithMeta | null = null;
+    for (let i = 0; i < 20 && !tx; i++) {
+      tx = await c.conn.getParsedTransaction(signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+      if (!tx) await new Promise((r) => setTimeout(r, 1500));
+    }
+    if (!tx) throw new ApiError(`Transaction not found on ${env().cluster}. Is your wallet on the same network?`, 404);
+    if (tx.meta?.err) throw new ApiError("Transaction failed on-chain, nothing was paid");
+
+    const signer = tx.transaction.message.accountKeys.find((k) => k.signer && k.pubkey.toBase58() === wallet);
+    if (!signer) throw new ApiError("Transaction was not signed by your wallet", 403);
+
+    const memoOk = tx.transaction.message.instructions.some(
+      (ix) => ix.programId.equals(MEMO_PROGRAM_ID) && "parsed" in ix && ix.parsed === intentMemo(intentId, kind),
+    );
+    if (!memoOk) throw new ApiError("Transaction is not linked to this payment (memo missing)");
+
+    const paid = await paidAmount(tx, wallet, intent.payment);
+    if (paid < intent.amountRaw)
+      throw new ApiError(intent.payment === "sol" ? "Transaction paid less SOL than the tier costs" : `Transaction burned less ${env().symbol} than the tier requires`);
+    if (isSigUsed(signature)) throw new ApiError("This transaction was already used");
+
+    markSigUsed(signature);
+    return {
+      intent,
+      payment: intent.payment,
+      // В статистику сети «сожжённого» идёт только реальное сжигание токена проекта.
+      burnedTokens: intent.payment === "token" ? Number(paid / BigInt(10) ** BigInt(env().decimals)) : 0,
+      paidSol: intent.payment === "sol" ? Number(paid) / LAMPORTS_PER_SOL : 0,
+      symbol: env().symbol,
+    };
+  } catch (e) {
+    intent.used = false; // проверка не прошла — можно повторить с правильной транзакцией
+    throw e;
+  }
 }
 
 // ---------- devnet-фосет ----------

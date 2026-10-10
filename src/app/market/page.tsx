@@ -2,6 +2,7 @@
 // Маркетплейс: продажа и аренда краулеров. Комиссия 2.5% сжигается.
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
+import { ComingSoon } from "@/components/coming-soon";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/field";
@@ -17,7 +18,7 @@ import { fmt, short, timeAgo } from "@/lib/utils";
 type Row = Listing & { crawler: PublicCrawler };
 type Sort = "newest" | "cheapest" | "reputation";
 
-export default function Market() {
+function MarketPage() {
   const { address, connect, refresh } = useWallet();
   const toast = useToast();
   const { data, reload } = useApi<Row[]>("/api/market", 6000);
@@ -119,4 +120,12 @@ export default function Market() {
 
 function total(l: Listing) {
   return l.type === "rent" ? l.price * (l.rentDays ?? 1) : l.price;
+}
+
+export default function Market() {
+  return (
+    <ComingSoon title="Crawl Marketplace" what="Buying and renting crawlers will settle on-chain in the project token. Until it launches, trading stays off so nobody trades real crawlers for points.">
+      <MarketPage />
+    </ComingSoon>
+  );
 }

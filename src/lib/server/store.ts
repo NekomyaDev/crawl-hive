@@ -19,7 +19,7 @@ import type {
   WalletInfo,
 } from "../types";
 import { NARRATIVES, SOURCES, CHAINS } from "../types";
-import { TIERS, DEMO_AIRDROP, EPOCH_REWARD, EPOCH_SEC, MARKET_FEE_BURN, PROPOSAL_MIN_BALANCE } from "../economy";
+import { TIERS, DEMO_AIRDROP, EPOCH_REWARD, EPOCH_SEC, MARKET_FEE_BURN, PROPOSAL_MIN_BALANCE, CRAWLER_TERM_DAYS } from "../economy";
 import { computeReputation } from "../reputation";
 import { seedNetwork, mulberry32, crawlerId, pick, TICKERS, type Rng } from "./seed";
 import { loadSnapshot, scheduleSave, type Snapshot } from "./persist";
@@ -63,17 +63,34 @@ export class ApiError extends Error {
   }
 }
 
+// Демо-сеть (симулированные краулеры, лоты и голосования) нужна для показа. На проде её выключают
+// DEMO_NETWORK=0, и на сайте остаются только настоящие краулеры пользователей.
+export const demoNetwork = () => process.env.DEMO_NETWORK?.trim() !== "0";
+
+export const termDays = () => {
+  const n = Number(process.env.CRAWLER_TERM_DAYS);
+  return n > 0 && n <= 365 ? n : CRAWLER_TERM_DAYS;
+};
+const termMs = () => termDays() * 86400_000;
+
+export const isExpired = (c: Pick<Crawler, "expiresAt" | "live">, now = Date.now()) =>
+  !!c.live && !!c.expiresAt && c.expiresAt <= now;
+
 // Храним состояние на globalThis, чтобы горячая перезагрузка в dev его не сбрасывала.
 const g = globalThis as unknown as { __crawlhive?: State };
 
 function init(): State {
   const now = Date.now();
-  const seed = seedNetwork(now);
+  const seed = demoNetwork()
+    ? seedNetwork(now)
+    : { crawlers: [], balances: new Map<string, number>(), burnedBy: new Map<string, number>(), listings: [], proposals: [], narrativeLinks: [] as [string, string][] };
   const saved = loadSnapshot();
   const crawlers = new Map(seed.crawlers.map((c) => [c.id, c]));
   // Живые краулеры с прошлого запуска. Время простоя сервера не считаем аптаймом.
   for (const c of saved.crawlers) {
     if (c.run) c.run.nextRunAt = now + 5_000;
+    // Краулеры, созданные до введения срока, получают полный срок с момента обновления.
+    if (c.live && !c.expiresAt) c.expiresAt = now + termMs();
     crawlers.set(c.id, c);
   }
   for (const [w, b] of Object.entries(saved.balances)) seed.balances.set(w, b);
@@ -81,6 +98,7 @@ function init(): State {
   const totalBurned = [...crawlers.values()].reduce((s, c) => s + c.burned, 0);
   // Планировщик живых краулеров стартует вместе с хранилищем (динамический импорт — без циклов).
   setTimeout(() => import("./crawl/scheduler").then((m) => m.startScheduler()).catch((e) => console.error(e)), 1000);
+  setTimeout(() => import("./telegram").then((m) => m.startTelegram()).catch((e) => console.error(e)), 1500);
   return {
     crawlers,
     balances: seed.balances,
@@ -221,6 +239,7 @@ function tick(s: State) {
       continue;
     }
     if (c.live) {
+      if (isExpired(c, now)) continue; // срок вышел: ни наград, ни аптайма, пока не продлят
       // Живой краулер: данные, сигналы и аптайм приходят от планировщика, здесь только награды.
       const reward = (emission * c.reputation * TIERS[c.tier].rewardBoost) / weightSum;
       c.stats.rewards += reward;
@@ -356,7 +375,8 @@ export function mySignals(wallet: string, f: { crawlerId?: string; status?: stri
 export function networkStats(): NetworkStats {
   const s = state();
   const all = [...s.crawlers.values()];
-  const active = all.filter((c) => c.status !== "paused");
+  const active = all.filter((c) => c.status !== "paused" && !isExpired(c));
+  const live = all.filter((c) => c.live);
   const itemsPerMin = active.reduce((sum, c) => sum + (c.targets.length * 40) / c.frequencyMin, 0);
   const owners = new Set(all.map((c) => c.owner));
   return {
@@ -364,11 +384,16 @@ export function networkStats(): NetworkStats {
     totalCrawlers: all.length,
     wallets: owners.size,
     itemsPerMin: Math.round(itemsPerMin),
-    // Сеть живёт в демо минуты, поэтому к реальному счётчику добавляем базу из истории краулеров.
-    signals24h: s.signalTimes.length + Math.round(active.length * 0.0035 * 86400 * 0.15),
+    // Демо-сеть живёт минуты, поэтому к её счётчику добавляем базу из истории краулеров. Живые считаем как есть.
+    signals24h: demoNetwork()
+      ? s.signalTimes.length + Math.round(active.length * 0.0035 * 86400 * 0.15)
+      : s.liveSignals.filter((x) => x.ts > Date.now() - 86400_000).length,
     totalBurned: s.totalBurned,
     epochReward: EPOCH_REWARD,
     epochEndsAt: s.epochStart + EPOCH_SEC * 1000,
+    scored: live.reduce((n, c) => n + (c.stats.scored ?? 0), 0),
+    hits: live.reduce((n, c) => n + c.stats.hits, 0),
+    demo: demoNetwork(),
   };
 }
 
@@ -460,7 +485,8 @@ export function topWallets(limit = 20): WalletInfo[] {
 
 function ensureWallet(s: State, address: string) {
   if (!s.balances.has(address)) {
-    s.balances.set(address, DEMO_AIRDROP);
+    // Стартовые credits раздаём только в демо: на проде их зарабатывают краулеры.
+    s.balances.set(address, demoNetwork() ? DEMO_AIRDROP : 0);
     markDirty(s);
   }
 }
@@ -586,6 +612,7 @@ function createCrawler(s: State, wallet: string, v: SpawnInput, payment?: Crawle
     // Ставка в репутации считается от эквивалента тира, чем бы ни платили.
     burned: tier.burn,
     payment,
+    expiresAt: Date.now() + termMs(),
     status: "active",
     createdAt: Date.now(),
     stats: { items: 0, signals: 0, hits: 0, uptimeSec: 0, totalSec: 0, rewards: 0 },
@@ -604,6 +631,37 @@ function createCrawler(s: State, wallet: string, v: SpawnInput, payment?: Crawle
   if (peers.length) s.narrativeLinks.push([id, pick(s.rng, peers).id]);
   emit(s, { type: "spawn", crawler: toPublic(c) });
   return toPublic(c, wallet);
+}
+
+// Владелец, которому можно продлить краулер: проверка до создания платёжного намерения.
+export function renewableCrawler(wallet: string, id: string): { tier: Tier; name: string } {
+  const c = state().crawlers.get(id);
+  if (!c || !c.live) throw new ApiError("Crawler not found", 404);
+  if (c.owner !== wallet) throw new ApiError("Only the owner can renew a crawler", 403);
+  return { tier: c.tier, name: c.name };
+}
+
+// Оплата продления проверена: добавляем срок к оставшемуся (или к сегодняшнему дню, если уже истёк).
+export function renewCrawler(wallet: string, id: string, payment: { unit: string; amount: number; tx: string }): PublicCrawler {
+  const s = state();
+  const c = s.crawlers.get(id);
+  if (!c || !c.live) throw new ApiError("Crawler not found", 404);
+  if (c.owner !== wallet) throw new ApiError("Only the owner can renew a crawler", 403);
+  const now = Date.now();
+  const wasExpired = isExpired(c, now);
+  c.expiresAt = Math.max(now, c.expiresAt ?? now) + termMs();
+  c.renewals = [...(c.renewals ?? []), { ...payment, at: now }];
+  if (wasExpired && c.run) c.run.nextRunAt = now + 3_000;
+  markDirty(s);
+  return toPublic(c, wallet);
+}
+
+// Продление без on-chain оплаты (режим simulated): списываем credits по цене тира.
+export function renewCrawlerWithCredits(wallet: string, id: string): PublicCrawler {
+  const s = state();
+  const { tier } = renewableCrawler(wallet, id);
+  burn(s, wallet, TIERS[tier].burn);
+  return renewCrawler(wallet, id, { unit: "credits", amount: TIERS[tier].burn, tx: "" });
 }
 
 export function setCrawlerStatus(wallet: string, id: string, status: "active" | "paused"): PublicCrawler {
@@ -815,6 +873,7 @@ export interface LiveJob {
   narratives: Narrative[];
   targets: string[];
   frequencyMin: number;
+  tier: Tier;
   spec: CrawlerSpec;
   cursor: Record<string, string>;
 }
@@ -823,7 +882,7 @@ export interface LiveJob {
 export function dueCrawlers(now = Date.now()): LiveJob[] {
   const s = state();
   return [...s.crawlers.values()]
-    .filter((c) => c.live && c.status !== "paused" && c.run && c.run.nextRunAt <= now)
+    .filter((c) => c.live && c.status !== "paused" && !isExpired(c, now) && c.run && c.run.nextRunAt <= now)
     .sort((a, b) => a.run!.nextRunAt - b.run!.nextRunAt)
     .map((c) => ({
       id: c.id,
@@ -835,6 +894,7 @@ export function dueCrawlers(now = Date.now()): LiveJob[] {
       narratives: [...c.narratives],
       targets: [...c.targets],
       frequencyMin: c.frequencyMin,
+      tier: c.tier,
       spec: structuredClone(c.spec ?? normalizeSpec(undefined, c.source)),
       cursor: { ...(c.run?.cursor ?? {}) },
     }));
@@ -903,10 +963,47 @@ export function recordRun(id: string, r: RunResult) {
     s.liveSignals.unshift(sig);
     s.signalTimes.push(now);
     emit(s, { type: "signal", signal: redact(sig) });
+    for (const fn of liveSignalHooks) {
+      try {
+        fn(sig);
+      } catch (e) {
+        console.error("signal hook", e);
+      }
+    }
   });
   if (s.liveSignals.length > 20000) s.liveSignals.length = 20000;
   c.reputation = computeReputation(c);
   markDirty(s);
+}
+
+// Подписка на полные (не обрезанные) сигналы живых краулеров: доставка владельцу в Telegram.
+const liveSignalHooks = new Set<(sig: Signal) => void>();
+export function onLiveSignal(fn: (sig: Signal) => void) {
+  liveSignalHooks.add(fn);
+  return () => liveSignalHooks.delete(fn);
+}
+
+export function setMeta(key: string, value: string | undefined) {
+  const s = state();
+  if (value === undefined) delete s.meta[key];
+  else s.meta[key] = value;
+  markDirty(s);
+}
+
+export function getMeta(key: string): string | undefined {
+  return state().meta[key];
+}
+
+// Живые краулеры, у которых оплаченный срок кончается в ближайшие withinMs (и ещё не кончился).
+export function expiringCrawlers(withinMs: number) {
+  const now = Date.now();
+  return [...state().crawlers.values()]
+    .filter((c) => c.live && c.expiresAt && c.expiresAt > now && c.expiresAt - now <= withinMs)
+    .map((c) => ({ id: c.id, name: c.name, owner: c.owner, expiresAt: c.expiresAt! }));
+}
+
+export function metaEntries(prefix: string): [string, string][] {
+  return Object.entries(state().meta).filter(([k]) => k.startsWith(prefix));
 }
 
 // Сигналы, у которых наступило время проверить цену.

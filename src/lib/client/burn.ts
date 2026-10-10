@@ -1,5 +1,6 @@
 "use client";
-// On-chain спавн с клиента: сервер собирает транзакцию, Phantom подписывает и отправляет, сервер проверяет.
+// On-chain оплата с клиента: сервер собирает транзакцию, Phantom подписывает и отправляет, сервер проверяет.
+// Так идут спавн и продление краулера.
 import { post } from "./api";
 import { phantom } from "@/components/wallet-provider";
 import type { PublicCrawler } from "../types";
@@ -7,15 +8,15 @@ import type { SpawnPayload } from "./spawn-types";
 
 export type BurnStep = "prepare" | "sign" | "confirm";
 
-export async function spawnWithBurn(payload: SpawnPayload, onStep: (s: BurnStep) => void): Promise<PublicCrawler> {
+async function payWithPhantom<T>(intentUrl: string, payload: unknown, confirmUrl: string, onStep: (s: BurnStep) => void): Promise<T> {
   const provider = phantom();
-  if (!provider) throw new Error("Phantom is required for an on-chain burn");
+  if (!provider) throw new Error("Phantom is required to pay on-chain");
 
   onStep("prepare");
-  const intent = await post<{ intentId: string; transaction: string }>("/api/spawn/intent", payload);
+  const intent = await post<{ intentId: string; transaction: string }>(intentUrl, payload);
 
   onStep("sign");
-  // web3.js тяжёлый, грузим его только в момент спавна.
+  // web3.js тяжёлый, грузим его только в момент оплаты.
   const { Transaction } = await import("@solana/web3.js");
   const bytes = Uint8Array.from(atob(intent.transaction), (c) => c.charCodeAt(0));
   let signature: string;
@@ -27,5 +28,13 @@ export async function spawnWithBurn(payload: SpawnPayload, onStep: (s: BurnStep)
   }
 
   onStep("confirm");
-  return post<PublicCrawler>("/api/spawn/confirm", { intentId: intent.intentId, signature });
+  return post<T>(confirmUrl, { intentId: intent.intentId, signature });
+}
+
+export function spawnWithBurn(payload: SpawnPayload, onStep: (s: BurnStep) => void): Promise<PublicCrawler> {
+  return payWithPhantom("/api/spawn/intent", payload, "/api/spawn/confirm", onStep);
+}
+
+export function renewWithPayment(crawlerId: string, onStep: (s: BurnStep) => void): Promise<PublicCrawler> {
+  return payWithPhantom(`/api/crawlers/${crawlerId}/renew`, {}, `/api/crawlers/${crawlerId}/renew/confirm`, onStep);
 }

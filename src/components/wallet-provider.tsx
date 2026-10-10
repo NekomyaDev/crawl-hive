@@ -1,8 +1,10 @@
 "use client";
-// Кошелёк и вход. Phantom, если установлен, иначе демо-кошелёк — настоящая локальная пара ключей ed25519,
-// чтобы демо тоже могло подписывать. После подключения кошелёк подписывает сообщение (не транзакцию),
+// Кошелёк и вход. Phantom, если установлен. Демо-кошелёк (настоящая локальная пара ключей ed25519,
+// чтобы демо тоже могло подписывать) создаётся только без on-chain оплаты, то есть в локальной разработке:
+// на проде без Phantom показываем, как его поставить или открыть сайт в приложении Phantom. После подключения кошелёк подписывает сообщение (не транзакцию),
 // сервер выдаёт токен сессии, и дальше все запросы идут от имени подписанного кошелька.
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { ed25519 } from "@noble/curves/ed25519";
 import { api, post, setApiSession } from "@/lib/client/api";
 import type { WalletInfo } from "@/lib/types";
@@ -107,6 +109,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<Saved | null>(null);
   const [info, setInfo] = useState<WalletInfo | null>(null);
   const [hasPhantom, setHasPhantom] = useState(false);
+  const [needPhantom, setNeedPhantom] = useState(false);
 
   const apply = (v: Saved | null) => {
     setApiSession(v?.token && tokenValid(v.token) ? v.token : "");
@@ -133,6 +136,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const v = load();
     if (!v) return;
     apply(v);
+    // Демо-кошелёк, оставшийся с локальной разработки, на сервере с настоящей оплатой не нужен.
+    if (v.mode === "demo")
+      onchainPayments().then((on) => {
+        if (on) apply(null);
+      });
     // Демо-кошелёк переподписывается сам; Phantom попросит подтверждение кнопкой «Sign in».
     if (!tokenValid(v.token) && v.mode === "demo" && v.seed) signInWith(v).catch(() => {});
   }, [signInWith]);
@@ -167,6 +175,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
+    if (await onchainPayments()) {
+      setNeedPhantom(true);
+      return;
+    }
     const seed = ed25519.utils.randomPrivateKey();
     const v: Saved = { address: base58(ed25519.getPublicKey(seed)), mode: "demo", seed: toHex(seed) };
     apply(v);
@@ -185,7 +197,54 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ address, mode: saved?.mode ?? null, signedIn, info, connect, signIn, disconnect, refresh, hasPhantom }}>
       {children}
+      {needPhantom && <PhantomPrompt onClose={() => setNeedPhantom(false)} />}
     </Ctx.Provider>
+  );
+}
+
+async function onchainPayments(): Promise<boolean> {
+  try {
+    return (await api<{ payment: string }>("/api/config")).payment !== "simulated";
+  } catch {
+    return true; // не знаем — не создаём кошелёк, который не сможет платить
+  }
+}
+
+// Phantom не найден. На телефоне сайт можно открыть во встроенном браузере Phantom (deep link),
+// на компьютере — поставить расширение.
+function PhantomPrompt({ onClose }: { onClose: () => void }) {
+  const mobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const here = typeof window !== "undefined" ? window.location.href : "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const deepLink = `https://phantom.app/ul/browse/${encodeURIComponent(here)}?ref=${encodeURIComponent(origin)}`;
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative w-full max-w-sm rounded-xl border border-line bg-panel p-5" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-3 right-3 text-muted hover:text-fg" aria-label="Close">
+          <X className="size-4" />
+        </button>
+        <div className="mb-1 font-semibold">Phantom wallet needed</div>
+        <p className="mb-4 text-sm text-muted">
+          CrawlHive takes real on-chain payments, so it works with the Phantom wallet. Signing in is free and sends no transaction.
+        </p>
+        <div className="flex flex-col gap-2">
+          {mobile && (
+            <a href={deepLink} className="rounded-lg bg-honey px-4 py-2 text-center text-sm font-semibold text-black">
+              Open in Phantom app
+            </a>
+          )}
+          <a
+            href="https://phantom.com/download"
+            target="_blank"
+            rel="noreferrer"
+            className={mobile ? "rounded-lg border border-line px-4 py-2 text-center text-sm" : "rounded-lg bg-honey px-4 py-2 text-center text-sm font-semibold text-black"}
+          >
+            Install Phantom
+          </a>
+          {!mobile && <p className="text-center text-xs text-muted">Already installed? Reload the page after enabling the extension.</p>}
+        </div>
+      </div>
+    </div>
   );
 }
 
