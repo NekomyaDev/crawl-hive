@@ -1,8 +1,8 @@
-// Клиент к нашему API: подставляет адрес кошелька и разворачивает ошибки.
-let currentWallet = "";
+// Клиент к нашему API: подставляет токен сессии кошелька и разворачивает ошибки.
+let session = "";
 
-export function setApiWallet(w: string) {
-  currentWallet = w;
+export function setApiSession(token: string) {
+  session = token;
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -10,7 +10,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(currentWallet ? { "x-wallet": currentWallet } : {}),
+      ...(session ? { Authorization: `Bearer ${session}` } : {}),
       ...init.headers,
     },
     cache: "no-store",

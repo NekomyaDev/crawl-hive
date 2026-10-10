@@ -27,7 +27,7 @@ import {
 } from "@solana/spl-token";
 import { BUYBACK_TREASURY, SOL_INCINERATOR, TIERS, TIER_PRICE_SOL } from "../economy";
 import type { PaymentMode, PublicConfig, Tier } from "../types";
-import { ApiError, type SpawnInput } from "./store";
+import { ApiError, isSigUsed, markSigUsed, type SpawnInput } from "./store";
 
 export const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const INTENT_TTL_MS = 10 * 60_000;
@@ -121,7 +121,6 @@ const g = globalThis as unknown as {
     conn: Connection;
     rpc: string;
     intents: Map<string, Intent>;
-    usedSigs: Set<string>;
     mintProgram?: PublicKey;
     faucetAt: Map<string, number>;
   };
@@ -134,7 +133,6 @@ function chain() {
       conn: new Connection(e.rpc, "confirmed"),
       rpc: e.rpc,
       intents: new Map(),
-      usedSigs: new Set(),
       faucetAt: new Map(),
     };
   }
@@ -263,7 +261,7 @@ export async function verifySpawnPayment(wallet: string, intentId: string, signa
   if (intent.wallet !== wallet) throw new ApiError("Intent belongs to another wallet", 403);
   if (intent.used) throw new ApiError("This intent was already used");
   if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) throw new ApiError("Bad signature");
-  if (c.usedSigs.has(signature)) throw new ApiError("This transaction was already used for a spawn");
+  if (isSigUsed(signature)) throw new ApiError("This transaction was already used for a spawn");
 
   let tx: ParsedTransactionWithMeta | null = null;
   for (let i = 0; i < 20 && !tx; i++) {
@@ -286,7 +284,7 @@ export async function verifySpawnPayment(wallet: string, intentId: string, signa
     throw new ApiError(intent.payment === "sol" ? "Transaction paid less SOL than the tier costs" : `Transaction burned less ${env().symbol} than the tier requires`);
 
   intent.used = true;
-  c.usedSigs.add(signature);
+  markSigUsed(signature);
   return {
     input: intent.input,
     payment: intent.payment,

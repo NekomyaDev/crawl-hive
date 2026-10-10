@@ -2,17 +2,15 @@
 //   node scripts/e2e-spawn.mjs <keypair.json> [baseUrl] [tier]
 import { Connection, Keypair, Transaction } from "@solana/web3.js";
 import { readFileSync } from "node:fs";
+import { signIn, client } from "./signin.mjs";
 
 const [keyPath, base = "http://localhost:3000", tier = "larva"] = process.argv.slice(2);
 const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(keyPath, "utf8"))));
 const wallet = kp.publicKey.toBase58();
 const conn = new Connection(process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com", "confirmed");
-const call = async (path, body) => {
-  const r = await fetch(base + path, { method: "POST", headers: { "content-type": "application/json", "x-wallet": wallet }, body: JSON.stringify(body) });
-  const j = await r.json();
-  if (!r.ok) throw new Error(`${path}: ${j.error}`);
-  return j;
-};
+const token = await signIn(base, kp);
+const api = client(base, token);
+const call = (path, body) => api(path, "POST", body);
 
 const input = { name: "E2E Spider", source: "onchain", chain: "solana", narratives: ["ai"], targets: ["pump.fun/new"], frequencyMin: 30, tier };
 const intent = await call("/api/spawn/intent", input);

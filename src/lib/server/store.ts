@@ -1,5 +1,5 @@
-// In-memory хранилище и симуляция сети. В проде это заменяется на Postgres
-// (схема в db/schema.sql) и реальных воркеров, а интерфейс функций остаётся тем же.
+// Хранилище сети. Демо-сеть (130 краулеров) симулируется в памяти; живые краулеры пользователей,
+// их сигналы и балансы сохраняются на диск (persist.ts) и реально собирают данные (crawl/*).
 import "server-only";
 import type {
   Crawler,
@@ -22,6 +22,9 @@ import { NARRATIVES, SOURCES, CHAINS } from "../types";
 import { TIERS, DEMO_AIRDROP, EPOCH_REWARD, EPOCH_SEC, MARKET_FEE_BURN, PROPOSAL_MIN_BALANCE } from "../economy";
 import { computeReputation } from "../reputation";
 import { seedNetwork, mulberry32, crawlerId, pick, TICKERS, type Rng } from "./seed";
+import { loadSnapshot, scheduleSave, type Snapshot } from "./persist";
+import { normalizeSpec } from "../spec";
+import type { CrawlerSpec, CrawlerRunState, SignalOutcome } from "../types";
 
 interface State {
   crawlers: Map<string, Crawler>;
@@ -31,7 +34,12 @@ interface State {
   proposals: Map<string, Proposal>;
   votes: Map<string, Map<string, { option: string; weight: number }>>; // proposal -> wallet -> голос
   narrativeLinks: [string, string][];
-  signals: Signal[]; // последние сигналы, новые в начале
+  signals: Signal[]; // последние сигналы демо-сети, новые в начале
+  liveSignals: Signal[]; // сигналы живых краулеров (приватные), новые в начале
+  seedIds: Set<string>; // id краулеров демо-сети — их не сохраняем
+  usedSigs: Set<string>; // платёжные транзакции, уже использованные для спавна
+  seedWallets?: Set<string>; // кошельки демо-сети
+  meta: Record<string, string>;
   signalTimes: number[]; // метки времени сигналов за 24ч (для счётчика)
   lastTick: number;
   epochStart: number;
@@ -61,9 +69,20 @@ const g = globalThis as unknown as { __crawlhive?: State };
 function init(): State {
   const now = Date.now();
   const seed = seedNetwork(now);
-  const totalBurned = seed.crawlers.reduce((s, c) => s + c.burned, 0);
+  const saved = loadSnapshot();
+  const crawlers = new Map(seed.crawlers.map((c) => [c.id, c]));
+  // Живые краулеры с прошлого запуска. Время простоя сервера не считаем аптаймом.
+  for (const c of saved.crawlers) {
+    if (c.run) c.run.nextRunAt = now + 5_000;
+    crawlers.set(c.id, c);
+  }
+  for (const [w, b] of Object.entries(saved.balances)) seed.balances.set(w, b);
+  for (const [w, b] of Object.entries(saved.burnedBy)) seed.burnedBy.set(w, b);
+  const totalBurned = [...crawlers.values()].reduce((s, c) => s + c.burned, 0);
+  // Планировщик живых краулеров стартует вместе с хранилищем (динамический импорт — без циклов).
+  setTimeout(() => import("./crawl/scheduler").then((m) => m.startScheduler()).catch((e) => console.error(e)), 1000);
   return {
-    crawlers: new Map(seed.crawlers.map((c) => [c.id, c])),
+    crawlers,
     balances: seed.balances,
     burnedBy: seed.burnedBy,
     listings: new Map(seed.listings.map((l) => [l.id, l])),
@@ -71,6 +90,11 @@ function init(): State {
     votes: new Map(),
     narrativeLinks: seed.narrativeLinks,
     signals: [],
+    liveSignals: saved.signals,
+    seedIds: new Set(seed.crawlers.map((c) => c.id)),
+    seedWallets: new Set(seed.crawlers.map((c) => c.owner)),
+    usedSigs: new Set(saved.usedSigs),
+    meta: saved.meta,
     signalTimes: [],
     lastTick: now,
     epochStart: now,
@@ -84,6 +108,47 @@ function state(): State {
   if (!g.__crawlhive) g.__crawlhive = init();
   tick(g.__crawlhive);
   return g.__crawlhive;
+}
+
+// ---------- сохранение ----------
+
+function snapshot(s: State): Snapshot {
+  const user = [...s.crawlers.values()].filter((c) => !s.seedIds.has(c.id));
+  const wallets = new Set(user.flatMap((c) => [c.owner, c.renter].filter(Boolean) as string[]));
+  for (const w of s.balances.keys()) if (!s.seedWallets?.has(w)) wallets.add(w);
+  const pick = (m: Map<string, number>) => Object.fromEntries([...wallets].filter((w) => m.has(w)).map((w) => [w, m.get(w)!]));
+  return {
+    version: 1,
+    crawlers: user,
+    signals: s.liveSignals.slice(0, 5000),
+    usedSigs: [...s.usedSigs],
+    balances: pick(s.balances),
+    burnedBy: pick(s.burnedBy),
+    meta: s.meta,
+  };
+}
+
+function markDirty(s: State) {
+  scheduleSave(() => snapshot(s));
+}
+
+export function metaValue(key: string, init: () => string): string {
+  const s = state();
+  if (!s.meta[key]) {
+    s.meta[key] = init();
+    markDirty(s);
+  }
+  return s.meta[key];
+}
+
+export function isSigUsed(sig: string) {
+  return state().usedSigs.has(sig);
+}
+
+export function markSigUsed(sig: string) {
+  const s = state();
+  s.usedSigs.add(sig);
+  markDirty(s);
 }
 
 function emit(s: State, e: StreamEvent) {
@@ -155,6 +220,15 @@ function tick(s: State) {
       c.reputation = computeReputation(c);
       continue;
     }
+    if (c.live) {
+      // Живой краулер: данные, сигналы и аптайм приходят от планировщика, здесь только награды.
+      const reward = (emission * c.reputation * TIERS[c.tier].rewardBoost) / weightSum;
+      c.stats.rewards += reward;
+      const earner = c.renter ?? c.owner;
+      s.balances.set(earner, (s.balances.get(earner) ?? 0) + reward);
+      c.reputation = computeReputation(c);
+      continue;
+    }
     c.stats.uptimeSec += dt * (0.985 + s.rng() * 0.015);
     // Копим дробную часть: у медленного краулера за тик набегает меньше одной единицы.
     c.stats.items += ((c.targets.length * 40) / (c.frequencyMin * 60)) * dt * (0.6 + s.rng() * 0.8);
@@ -193,13 +267,41 @@ function tick(s: State) {
   const dayAgo = now - 86400_000;
   while (s.signalTimes.length && s.signalTimes[0] < dayAgo) s.signalTimes.shift();
   if (now - s.epochStart > EPOCH_SEC * 1000) s.epochStart = now;
+  if ([...s.crawlers.values()].some((c) => c.live)) markDirty(s);
 }
 
 // ---------- чтение ----------
 
-export function toPublic(c: Crawler): PublicCrawler {
-  const { skill: _skill, ...rest } = c;
-  return { ...rest, stats: { ...c.stats, items: Math.floor(c.stats.items), rewards: Math.round(c.stats.rewards) } };
+// viewer — кошелёк, который смотрит. Спецификация и курсоры видны только владельцу и арендатору:
+// инструкции краулера — это чужое преимущество.
+export function toPublic(c: Crawler, viewer?: string): PublicCrawler {
+  const { skill: _skill, spec, run, ...rest } = c;
+  const mine = !!viewer && (viewer === c.owner || viewer === c.renter);
+  return {
+    ...rest,
+    spec: mine ? spec : undefined,
+    run: run ? { ...run, cursor: {} } : undefined,
+    stats: { ...c.stats, items: Math.floor(c.stats.items), rewards: Math.round(c.stats.rewards) },
+  };
+}
+
+// Сигнал живого краулера в публичной ленте: видно, что он сработал, но не что именно нашёл.
+function redact(sig: Signal, viewer?: string): Signal {
+  if (!sig.live || (viewer && sig.owner === viewer)) return sig;
+  return {
+    id: sig.id,
+    crawlerId: sig.crawlerId,
+    crawlerName: sig.crawlerName,
+    source: sig.source,
+    kind: sig.kind,
+    ticker: "",
+    text: "Private signal: visible to the crawler's owner",
+    ts: sig.ts,
+    confidence: sig.confidence,
+    live: true,
+    redacted: true,
+    outcome: sig.outcome ? { status: sig.outcome.status, changePct: sig.outcome.changePct } : undefined,
+  };
 }
 
 export interface CrawlerFilter {
@@ -209,25 +311,46 @@ export interface CrawlerFilter {
   chain?: string;
 }
 
-export function listCrawlers(f: CrawlerFilter = {}): PublicCrawler[] {
+export function listCrawlers(f: CrawlerFilter = {}, viewer?: string): PublicCrawler[] {
   const s = state();
   return [...s.crawlers.values()]
     .filter((c) => !f.owner || c.owner === f.owner || c.renter === f.owner)
     .filter((c) => !f.narrative || c.narratives.includes(f.narrative as Narrative))
     .filter((c) => !f.source || c.source === f.source)
     .filter((c) => !f.chain || c.chain === f.chain)
-    .map(toPublic);
+    .map((c) => toPublic(c, viewer));
 }
 
-export function getCrawler(id: string): PublicCrawler & { recentSignals: Signal[] } {
+export function getCrawler(id: string, viewer?: string): PublicCrawler & { recentSignals: Signal[] } {
   const s = state();
   const c = s.crawlers.get(id);
   if (!c) throw new ApiError("Crawler not found", 404);
-  return { ...toPublic(c), recentSignals: s.signals.filter((x) => x.crawlerId === id).slice(0, 20) };
+  const pool = c.live ? s.liveSignals : s.signals;
+  return {
+    ...toPublic(c, viewer),
+    recentSignals: pool
+      .filter((x) => x.crawlerId === id)
+      .slice(0, 30)
+      .map((x) => redact(x, viewer)),
+  };
 }
 
-export function recentSignals(limit = 40): Signal[] {
-  return state().signals.slice(0, limit);
+export function recentSignals(limit = 40, viewer?: string): Signal[] {
+  const s = state();
+  return [...s.signals.slice(0, limit), ...s.liveSignals.slice(0, limit)]
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, limit)
+    .map((x) => redact(x, viewer));
+}
+
+// Личная лента: все сигналы, принадлежащие кошельку (его краулеры и арендованные на момент сигнала).
+export function mySignals(wallet: string, f: { crawlerId?: string; status?: string; limit?: number } = {}) {
+  const s = state();
+  return s.liveSignals
+    .filter((x) => x.owner === wallet)
+    .filter((x) => !f.crawlerId || x.crawlerId === f.crawlerId)
+    .filter((x) => !f.status || x.outcome?.status === f.status)
+    .slice(0, Math.min(500, f.limit ?? 200));
 }
 
 export function networkStats(): NetworkStats {
@@ -300,7 +423,7 @@ export function leaderboard(sort: LeaderboardSort = "reputation", limit = 50) {
       case "uptime":
         return c.stats.uptimeSec / Math.max(1, c.stats.totalSec);
       case "precision":
-        return (c.stats.hits + 2.5) / (c.stats.signals + 5);
+        return (c.stats.hits + 2.5) / ((c.stats.scored ?? c.stats.signals) + 5);
       default:
         return c.reputation;
     }
@@ -308,7 +431,7 @@ export function leaderboard(sort: LeaderboardSort = "reputation", limit = 50) {
   return [...s.crawlers.values()]
     .sort((a, b) => key(b) - key(a))
     .slice(0, limit)
-    .map(toPublic);
+    .map((c) => toPublic(c));
 }
 
 export function walletInfo(address: string): WalletInfo {
@@ -336,7 +459,10 @@ export function topWallets(limit = 20): WalletInfo[] {
 // ---------- запись ----------
 
 function ensureWallet(s: State, address: string) {
-  if (!s.balances.has(address)) s.balances.set(address, DEMO_AIRDROP);
+  if (!s.balances.has(address)) {
+    s.balances.set(address, DEMO_AIRDROP);
+    markDirty(s);
+  }
 }
 
 function debit(s: State, address: string, amount: number) {
@@ -360,6 +486,38 @@ export interface SpawnInput {
   targets: string[];
   frequencyMin: number;
   tier: Tier;
+  spec?: Partial<CrawlerSpec>;
+}
+
+// Цели приводим к виду, который понимает сборщик конкретного источника.
+export function normalizeTargets(source: Source, raw: string[]): string[] {
+  const out: string[] = [];
+  for (const r of raw.map((t) => String(t).trim()).filter(Boolean)) {
+    let t = r;
+    if (source === "x") {
+      const h = t.replace(/^https?:\/\/(x|twitter)\.com\//i, "@").split(/[/?]/)[0];
+      if (/^@[A-Za-z0-9_]{1,15}$/.test(h)) t = h;
+      else if (t.startsWith("@")) throw new ApiError(`Not a valid X handle: ${r}`);
+      else t = t.slice(0, 80); // поисковый запрос
+    } else if (source === "telegram") {
+      const name = t.replace(/^https?:\/\//i, "").replace(/^t\.me\/(s\/)?/i, "").replace(/^@/, "").split(/[/?]/)[0];
+      if (!/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(name)) throw new ApiError(`Not a public Telegram channel: ${r}`);
+      t = `t.me/${name}`;
+    } else if (source === "docs") {
+      const url = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+      try {
+        const u = new URL(url);
+        if (!u.hostname.includes(".")) throw new Error();
+        t = u.toString();
+      } catch {
+        throw new ApiError(`Not a valid URL: ${r}`);
+      }
+    } else {
+      t = t.slice(0, 90); // on-chain: адрес токена/пары или ключевое слово
+    }
+    if (!out.includes(t)) out.push(t);
+  }
+  return out;
 }
 
 // Проверка параметров спавна. Возвращает нормализованный ввод; ничего не меняет в состоянии.
@@ -372,13 +530,20 @@ export function validateSpawn(input: SpawnInput): SpawnInput {
   if (name.length < 2 || name.length > 24) throw new ApiError("Name must be 2–24 characters");
   const narratives = (input.narratives ?? []).filter((n) => NARRATIVES.includes(n));
   if (!narratives.length || narratives.length > 3) throw new ApiError("Pick 1–3 narratives");
-  const targets = (input.targets ?? []).map((t) => String(t).trim()).filter(Boolean);
-  if (!targets.length) throw new ApiError("Add at least one target");
+  const targets = normalizeTargets(input.source, input.targets ?? []);
+  // On-chain может работать только по лентам DexScreener, остальным нужны цели.
+  if (!targets.length && input.source !== "onchain") throw new ApiError("Add at least one target");
   if (targets.length > tier.maxTargets) throw new ApiError(`${tier.label} tier allows up to ${tier.maxTargets} targets`);
   const freq = Math.round(Number(input.frequencyMin));
   if (!(freq >= tier.minFrequency && freq <= 1440))
     throw new ApiError(`${tier.label} tier crawls at most every ${tier.minFrequency} min`);
-  return { name, source: input.source, chain: input.chain, narratives, targets, frequencyMin: freq, tier: input.tier };
+  let spec: CrawlerSpec;
+  try {
+    spec = normalizeSpec(input.spec, input.source);
+  } catch (e) {
+    throw new ApiError((e as Error).message);
+  }
+  return { name, source: input.source, chain: input.chain, narratives, targets, frequencyMin: freq, tier: input.tier, spec };
 }
 
 // Симулированный спавн: списываем из внутреннего баланса. Используется, когда минт не настроен.
@@ -425,16 +590,20 @@ function createCrawler(s: State, wallet: string, v: SpawnInput, payment?: Crawle
     createdAt: Date.now(),
     stats: { items: 0, signals: 0, hits: 0, uptimeSec: 0, totalSec: 0, rewards: 0 },
     reputation: 0,
-    // В симуляции качество зависит от тира и того, насколько узко нацелен краулер.
-    skill: Math.min(0.92, 0.35 + Object.keys(TIERS).indexOf(v.tier) * 0.08 + s.rng() * 0.25),
+    skill: 0,
+    // Краулеры пользователей живые: их обходит планировщик (crawl/scheduler.ts).
+    live: true,
+    spec: v.spec ? normalizeSpec(v.spec, v.source) : normalizeSpec(undefined, v.source),
+    run: { nextRunAt: Date.now() + 3_000, runs: 0, failedRuns: 0, cursor: {} },
   };
+  c.stats.scored = 0;
   c.reputation = computeReputation(c);
   s.crawlers.set(id, c);
+  markDirty(s);
   const peers = [...s.crawlers.values()].filter((p) => p.id !== id && p.narratives[0] === v.narratives[0]);
   if (peers.length) s.narrativeLinks.push([id, pick(s.rng, peers).id]);
-  const pub = toPublic(c);
-  emit(s, { type: "spawn", crawler: pub });
-  return pub;
+  emit(s, { type: "spawn", crawler: toPublic(c) });
+  return toPublic(c, wallet);
 }
 
 export function setCrawlerStatus(wallet: string, id: string, status: "active" | "paused"): PublicCrawler {
@@ -444,23 +613,44 @@ export function setCrawlerStatus(wallet: string, id: string, status: "active" | 
   if (c.owner !== wallet) throw new ApiError("Not your crawler", 403);
   if (c.status === "rented") throw new ApiError("Crawler is rented out until the lease ends");
   c.status = status;
+  if (status === "active" && c.run) c.run.nextRunAt = Date.now() + 2_000;
+  markDirty(s);
   emit(s, { type: "status", id, status });
   return toPublic(c);
 }
 
-export function updateCrawlerTargets(wallet: string, id: string, targets: string[], frequencyMin: number): PublicCrawler {
+// Владелец или арендатор правит цели, частоту и спецификацию. Новые настройки вступают в силу со следующего прохода.
+export function updateCrawlerConfig(
+  wallet: string,
+  id: string,
+  patch: { targets?: string[]; frequencyMin?: number; spec?: Partial<CrawlerSpec> },
+): PublicCrawler {
   const s = state();
   const c = s.crawlers.get(id);
   if (!c) throw new ApiError("Crawler not found", 404);
   if (c.owner !== wallet && c.renter !== wallet) throw new ApiError("Not your crawler", 403);
   const tier = TIERS[c.tier];
-  const clean = targets.map((t) => String(t).trim()).filter(Boolean);
-  if (!clean.length || clean.length > tier.maxTargets) throw new ApiError(`1–${tier.maxTargets} targets for ${tier.label}`);
-  const freq = Math.round(Number(frequencyMin));
-  if (!(freq >= tier.minFrequency && freq <= 1440)) throw new ApiError(`Frequency must be ${tier.minFrequency}–1440 min`);
-  c.targets = clean;
-  c.frequencyMin = freq;
-  return toPublic(c);
+  if (patch.targets) {
+    const clean = normalizeTargets(c.source, patch.targets);
+    if ((!clean.length && c.source !== "onchain") || clean.length > tier.maxTargets)
+      throw new ApiError(`1–${tier.maxTargets} targets for ${tier.label}`);
+    c.targets = clean;
+  }
+  if (patch.frequencyMin !== undefined) {
+    const freq = Math.round(Number(patch.frequencyMin));
+    if (!(freq >= tier.minFrequency && freq <= 1440)) throw new ApiError(`Frequency must be ${tier.minFrequency}–1440 min`);
+    c.frequencyMin = freq;
+  }
+  if (patch.spec) {
+    try {
+      c.spec = normalizeSpec({ ...c.spec, ...patch.spec }, c.source);
+    } catch (e) {
+      throw new ApiError((e as Error).message);
+    }
+  }
+  if (c.run && c.live) c.run.nextRunAt = Math.min(c.run.nextRunAt, Date.now() + 5_000);
+  markDirty(s);
+  return toPublic(c, wallet);
 }
 
 export function listListings() {
@@ -532,6 +722,7 @@ export function buyListing(wallet: string, listingId: string) {
     c.status = "rented";
   }
   s.listings.delete(listingId);
+  markDirty(s);
   emit(s, { type: "trade", listing: l, buyer: wallet });
   return { crawler: toPublic(c), paid: total, burnedFee: fee };
 }
@@ -610,4 +801,140 @@ export function pulse() {
 
 function short(a: string) {
   return `${a.slice(0, 4)}…${a.slice(-4)}`;
+}
+
+// ---------- живые краулеры: API для планировщика ----------
+
+export interface LiveJob {
+  id: string;
+  name: string;
+  owner: string;
+  renter?: string;
+  source: Source;
+  chain: Chain;
+  narratives: Narrative[];
+  targets: string[];
+  frequencyMin: number;
+  spec: CrawlerSpec;
+  cursor: Record<string, string>;
+}
+
+// Краулеры, которым пора на обход. Возвращаем копии: сборщик не должен трогать состояние напрямую.
+export function dueCrawlers(now = Date.now()): LiveJob[] {
+  const s = state();
+  return [...s.crawlers.values()]
+    .filter((c) => c.live && c.status !== "paused" && c.run && c.run.nextRunAt <= now)
+    .sort((a, b) => a.run!.nextRunAt - b.run!.nextRunAt)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      owner: c.owner,
+      renter: c.renter,
+      source: c.source,
+      chain: c.chain,
+      narratives: [...c.narratives],
+      targets: [...c.targets],
+      frequencyMin: c.frequencyMin,
+      spec: structuredClone(c.spec ?? normalizeSpec(undefined, c.source)),
+      cursor: { ...(c.run?.cursor ?? {}) },
+    }));
+}
+
+// Помечаем краулер «в работе», чтобы следующий тик планировщика не запустил его повторно.
+export function claimRun(id: string, minIntervalMin: number) {
+  const s = state();
+  const c = s.crawlers.get(id);
+  if (!c?.run) return;
+  c.run.nextRunAt = Date.now() + Math.max(c.frequencyMin, minIntervalMin) * 60_000;
+}
+
+export type LiveSignalInput = Pick<Signal, "kind" | "ticker" | "text" | "confidence"> &
+  Partial<Pick<Signal, "urls" | "token">> & { priceAtSignal?: number };
+
+export interface RunResult {
+  ok: boolean;
+  items: number;
+  error?: string;
+  cursor?: Record<string, string>;
+  signals: LiveSignalInput[];
+  // Сколько секунд работы засчитать в аптайм (интервал с прошлого успешного прохода)
+  creditSec: number;
+}
+
+export function recordRun(id: string, r: RunResult) {
+  const s = state();
+  const c = s.crawlers.get(id);
+  if (!c?.run) return;
+  const now = Date.now();
+  c.run.lastRunAt = now;
+  c.run.runs++;
+  c.run.lastItems = r.items;
+  c.run.lastSignals = r.signals.length;
+  c.run.lastError = r.ok ? undefined : r.error;
+  if (!r.ok) c.run.failedRuns++;
+  if (r.cursor) c.run.cursor = { ...c.run.cursor, ...r.cursor };
+  c.stats.items += r.items;
+  if (r.ok) c.stats.uptimeSec = Math.min(c.stats.totalSec, c.stats.uptimeSec + r.creditSec);
+
+  const owner = c.renter ?? c.owner;
+  r.signals.forEach((x, i) => {
+    const horizon = (c.spec?.outcome.horizonMin ?? 60) * 60_000;
+    const outcome: SignalOutcome =
+      x.token && x.priceAtSignal
+        ? { status: "pending", priceAtSignal: x.priceAtSignal, checkAt: now + horizon }
+        : { status: "unscored" };
+    const sig: Signal = {
+      id: `${now.toString(36)}-${c.id}-${i}`,
+      crawlerId: c.id,
+      crawlerName: c.name,
+      source: c.source,
+      kind: x.kind,
+      ticker: x.ticker,
+      text: x.text,
+      ts: now,
+      confidence: x.confidence,
+      live: true,
+      owner,
+      urls: x.urls,
+      token: x.token,
+      outcome,
+    };
+    c.stats.signals++;
+    s.liveSignals.unshift(sig);
+    s.signalTimes.push(now);
+    emit(s, { type: "signal", signal: redact(sig) });
+  });
+  if (s.liveSignals.length > 20000) s.liveSignals.length = 20000;
+  c.reputation = computeReputation(c);
+  markDirty(s);
+}
+
+// Сигналы, у которых наступило время проверить цену.
+export function dueOutcomes(now = Date.now(), limit = 25) {
+  return state()
+    .liveSignals.filter((x) => x.outcome?.status === "pending" && (x.outcome.checkAt ?? 0) <= now && x.token)
+    .slice(0, limit)
+    .map((x) => ({ id: x.id, crawlerId: x.crawlerId, token: x.token!, priceAtSignal: x.outcome!.priceAtSignal! }));
+}
+
+export function resolveOutcome(signalId: string, priceAtCheck: number | null) {
+  const s = state();
+  const sig = s.liveSignals.find((x) => x.id === signalId);
+  if (!sig?.outcome || sig.outcome.status !== "pending") return;
+  const c = s.crawlers.get(sig.crawlerId);
+  if (priceAtCheck === null) {
+    // Пара исчезла или цену не получить — сигнал не засчитываем ни в плюс, ни в минус.
+    sig.outcome = { ...sig.outcome, status: "unscored" };
+  } else {
+    const change = ((priceAtCheck - sig.outcome.priceAtSignal!) / sig.outcome.priceAtSignal!) * 100;
+    const threshold = c?.spec?.outcome.hitThresholdPct ?? 20;
+    const hit = change >= threshold;
+    sig.outcome = { ...sig.outcome, status: hit ? "hit" : "miss", priceAtCheck, changePct: Math.round(change * 10) / 10 };
+    if (c) {
+      c.stats.scored = (c.stats.scored ?? 0) + 1;
+      if (hit) c.stats.hits++;
+      c.reputation = computeReputation(c);
+    }
+  }
+  markDirty(s);
 }

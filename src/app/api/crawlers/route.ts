@@ -6,12 +6,17 @@ import { isOnchain } from "@/lib/server/solana";
 export async function GET(req: NextRequest) {
   return handle(() => {
     const p = req.nextUrl.searchParams;
-    return listCrawlers({
-      owner: p.get("owner") ?? undefined,
-      narrative: p.get("narrative") ?? undefined,
-      source: p.get("source") ?? undefined,
-      chain: p.get("chain") ?? undefined,
-    });
+    // Свой список (со спецификациями) — только для подписанного кошелька.
+    const mine = p.get("mine") === "1" ? walletFrom(req) : undefined;
+    return listCrawlers(
+      {
+        owner: mine ?? p.get("owner") ?? undefined,
+        narrative: p.get("narrative") ?? undefined,
+        source: p.get("source") ?? undefined,
+        chain: p.get("chain") ?? undefined,
+      },
+      mine,
+    );
   });
 }
 

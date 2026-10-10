@@ -2,17 +2,15 @@
 import "server-only";
 import { connection } from "next/server";
 import { ApiError } from "./store";
+import { sessionWallet } from "./auth";
 
 const ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+// Кошелёк берётся только из подписанной сессии (см. auth.ts), заголовку с адресом мы не верим.
 export function walletFrom(req: Request, required = true): string {
-  const w = req.headers.get("x-wallet")?.trim() ?? "";
-  if (!w) {
-    if (required) throw new ApiError("Connect a wallet first", 401);
-    return "";
-  }
-  if (!ADDRESS_RE.test(w)) throw new ApiError("Bad wallet address", 400);
-  return w;
+  const w = sessionWallet(req);
+  if (!w && required) throw new ApiError("Connect and sign in with your wallet first", 401);
+  return w ?? "";
 }
 
 export function isAddress(a: string) {

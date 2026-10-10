@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Segmented } from "@/components/ui/field";
 import { NarrativeBadge, SourceBadge, StatusBadge, TierBadge } from "@/components/ui/badge";
 import { RepBreakdown } from "@/components/crawler/rep-breakdown";
+import { SpecEditor } from "@/components/crawler/spec-editor";
+import { Badge } from "@/components/ui/badge";
 import { SignalFeed } from "@/components/signal-feed";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
@@ -16,7 +18,7 @@ import { useApi } from "@/lib/client/use-api";
 import { useConfig, explorerTx } from "@/lib/client/use-config";
 import { patch, post } from "@/lib/client/api";
 import { TIERS, CREDITS } from "@/lib/economy";
-import type { PublicCrawler, Signal } from "@/lib/types";
+import type { CrawlerSpec, PublicCrawler, Signal } from "@/lib/types";
 import { fmt, short, timeAgo, timeLeft } from "@/lib/utils";
 
 type Detail = PublicCrawler & { recentSignals: Signal[] };
@@ -39,7 +41,8 @@ export function CrawlerView() {
 
   const isOwner = address && c.owner === address;
   const isRenter = address && c.renter === address;
-  const precision = c.stats.signals ? (c.stats.hits / c.stats.signals) * 100 : 0;
+  const scored = c.stats.scored ?? c.stats.signals;
+  const precision = scored ? (c.stats.hits / scored) * 100 : 0;
 
   const toggle = async () => {
     try {
@@ -64,6 +67,11 @@ export function CrawlerView() {
             <SourceBadge source={c.source} />
             <TierBadge tier={c.tier} />
             <StatusBadge status={c.status} />
+            {c.live ? (
+              <Badge className="border-honey/40 text-honey">live crawler</Badge>
+            ) : (
+              <Badge title="Part of the simulated demo network">demo</Badge>
+            )}
             {c.narratives.map((n) => (
               <NarrativeBadge key={n} n={n} />
             ))}
@@ -106,7 +114,7 @@ export function CrawlerView() {
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="Items" value={fmt(c.stats.items)} />
         <Stat label="Signals" value={fmt(c.stats.signals)} />
-        <Stat label="Hit rate" value={`${precision.toFixed(1)}%`} hint={`${fmt(c.stats.hits)} hits`} />
+        <Stat label="Hit rate" value={`${precision.toFixed(1)}%`} hint={`${fmt(c.stats.hits)} of ${fmt(scored)} scored`} />
         <Stat label="Uptime" value={`${((c.stats.uptimeSec / Math.max(1, c.stats.totalSec)) * 100).toFixed(1)}%`} hint={`${hours(c.stats.uptimeSec)} of ${hours(c.stats.totalSec)}`} />
         <Stat label="Cycle" value={`${c.frequencyMin}m`} hint={`${c.targets.length} targets`} />
         <Stat label="Earned" value={fmt(c.stats.rewards)} hint={CREDITS} accent />
@@ -128,12 +136,23 @@ export function CrawlerView() {
               </div>
             )}
           </Card>
+          {c.live && (isOwner || isRenter) && c.spec && <SpecCard c={c} onSaved={reload} />}
           <Card>
-            <CardHeader title="Recent signals" sub="From this crawler since the server started" />
-            <SignalFeed signals={c.recentSignals} max={20} />
+            <CardHeader
+              title="Recent signals"
+              sub={
+                c.live
+                  ? isOwner || isRenter
+                    ? "Private to you. Scored against the price after your horizon."
+                    : "This crawler's signals are private to its owner"
+                  : "Simulated demo signals"
+              }
+            />
+            <SignalFeed signals={c.recentSignals} max={30} showCrawler={false} />
           </Card>
         </div>
         <div className="flex flex-col gap-5">
+          {c.live && c.run && <RunCard c={c} />}
           <Card className="p-4">
             <RepBreakdown crawler={c} />
           </Card>
@@ -141,6 +160,63 @@ export function CrawlerView() {
         </div>
       </div>
     </>
+  );
+}
+
+// Журнал работы живого краулера: последний проход, следующий, ошибка.
+function RunCard({ c }: { c: Detail }) {
+  const r = c.run!;
+  return (
+    <Card>
+      <CardHeader title="Crawl status" sub={`${r.runs} runs · ${r.failedRuns} failed`} />
+      <dl className="space-y-1.5 p-4 text-sm">
+        <div className="flex justify-between">
+          <dt className="text-muted">Last run</dt>
+          <dd className="num">{r.lastRunAt ? timeAgo(r.lastRunAt) : "starting…"}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-muted">Next run</dt>
+          <dd className="num">{c.status === "paused" ? "paused" : r.nextRunAt > Date.now() ? timeLeft(r.nextRunAt).replace(" left", "") : "now"}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-muted">Last run found</dt>
+          <dd className="num">
+            {r.lastItems ?? 0} items · {r.lastSignals ?? 0} signals
+          </dd>
+        </div>
+        {r.lastError && <div className="mt-2 rounded-md border border-danger/40 bg-danger/5 p-2 text-xs text-danger">{r.lastError}</div>}
+      </dl>
+    </Card>
+  );
+}
+
+// Спецификация: видна и редактируется только владельцем/арендатором.
+function SpecCard({ c, onSaved }: { c: Detail; onSaved: () => void }) {
+  const toast = useToast();
+  const [spec, setSpec] = useState<CrawlerSpec>(c.spec!);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await patch(`/api/crawlers/${c.id}`, { spec });
+      toast("Specification saved: applies from the next run");
+      onSaved();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card>
+      <CardHeader title="Specification" sub="Private. Changes apply from the next run." />
+      <div className="p-4">
+        <SpecEditor source={c.source} spec={spec} onChange={setSpec} />
+        <Button className="mt-4" variant="outline" onClick={save} disabled={busy}>
+          <Save className="size-4" /> Save specification
+        </Button>
+      </div>
+    </Card>
   );
 }
 

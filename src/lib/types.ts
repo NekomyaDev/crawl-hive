@@ -23,7 +23,8 @@ export const CHAINS: Chain[] = ["solana", "base", "ethereum"];
 export interface CrawlerStats {
   items: number; // собрано единиц данных (посты, транзакции, страницы)
   signals: number; // отправлено сигналов в сеть
-  hits: number; // сигналы, которые подтвердились (токен вырос / новость подтвердилась)
+  scored?: number; // сигналов, у которых уже известен исход (для живых краулеров; у симуляции = signals)
+  hits: number; // сигналы, которые подтвердились (цена выросла сверх порога)
   uptimeSec: number; // сколько секунд краулер реально работал
   totalSec: number; // сколько секунд прошло с момента спавна
   rewards: number; // заработано credits
@@ -49,11 +50,49 @@ export interface Crawler {
   stats: CrawlerStats;
   reputation: number; // 0..1000, считается в reputation.ts
   skill: number; // скрытое «качество» краулера в симуляции, наружу не отдаётся
+  // Живой краулер реально собирает данные (созданные пользователями). Демо-сеть — симуляция.
+  live?: boolean;
+  spec?: CrawlerSpec;
+  run?: CrawlerRunState;
 }
 
 export type PublicCrawler = Omit<Crawler, "skill">;
 
 export type SignalKind = "mention_spike" | "new_pair" | "whale_buy" | "kol_call" | "doc_update";
+export const SIGNAL_KINDS: SignalKind[] = ["mention_spike", "new_pair", "whale_buy", "kol_call", "doc_update"];
+
+// Спецификация краулера: что именно и как собирать. Задаётся при спавне, правится владельцем.
+export interface CrawlerSpec {
+  instructions: string; // свободный текст для ИИ-разбора: «только AI-агенты на Solana с FDV < $2M…»
+  keywords: string[]; // что искать / что обязано встречаться
+  excludeKeywords: string[]; // что отбрасывать
+  signalKinds: SignalKind[]; // какие типы сигналов присылать
+  minConfidence: number; // 0..1, ниже — не присылать
+  // On-chain (DexScreener)
+  onchain: {
+    feeds: ("profiles" | "boosts" | "search")[]; // новые профили токенов, бусты, поиск по ключевым словам
+    minLiquidityUsd: number;
+    minVolume1hUsd: number;
+    maxFdvUsd: number; // 0 — без ограничения
+    maxAgeHours: number; // 0 — без ограничения
+  };
+  // X (Grok x_search)
+  x: { imageUnderstanding: boolean };
+  // Как оценивать сигнал: через сколько минут смотреть цену и какой рост считать попаданием
+  outcome: { horizonMin: number; hitThresholdPct: number };
+}
+
+// Состояние живого краулера: когда запускался, что собрал, чем закончился последний проход.
+export interface CrawlerRunState {
+  lastRunAt?: number;
+  nextRunAt: number;
+  lastItems?: number;
+  lastSignals?: number;
+  lastError?: string;
+  runs: number;
+  failedRuns: number;
+  cursor: Record<string, string>; // последние увиденные id постов / хеши страниц по каждой цели
+}
 
 export interface Signal {
   id: string;
@@ -65,6 +104,20 @@ export interface Signal {
   text: string;
   ts: number;
   confidence: number; // 0..1
+  live?: boolean; // сигнал от живого краулера (приватный: полный текст видит только владелец/арендатор)
+  redacted?: boolean; // в публичной ленте текст скрыт
+  owner?: string; // кому принадлежит сигнал (владелец или арендатор на момент сигнала)
+  urls?: string[]; // источники: посты, сообщения, страница пары
+  token?: { chain: string; address: string; symbol?: string };
+  outcome?: SignalOutcome;
+}
+
+export interface SignalOutcome {
+  status: "pending" | "hit" | "miss" | "unscored"; // unscored — у сигнала нет токена, цену не проверить
+  priceAtSignal?: number;
+  priceAtCheck?: number;
+  changePct?: number;
+  checkAt?: number; // когда проверять
 }
 
 export interface Listing {

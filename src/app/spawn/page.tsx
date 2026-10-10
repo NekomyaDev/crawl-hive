@@ -12,31 +12,40 @@ import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { post } from "@/lib/client/api";
 import { useConfig } from "@/lib/client/use-config";
+import { SpecEditor } from "@/components/crawler/spec-editor";
+import { defaultSpec } from "@/lib/spec";
 import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
 import { TIERS, TIER_ORDER, TIER_PRICE_SOL, CREDITS } from "@/lib/economy";
 import { computeReputation } from "@/lib/reputation";
-import { CHAINS, NARRATIVES, SOURCES, type Chain, type Narrative, type PublicCrawler, type Source, type Tier } from "@/lib/types";
+import { CHAINS, NARRATIVES, SOURCES, type Chain, type Narrative, type PublicCrawler, type Source, type Tier, type CrawlerSpec } from "@/lib/types";
 import { NARRATIVE_LABEL, SOURCE_META, cn, fmt } from "@/lib/utils";
 
 const SUGGESTED: Record<Source, string[]> = {
-  x: ["@kolwhale", "@degenalpha", "@soltrends", "@memeradar", "@aiagents_daily"],
-  telegram: ["t.me/solcalls", "t.me/memebrew", "t.me/alphahive", "t.me/pumpwatch"],
-  onchain: ["pump.fun/new", "raydium:new_pools", "jupiter:volume", "whale_wallets:top100"],
-  docs: ["github.com/trending", "docs.solana.com", "mirror.xyz", "gitbook:whitepapers"],
+  x: ["@pumpdotfun", "@DexScreener", "@JupiterExchange", "solana ai agent"],
+  telegram: [],
+  onchain: [],
+  docs: ["https://github.com/trending", "https://solana.com/news"],
 };
 
 const PLACEHOLDER: Record<Source, string> = {
-  x: "@handle or search query",
-  telegram: "t.me/channel",
-  onchain: "program, pool or wallet",
-  docs: "domain or repo",
+  x: "@handle or a search query",
+  telegram: "public channel: t.me/name or @name",
+  onchain: "token address to watch (optional)",
+  docs: "https://page-to-watch",
 };
 
 const SOURCE_HINT: Record<Source, string> = {
-  x: "Tracks accounts and searches, fires on mention spikes and KOL calls.",
-  telegram: "Joins public channels and groups, fires on coordinated calls.",
-  onchain: "Watches new pools, volume and whale wallets.",
-  docs: "Diffs docs, repos and blogs for launches and roadmap changes.",
+  x: "Searches X through Grok: posts from your accounts and queries, read through your instructions.",
+  telegram: "Reads public Telegram channels (t.me preview) and picks out calls with tickers or contracts.",
+  onchain: "Scans DexScreener for new and boosted tokens that pass your filters; targets are a watchlist for volume spikes.",
+  docs: "Watches pages for changes and tells you what's new: launches, airdrops, roadmap updates.",
+};
+
+const TARGETS_HINT: Record<Source, string> = {
+  x: "X crawlers run at most every 30 min: each run is a paid Grok search.",
+  telegram: "Only public channels with a web preview work.",
+  onchain: "Optional. Leave empty to scan the feeds only.",
+  docs: "Any public page: docs, blog, GitHub repo, changelog.",
 };
 
 export default function SpawnPage() {
@@ -53,6 +62,7 @@ export default function SpawnPage() {
   const [draft, setDraft] = useState("");
   const [freq, setFreq] = useState(15);
   const [busy, setBusy] = useState(false);
+  const [spec, setSpec] = useState<CrawlerSpec>(() => defaultSpec("x"));
   const [step, setStep] = useState<BurnStep | null>(null);
   const [dripping, setDripping] = useState(false);
   const cfg = useConfig();
@@ -84,10 +94,10 @@ export default function SpawnPage() {
     const p: string[] = [];
     if (name.trim().length < 2) p.push("Name your crawler");
     if (!narratives.length) p.push("Pick at least one narrative");
-    if (!targets.length) p.push("Add at least one target");
+    if (!targets.length && source !== "onchain") p.push("Add at least one target");
     if (targets.length > t.maxTargets) p.push(`${t.label} allows ${t.maxTargets} targets`);
     return p;
-  }, [name, narratives, targets, t]);
+  }, [name, narratives, targets, t, source]);
 
   const addTarget = (v: string) => {
     const x = v.trim();
@@ -103,7 +113,7 @@ export default function SpawnPage() {
   const spawn = async () => {
     if (!address) return connect();
     if (needPhantom) return toast("On-chain burn needs Phantom. Disconnect the demo wallet and connect Phantom.", "error");
-    const payload = { name, source, chain, narratives, targets, frequencyMin: effFreq, tier };
+    const payload = { name, source, chain, narratives, targets, frequencyMin: effFreq, tier, spec };
     setBusy(true);
     try {
       const c = onchain ? await spawnWithBurn(payload, setStep) : await post<PublicCrawler>("/api/crawlers", payload);
@@ -211,6 +221,7 @@ export default function SpawnPage() {
                       onClick={() => {
                         setSource(s);
                         setTargets([]);
+                        setSpec(defaultSpec(s));
                       }}
                       className={cn(
                         "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",
@@ -240,7 +251,7 @@ export default function SpawnPage() {
             <CardHeader title="3 · Targets & frequency" sub={`${targets.length}/${t.maxTargets} targets on ${t.label}`} />
             <div className="flex flex-col gap-4 p-4">
               <div>
-                <Label>Targets</Label>
+                <Label hint={TARGETS_HINT[source]}>Targets</Label>
                 <form
                   className="flex gap-2"
                   onSubmit={(e) => {
@@ -290,6 +301,17 @@ export default function SpawnPage() {
                   <p className="mt-1 text-[11px] text-honey">Capped at {t.minFrequency} min for {t.label}. Upgrade the tier to crawl faster.</p>
                 )}
               </div>
+            </div>
+          </Card>
+
+          {/* 4. Спецификация */}
+          <Card>
+            <CardHeader
+              title="4 · Specification"
+              sub="How your crawler decides what is worth a signal. Signals are private: only you (or a renter) see them."
+            />
+            <div className="p-4">
+              <SpecEditor key={source} source={source} spec={spec} onChange={setSpec} />
             </div>
           </Card>
         </div>

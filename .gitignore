@@ -47,3 +47,6 @@ next-env.d.ts
 .devnet/
 
 !.env.example
+
+# состояние сервера (живые краулеры, сигналы)
+.data/

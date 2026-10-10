@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
+    // persist.ts читает файл состояния по пути из env — это намеренно, трассировка файлов тут не нужна.
+    ignoreIssue: [{ path: "**/lib/server/persist.ts" }],
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],

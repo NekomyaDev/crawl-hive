@@ -15,9 +15,9 @@ import type { PublicCrawler } from "@/lib/types";
 import { fmt } from "@/lib/utils";
 
 export default function MyCrawlers() {
-  const { address, info, connect } = useWallet();
+  const { address, info, connect, signedIn } = useWallet();
   const toast = useToast();
-  const { data, reload } = useApi<PublicCrawler[]>(address ? `/api/crawlers?owner=${address}` : null, 5000);
+  const { data, reload } = useApi<PublicCrawler[]>(address && signedIn ? `/api/crawlers?mine=1&w=${address}` : null, 5000);
 
   if (!address)
     return (

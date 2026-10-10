@@ -5,7 +5,8 @@ import { SOURCE_META, fmt } from "@/lib/utils";
 
 // Карточка краулера для списков (My Crawlers, маркет).
 export function CrawlerCard({ c, footer }: { c: PublicCrawler; footer?: React.ReactNode }) {
-  const precision = c.stats.signals ? Math.round((c.stats.hits / c.stats.signals) * 100) : 0;
+  const scored = c.stats.scored ?? c.stats.signals;
+  const precision = scored ? Math.round((c.stats.hits / scored) * 100) : 0;
   return (
     <div className="flex flex-col rounded-xl border border-line bg-panel p-4 transition-colors hover:border-honey/40">
       <Link href={`/crawler/${c.id}`} className="flex items-start gap-3">

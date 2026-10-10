@@ -67,7 +67,7 @@ export default function Leaderboard() {
                     </td>
                     <td className="num px-2 py-2.5 text-right">{fmt(c.stats.items)}</td>
                     <td className="num px-2 py-2.5 text-right">
-                      {c.stats.signals ? ((c.stats.hits / c.stats.signals) * 100).toFixed(0) : 0}%
+                      {(c.stats.scored ?? c.stats.signals) ? ((c.stats.hits / (c.stats.scored ?? c.stats.signals)) * 100).toFixed(0) : 0}%
                     </td>
                     <td className="num px-2 py-2.5 text-right">
                       {((c.stats.uptimeSec / Math.max(1, c.stats.totalSec)) * 100).toFixed(1)}%

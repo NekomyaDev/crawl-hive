@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus } from "lucide-react";
+import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { useWallet } from "./wallet-provider";
@@ -12,13 +12,14 @@ const LINKS = [
   { href: "/", label: "Swarm", icon: LayoutGrid },
   { href: "/spawn", label: "Spawn", icon: Plus },
   { href: "/my", label: "My Crawlers", icon: Bug },
+  { href: "/signals", label: "My Signals", icon: Radio },
   { href: "/market", label: "Marketplace", icon: Store },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/governance", label: "Governance", icon: Landmark },
 ];
 
 function WalletButton({ compact = false }: { compact?: boolean }) {
-  const { address, info, mode, connect, disconnect } = useWallet();
+  const { address, info, mode, signedIn, connect, signIn, disconnect } = useWallet();
   if (!address)
     return (
       <Button onClick={connect} size="sm" className="w-full">
@@ -29,7 +30,13 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
     <div className={cn("flex items-center gap-2", !compact && "rounded-lg border border-line bg-panel-2 p-2.5")}>
       <div className="min-w-0 flex-1">
         <div className="num truncate text-xs">{short(address)}</div>
-        <div className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} credits</div>
+        {signedIn ? (
+          <div className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} credits</div>
+        ) : (
+          <button onClick={() => signIn().catch(() => {})} className="text-xs font-medium text-honey hover:underline">
+            Sign in to continue
+          </button>
+        )}
         {!compact && <div className="text-[10px] text-muted">{mode === "phantom" ? "Phantom" : "Demo wallet"}</div>}
       </div>
       <button onClick={disconnect} className="text-muted hover:text-fg" title="Disconnect">

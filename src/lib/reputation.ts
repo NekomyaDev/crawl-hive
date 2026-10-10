@@ -19,8 +19,10 @@ export interface RepBreakdown {
 
 export function reputationBreakdown(c: Pick<Crawler, "stats" | "burned">): RepBreakdown {
   const { hits, signals, uptimeSec, totalSec, items } = c.stats;
-  // Пока сигналов мало, точность тянем к 0.5, чтобы новичок с 1/1 не взлетал в топ.
-  const quality = (hits + 2.5) / (signals + 5);
+  // Считаем только сигналы с известным исходом; пока их мало, точность тянем к 0.5,
+  // чтобы новичок с 1/1 не взлетал в топ.
+  const scored = c.stats.scored ?? signals;
+  const quality = (hits + 2.5) / (scored + 5);
   const uptime = totalSec > 0 ? Math.min(1, uptimeSec / totalSec) : 1;
   const volume = Math.min(1, Math.log10(items + 1) / 5);
   const stake = Math.min(1, Math.log10(c.burned + 1) / 5);
