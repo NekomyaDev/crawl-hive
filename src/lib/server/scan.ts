@@ -73,7 +73,7 @@ type PairX = PairInfo & {
   boosts?: { active?: number };
 };
 
-const g = globalThis as unknown as { __crawlhiveScan?: { cache: Map<string, ScanResult>; hits: Map<string, number[]> } };
+const g = globalThis as unknown as { __crawlhiveScan?: { cache: Map<string, { result: ScanResult; logs: ScanLog[] }>; hits: Map<string, number[]> } };
 function mem() {
   g.__crawlhiveScan ??= { cache: new Map(), hits: new Map() };
   return g.__crawlhiveScan;
@@ -147,12 +147,22 @@ async function holdersOf(mint: string) {
   };
 }
 
-export async function runScan(q: string, log: (l: ScanLog) => void): Promise<ScanResult> {
+export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<ScanResult> {
+  const logs: ScanLog[] = [];
+  const log = (l: ScanLog) => {
+    logs.push(l);
+    emit(l);
+  };
   const { chain, address, pair: pre } = await resolve(q, log);
   const cached = mem().cache.get(address);
-  if (cached && Date.now() - cached.scannedAt < CACHE_MS) {
-    log({ crawler: "cache", text: `scanned ${Math.round((Date.now() - cached.scannedAt) / 1000)}s ago, reusing`, tone: "info" });
-    return cached;
+  if (cached && Date.now() - cached.result.scannedAt < CACHE_MS) {
+    // Свежий скан этого токена уже есть: проигрываем его лог, чтобы было видно, что нашли краулеры.
+    emit({ crawler: "cache", text: `fresh scan from ${Math.round((Date.now() - cached.result.scannedAt) / 1000)}s ago`, tone: "info" });
+    for (const l of cached.logs) {
+      await new Promise((r) => setTimeout(r, 120));
+      emit(l);
+    }
+    return cached.result;
   }
   const factors: ScanFactor[] = [];
   const hit = (label: string, impact: number, note: string) => factors.push({ label, impact, note });
@@ -318,7 +328,7 @@ export async function runScan(q: string, log: (l: ScanLog) => void): Promise<Sca
     text: `${result.score ?? "—"} ${verdict.replace("_", " ")} · ${reason}`,
     tone: verdict === "CLEAN" || verdict === "OK" ? "ok" : verdict === "TOO_EARLY" ? "info" : "bad",
   });
-  mem().cache.set(address, result);
+  mem().cache.set(address, { result, logs: logs.filter((l) => l.crawler !== "resolver") });
   remember(result);
   return result;
 }

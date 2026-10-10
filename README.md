@@ -28,6 +28,24 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
+## Try it in 10 seconds: Instant Crawl
+
+No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Four crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
+
+| Crawler | What it checks |
+|---|---|
+| `crawler_market` | DexScreener: liquidity (or still on the pump.fun curve), FDV, pair age, 1h volume, buys vs sells |
+| `crawler_holders` | Solana RPC: mint authority, freeze authority, top holder and how much the next 10 wallets hold |
+| `crawler_clones` | Other tokens with the same ticker, compared by FDV: is this the original or a copy? |
+| `crawler_telegram` | Mentions in tracked Telegram channels |
+
+They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for pairs under 30 minutes) with a one-line reason, a shareable link (`/?scan=<address>`), and a **Watch 30 days** button that turns the one-off scan into a crawler watching that token for you.
+
+<p align="center">
+  <img src="docs/images/instant-crawl.png" alt="Instant Crawl: live crawler log and verdict for a token" width="100%">
+  <br><sub>Instant Crawl on dogwifhat: the original $WIF among 10 tokens with that ticker, mint renounced, no freeze, scored CLEAN.</sub>
+</p>
+
 <p align="center">
   <img src="docs/images/home-live.png" alt="crawlhive.xyz home page" width="100%">
   <br><sub>crawlhive.xyz today: real crawlers only, so the swarm starts empty. Spawn the first one. (The octopus-spider crawls around the site; poke it.)</sub>
@@ -58,6 +76,14 @@ flowchart LR
 5. **Renew.** Three days before the term ends the bot reminds you. One click on the crawler page adds another 30 days; an expired crawler simply pauses until you renew.
 
 Full specification format, sources and limits: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
+
+## Ready-made crawlers
+
+Don't want to write a specification? The marketplace has eight crawlers with sources and rules we tested: **Fresh Pair Hunter**, **Boost Radar**, **AI Agent Scout** (DexScreener), **Pump.fun Buzz**, **Whales & Listings** (Telegram), **KOL Call Tracker** (X via Grok), **Ecosystem Watch** and **New Coins Lister** (page changes). *Buy* is a regular on-chain spawn with the template's settings at the tier price; the slider icon opens Spawn prefilled so you can change anything first. Each card shows how many copies are running.
+
+<p align="center">
+  <img src="docs/images/marketplace-templates.png" alt="Marketplace with ready-made crawlers" width="100%">
+</p>
 
 ## Your crawler, your rules
 
@@ -92,13 +118,16 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 | Part | State |
 |---|---|
+| Instant Crawl: free token scan (market, mint, holders, copycats, Telegram) | ✅ **real data**, no wallet needed |
 | Spawn and renewal payments in SOL through Phantom, verified on-chain | ✅ **real**, mainnet; 30 days of crawling per payment |
+| Ready-made crawlers in the marketplace | ✅ **real**: a purchase is an on-chain spawn with tested settings |
+| Buyback treasury counter on the home page | ✅ **real**: sum of verified payments plus the live treasury balance |
 | Crawlers you spawn: X (via Grok), Telegram channels, on-chain (DexScreener), page changes | ✅ **real data**, read through your own specification |
 | Private signals in *My Signals*, scored against the real price after your horizon | ✅ **real** |
 | Signal delivery to Telegram, renewal reminders | ✅ **built**; the bot goes live on crawlhive.xyz as soon as its token is configured |
 | Sign-in with your wallet (signed message, no transaction) | ✅ **real** |
 | Swarm map and leaderboard on crawlhive.xyz | ✅ **real crawlers only**. A simulated demo network exists for local runs (`DEMO_NETWORK`), never on the live site |
-| Marketplace and governance | ⏳ **after the token launch**. They run on in-app credits in demo mode; on the live site they are switched off so nobody trades real crawlers for points |
+| Trading crawlers between users, governance | ⏳ **after the token launch**. They run on in-app credits in demo mode; on the live site they are switched off so nobody trades real crawlers for points |
 | Project token | ⏳ **not launched**. No ticker, no contract. Anything claiming otherwise is not us |
 | Persistence | ✅ live crawlers, signals and payments are saved to disk with a daily backup; Postgres is on the roadmap |
 
@@ -250,6 +279,8 @@ src/
       crawlers/[id]/renew/   renewal payment intent + confirm
       signals/               private inbox
       telegram/              link / status / unlink
+      scan/ scan/recent/     Instant Crawl (SSE log + verdict), recently scanned
+      treasury/              collected SOL and treasury balance
       auth/                  nonce + signed-message sign-in
       spawn/intent/          build the unsigned payment tx
       spawn/confirm/         verify the tx on-chain, create the crawler
@@ -262,6 +293,8 @@ src/
     server/store.ts          network state, paid terms, live crawler bookkeeping
     server/solana.ts         payment intents (spawn / renew), on-chain verification, devnet faucet
     server/telegram.ts       bot: wallet linking, signal DMs, renewal reminders
+    server/scan.ts           Instant Crawl: parallel checks and the 0–100 score
+    templates.ts             ready-made crawlers
     server/crawl/            scheduler and sources: X (Grok), Telegram, on-chain, docs
 db/schema.sql                target Postgres schema
 ```
@@ -278,6 +311,9 @@ db/schema.sql                target Postgres schema
 - [x] Signal delivery to Telegram, renewal reminders
 - [x] Paid 30-day terms with on-chain renewal
 - [x] Production mode: real crawlers only, own domain (crawlhive.xyz), terms & risks
+- [x] Instant Crawl: free token scan without a wallet
+- [x] Ready-made crawlers, buyback treasury counter
+- [ ] Instant Crawl: X mentions through Grok, holder clustering (wallets run by one person)
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks
