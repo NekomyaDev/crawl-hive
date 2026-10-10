@@ -13,6 +13,8 @@
   --sky: #60a5fa;
   --teal: #5eead4;
   --violet: #c084fc;
+  --pink: #f472b6;
+  --coral: #ff6a3d;
   --danger: #f87171;
 }
 
@@ -28,6 +30,8 @@
   --color-sky: var(--sky);
   --color-teal: var(--teal);
   --color-violet: var(--violet);
+  --color-pink: var(--pink);
+  --color-coral: var(--coral);
   --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -40,6 +44,55 @@ html {
 body {
   background: var(--bg);
   color: var(--fg);
+}
+
+/* Цветные «прожекторы» за контентом: медовый, фиолетовый и бирюзовый, очень приглушённо. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(700px 420px at 12% -6%, rgba(255, 176, 32, 0.13), transparent 70%),
+    radial-gradient(640px 420px at 92% 4%, rgba(192, 132, 252, 0.11), transparent 70%),
+    radial-gradient(760px 520px at 70% 108%, rgba(94, 234, 212, 0.09), transparent 70%);
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #ffd27a, #ffb020 35%, #ff6a3d 70%, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Рамка-градиент для главных карточек. */
+.ring-gradient {
+  position: relative;
+  isolation: isolate;
+}
+.ring-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 176, 32, 0.7), rgba(244, 114, 182, 0.45) 45%, rgba(94, 234, 212, 0.5));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.float-y {
+  animation: float-y 4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .float-y { animation: none; }
 }
 
 /* Лёгкая сотовая текстура фона. */

@@ -1,4 +1,4 @@
-import type { Chain, Narrative, Source, Tier } from "../types";
+import type { Chain, CrawlerSpec, Narrative, Source, Tier } from "../types";
 
 export interface SpawnPayload {
   name: string;
@@ -8,4 +8,6 @@ export interface SpawnPayload {
   targets: string[];
   frequencyMin: number;
   tier: Tier;
+  spec?: Partial<CrawlerSpec>;
+  template?: string;
 }

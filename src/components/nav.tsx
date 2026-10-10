@@ -9,13 +9,13 @@ import { useWallet } from "./wallet-provider";
 import { Button } from "./ui/button";
 
 const LINKS = [
-  { href: "/", label: "Swarm", icon: LayoutGrid },
-  { href: "/spawn", label: "Spawn", icon: Plus },
-  { href: "/my", label: "My Crawlers", icon: Bug },
-  { href: "/signals", label: "My Signals", icon: Radio },
-  { href: "/market", label: "Marketplace", icon: Store },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
-  { href: "/governance", label: "Governance", icon: Landmark },
+  { href: "/", label: "Swarm", icon: LayoutGrid, color: "text-honey" },
+  { href: "/spawn", label: "Spawn", icon: Plus, color: "text-coral" },
+  { href: "/my", label: "My Crawlers", icon: Bug, color: "text-lime" },
+  { href: "/signals", label: "My Signals", icon: Radio, color: "text-teal" },
+  { href: "/market", label: "Marketplace", icon: Store, color: "text-pink" },
+  { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-sky" },
+  { href: "/governance", label: "Governance", icon: Landmark, color: "text-violet" },
 ];
 
 function WalletButton({ compact = false }: { compact?: boolean }) {
@@ -81,16 +81,17 @@ export function NavShell({ path }: { path: string }) {
           </span>
         </Link>
         <nav className="flex flex-col gap-0.5">
-          {LINKS.map(({ href, label, icon: Icon }) => (
+          {LINKS.map(({ href, label, icon: Icon, color }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                active(href) ? "bg-honey/10 text-honey" : "text-muted hover:bg-panel-2 hover:text-fg",
+                "relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                active(href) ? "bg-gradient-to-r from-honey/15 to-transparent text-fg" : "text-muted hover:bg-panel-2 hover:text-fg",
               )}
             >
-              <Icon className="size-4" />
+              {active(href) && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-gradient-to-b from-honey to-pink" />}
+              <Icon className={cn("size-4", color)} />
               {label}
             </Link>
           ))}

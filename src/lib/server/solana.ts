@@ -334,6 +334,21 @@ async function verifyPayment(wallet: string, intentId: string, signature: string
   }
 }
 
+// Баланс казны (куда идёт SOL за спавны) для счётчика на главной. Кэш на минуту, чтобы не дёргать RPC.
+export async function treasuryBalance(): Promise<number | null> {
+  const e = env();
+  if (e.payment !== "sol") return null;
+  const c = chain() as ReturnType<typeof chain> & { treasury?: { at: number; sol: number } };
+  if (c.treasury && Date.now() - c.treasury.at < 60_000) return c.treasury.sol;
+  try {
+    const sol = (await c.conn.getBalance(new PublicKey(e.solRecipient))) / LAMPORTS_PER_SOL;
+    c.treasury = { at: Date.now(), sol };
+    return sol;
+  } catch {
+    return c.treasury?.sol ?? null;
+  }
+}
+
 // ---------- devnet-фосет ----------
 
 function faucetKeypair(): Keypair {

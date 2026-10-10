@@ -2,7 +2,11 @@
 // Главная: живая карта роя, метрики сети и поток сигналов.
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Flame, Plus, Radar, ScrollText, Send } from "lucide-react";
+import { Activity, ArrowRight, Bug, Flame, Plus, Radar, ScrollText, Send, Target, Users, Zap } from "lucide-react";
+import { TreasuryCard, useTreasury } from "@/components/treasury-card";
+import { TemplateCard } from "@/components/template-card";
+import { TEMPLATES } from "@/lib/templates";
+import { cn } from "@/lib/utils";
 import { SwarmMap } from "@/components/swarm/swarm-map";
 import { SignalFeed } from "@/components/signal-feed";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
@@ -13,10 +17,23 @@ import { fmt, timeLeft } from "@/lib/utils";
 import type { NetworkStats, Signal } from "@/lib/types";
 
 const HOW = [
-  { icon: ScrollText, title: "Spawn & instruct", text: "Pick a source and write in plain words what your crawler should hunt for." },
-  { icon: Radar, title: "It crawls for you", text: "X via Grok search, Telegram channels, new on-chain pairs and project docs, on a schedule." },
-  { icon: Send, title: "Private signals", text: "Only you see what it finds, in My Signals or Telegram. Each call is scored against the price." },
+  { icon: ScrollText, tone: "bg-honey/15 text-honey", title: "Spawn & instruct", text: "Pick a source and write in plain words what your crawler should hunt for." },
+  { icon: Radar, tone: "bg-teal/15 text-teal", title: "It crawls for you", text: "X via Grok search, Telegram channels, new on-chain pairs and project docs, on a schedule." },
+  { icon: Send, tone: "bg-violet/15 text-violet", title: "Private signals", text: "Only you see what it finds, in My Signals or Telegram. Each call is scored against the price." },
 ];
+
+const FEATURED = ["fresh-pairs", "pump-buzz", "kol-calls", "ai-agents"];
+
+function FeaturedTemplates() {
+  const treasury = useTreasury();
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {TEMPLATES.filter((t) => FEATURED.includes(t.id)).map((t) => (
+        <TemplateCard key={t.id} t={t} compact running={treasury?.templates[t.id] ?? 0} />
+      ))}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [stats, setStats] = useState<NetworkStats | null>(null);
@@ -40,10 +57,10 @@ export default function Dashboard() {
       <PageHeader
         title={
           <>
-            The <span className="text-honey">Swarm</span>
+            The <span className="text-gradient">Swarm</span>
           </>
         }
-        sub="Every dot is a live crawler digging X, Telegram, chains and docs for memecoin signal. Hexagons are the wallets that spawned them."
+        sub="Your own crawlers digging X, Telegram, new on-chain pairs and project docs for memecoin signal. Every dot on the map is one of them."
         action={
           <Link href="/spawn">
             <Button size="lg">
@@ -53,33 +70,36 @@ export default function Dashboard() {
         }
       />
 
+      <TreasuryCard className="mb-5" />
+
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "—"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
-        <Stat label="Wallets" value={stats ? stats.wallets : "—"} />
-        <Stat label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "—"} />
-        <Stat label="Signals 24h" value={stats ? fmt(stats.signals24h) : "—"} />
+        <Stat tone="honey" icon={<Bug className="size-3.5" />} label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "—"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
+        <Stat tone="violet" icon={<Users className="size-3.5" />} label="Wallets" value={stats ? stats.wallets : "—"} />
+        <Stat tone="teal" icon={<Activity className="size-3.5" />} label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "—"} />
+        <Stat tone="sky" icon={<Zap className="size-3.5" />} label="Signals 24h" value={stats ? fmt(stats.signals24h) : "—"} />
         {stats && !stats.demo ? (
           <>
-            <Stat label="Signals scored" value={fmt(stats.scored)} hint="checked against price" />
+            <Stat tone="pink" icon={<Target className="size-3.5" />} label="Signals scored" value={fmt(stats.scored)} hint="checked against price" />
             <Stat
+              tone="lime"
+              icon={<Flame className="size-3.5" />}
               label="Hit rate"
               value={stats.scored ? `${Math.round((stats.hits / stats.scored) * 100)}%` : "—"}
               hint={stats.scored ? `${fmt(stats.hits)} hits` : "no scored signals yet"}
-              accent
             />
           </>
         ) : (
           <>
-            <Stat label="Credits burned" value={stats ? fmt(stats.totalBurned) : "—"} accent />
-            <Stat label="Epoch reward" value={stats ? fmt(stats.epochReward) : "—"} hint={stats ? timeLeft(stats.epochEndsAt) : ""} />
+            <Stat tone="pink" label="Credits burned" value={stats ? fmt(stats.totalBurned) : "—"} />
+            <Stat tone="lime" label="Epoch reward" value={stats ? fmt(stats.epochReward) : "—"} hint={stats ? timeLeft(stats.epochEndsAt) : ""} />
           </>
         )}
       </div>
 
       <div className="mb-5 grid gap-3 md:grid-cols-3">
-        {HOW.map(({ icon: Icon, title, text }, i) => (
+        {HOW.map(({ icon: Icon, title, text, tone }, i) => (
           <Card key={title} className="flex gap-3 p-4">
-            <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-honey/10 text-honey">
+            <div className={cn("grid size-9 shrink-0 place-items-center rounded-lg", tone)}>
               <Icon className="size-4" />
             </div>
             <div>
@@ -124,14 +144,27 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      <div className="mt-8 mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">
+            Ready-made <span className="text-gradient">crawlers</span>
+          </h2>
+          <p className="text-sm text-muted">Tested sources and specifications. Buy one and it starts crawling in seconds.</p>
+        </div>
+        <Link href="/market" className="inline-flex items-center gap-1 text-sm text-honey hover:underline">
+          All {TEMPLATES.length} in the marketplace <ArrowRight className="size-4" />
+        </Link>
+      </div>
+      <FeaturedTemplates />
+
       <Card className="mt-5 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
         <div>
           <div className="font-semibold">Got an edge nobody is crawling?</div>
-          <div className="text-sm text-muted">Spawn a crawler on your own targets. Good signals raise its reputation and its share of each epoch.</div>
+          <div className="text-sm text-muted">Spawn a crawler on your own targets and write its rules yourself. Good signals raise its reputation.</div>
         </div>
         <Link href="/spawn">
           <Button variant="outline">
-            <Plus className="size-4" /> Spawn a crawler
+            <Plus className="size-4" /> Spawn your own
           </Button>
         </Link>
       </Card>

@@ -24,6 +24,7 @@ import { computeReputation } from "../reputation";
 import { seedNetwork, mulberry32, crawlerId, pick, TICKERS, type Rng } from "./seed";
 import { loadSnapshot, scheduleSave, type Snapshot } from "./persist";
 import { normalizeSpec } from "../spec";
+import { TEMPLATE_IDS } from "../templates";
 import type { CrawlerSpec, CrawlerRunState, SignalOutcome } from "../types";
 
 interface State {
@@ -513,6 +514,7 @@ export interface SpawnInput {
   frequencyMin: number;
   tier: Tier;
   spec?: Partial<CrawlerSpec>;
+  template?: string;
 }
 
 // Цели приводим к виду, который понимает сборщик конкретного источника.
@@ -569,7 +571,8 @@ export function validateSpawn(input: SpawnInput): SpawnInput {
   } catch (e) {
     throw new ApiError((e as Error).message);
   }
-  return { name, source: input.source, chain: input.chain, narratives, targets, frequencyMin: freq, tier: input.tier, spec };
+  const template = input.template && TEMPLATE_IDS.has(input.template) ? input.template : undefined;
+  return { name, source: input.source, chain: input.chain, narratives, targets, frequencyMin: freq, tier: input.tier, spec, template };
 }
 
 // Симулированный спавн: списываем из внутреннего баланса. Используется, когда минт не настроен.
@@ -612,6 +615,7 @@ function createCrawler(s: State, wallet: string, v: SpawnInput, payment?: Crawle
     // Ставка в репутации считается от эквивалента тира, чем бы ни платили.
     burned: tier.burn,
     payment,
+    template: v.template,
     expiresAt: Date.now() + termMs(),
     status: "active",
     createdAt: Date.now(),
@@ -974,6 +978,29 @@ export function recordRun(id: string, r: RunResult) {
   if (s.liveSignals.length > 20000) s.liveSignals.length = 20000;
   c.reputation = computeReputation(c);
   markDirty(s);
+}
+
+// Сколько собрано за спавны и продления (только проверенные on-chain платежи) — для счётчика казны.
+export function paymentTotals() {
+  let sol = 0;
+  let payments = 0;
+  let tokens = 0;
+  for (const c of state().crawlers.values()) {
+    for (const p of [c.payment, ...(c.renewals ?? [])]) {
+      if (!p || !p.tx) continue;
+      payments++;
+      if (p.unit === "SOL") sol += p.amount;
+      else tokens += p.amount;
+    }
+  }
+  return { sol: Math.round(sol * 1e6) / 1e6, tokens, payments };
+}
+
+// Сколько живых краулеров запущено из каждого готового шаблона.
+export function templateCounts(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of state().crawlers.values()) if (c.live && c.template && !isExpired(c)) out[c.template] = (out[c.template] ?? 0) + 1;
+  return out;
 }
 
 // Подписка на полные (не обрезанные) сигналы живых краулеров: доставка владельцу в Telegram.

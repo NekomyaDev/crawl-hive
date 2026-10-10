@@ -2,7 +2,7 @@
 import Link from "next/link";
 // Spawner: выбор тира (сколько сжечь), источника, целей и частоты. Справа живое превью.
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Flame, Plus, X as Close } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -14,7 +14,8 @@ import { useToast } from "@/components/ui/toast";
 import { post } from "@/lib/client/api";
 import { useConfig } from "@/lib/client/use-config";
 import { SpecEditor } from "@/components/crawler/spec-editor";
-import { defaultSpec } from "@/lib/spec";
+import { defaultSpec, normalizeSpec } from "@/lib/spec";
+import { TEMPLATES } from "@/lib/templates";
 import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
 import { TIERS, TIER_ORDER, TIER_PRICE_SOL, CREDITS } from "@/lib/economy";
 import { computeReputation } from "@/lib/reputation";
@@ -43,7 +44,7 @@ const SOURCE_HINT: Record<Source, string> = {
 };
 
 const TARGETS_HINT: Record<Source, string> = {
-  x: "X crawlers run at most every 30 min: each run is a paid Grok search.",
+  x: "X crawlers run at most every 120 / 60 / 30 / 15 min by tier: each run is a paid Grok search.",
   telegram: "Only public channels with a web preview work.",
   onchain: "Optional. Leave empty to scan the feeds only.",
   docs: "Any public page: docs, blog, GitHub repo, changelog.",
@@ -66,7 +67,24 @@ export default function SpawnPage() {
   const [spec, setSpec] = useState<CrawlerSpec>(() => defaultSpec("x"));
   const [step, setStep] = useState<BurnStep | null>(null);
   const [dripping, setDripping] = useState(false);
+  const [template, setTemplate] = useState<string | undefined>();
   const cfg = useConfig();
+
+  // ?template=<id> с маркетплейса: подставляем настройки готового краулера, дальше их можно менять.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("template");
+    const tpl = TEMPLATES.find((x) => x.id === id);
+    if (!tpl) return;
+    setTemplate(tpl.id);
+    setTier(tpl.tier);
+    setName(tpl.name.slice(0, 24));
+    setSource(tpl.source);
+    setChain(tpl.chain);
+    setNarratives(tpl.narratives);
+    setTargets(tpl.targets);
+    setFreq(tpl.frequencyMin);
+    setSpec(normalizeSpec(tpl.spec, tpl.source));
+  }, []);
   const payment = cfg?.payment ?? "simulated";
   const onchain = payment !== "simulated";
   // Фаза 1 — платим SOL, фаза 2 — сжигаем токен проекта; в симуляции — внутренние credits.
@@ -114,7 +132,7 @@ export default function SpawnPage() {
   const spawn = async () => {
     if (!address) return connect();
     if (needPhantom) return toast("On-chain burn needs Phantom. Disconnect the demo wallet and connect Phantom.", "error");
-    const payload = { name, source, chain, narratives, targets, frequencyMin: effFreq, tier, spec };
+    const payload = { name, source, chain, narratives, targets, frequencyMin: effFreq, tier, spec, template };
     setBusy(true);
     try {
       const c = onchain ? await spawnWithBurn(payload, setStep) : await post<PublicCrawler>("/api/crawlers", payload);
@@ -223,6 +241,7 @@ export default function SpawnPage() {
                         setSource(s);
                         setTargets([]);
                         setSpec(defaultSpec(s));
+                        setTemplate(undefined);
                       }}
                       className={cn(
                         "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",

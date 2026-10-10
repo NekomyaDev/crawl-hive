@@ -1,8 +1,13 @@
 "use client";
-// Маркетплейс: продажа и аренда краулеров. Комиссия 2.5% сжигается.
+// Маркетплейс: готовые краулеры (покупка = on-chain спавн с проверенными настройками) и торговля
+// краулерами между пользователями (пока на внутренних credits, на проде включится после запуска токена).
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
-import { ComingSoon } from "@/components/coming-soon";
+import { TemplateCard } from "@/components/template-card";
+import { useTreasury } from "@/components/treasury-card";
+import { useConfig } from "@/lib/client/use-config";
+import { TEMPLATES } from "@/lib/templates";
+import { Hourglass, Sparkles, Repeat } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/field";
@@ -60,8 +65,9 @@ function MarketPage() {
 
   return (
     <>
-      <PageHeader
-        title="Crawl Marketplace"
+      <SectionTitle
+        icon={<Repeat className="size-4" />}
+        title="From other users"
         sub={`Buy a proven crawler outright or rent one for a few days: the renter earns its rewards for the lease. ${MARKET_FEE_BURN * 100}% of every trade is burned.`}
       />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -122,10 +128,50 @@ function total(l: Listing) {
   return l.type === "rent" ? l.price * (l.rentDays ?? 1) : l.price;
 }
 
-export default function Market() {
+function SectionTitle({ icon, title, sub }: { icon: React.ReactNode; title: string; sub?: string }) {
   return (
-    <ComingSoon title="Crawl Marketplace" what="Buying and renting crawlers will settle on-chain in the project token. Until it launches, trading stays off so nobody trades real crawlers for points.">
-      <MarketPage />
-    </ComingSoon>
+    <div className="mt-10 mb-4">
+      <h2 className="flex items-center gap-2 text-lg font-semibold">
+        <span className="text-honey">{icon}</span> {title}
+      </h2>
+      {sub && <p className="mt-0.5 max-w-2xl text-sm text-muted">{sub}</p>}
+    </div>
+  );
+}
+
+export default function Market() {
+  const cfg = useConfig();
+  const treasury = useTreasury();
+  return (
+    <>
+      <PageHeader
+        title={
+          <>
+            Crawl <span className="text-gradient">Marketplace</span>
+          </>
+        }
+        sub="Ready-made crawlers with sources and specifications we tested. Buy one and it starts crawling for you right away; after that it's yours to tweak like any other."
+      />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {TEMPLATES.map((t) => (
+          <TemplateCard key={t.id} t={t} running={treasury?.templates[t.id] ?? 0} />
+        ))}
+      </div>
+      <p className="mt-3 flex items-center gap-1.5 text-xs text-muted">
+        <Sparkles className="size-3.5 text-honey" /> Price is the tier's spawn price and buys {cfg?.termDays ?? 30} days. Payment goes to the buyback treasury.
+      </p>
+
+      {cfg?.demoNetwork ? (
+        <MarketPage />
+      ) : (
+        <>
+          <SectionTitle icon={<Repeat className="size-4" />} title="From other users" />
+          <Card className="flex items-center gap-3 px-5 py-4 text-sm text-muted">
+            <Hourglass className="size-5 shrink-0 text-honey" />
+            Buying and renting crawlers from other users opens after the project token launches, so trades settle on-chain instead of in points.
+          </Card>
+        </>
+      )}
+    </>
   );
 }

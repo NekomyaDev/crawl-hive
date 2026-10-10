@@ -48,6 +48,7 @@ export interface Crawler {
   // Оплаченный срок работы. После него планировщик краулер не обходит, пока владелец не продлит.
   expiresAt?: number;
   renewals?: { unit: string; amount: number; tx: string; at: number }[];
+  template?: string; // id готового краулера из маркетплейса (lib/templates.ts), если куплен оттуда
   status: CrawlerStatus;
   createdAt: number;
   stats: CrawlerStats;
