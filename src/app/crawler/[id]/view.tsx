@@ -1,0 +1,209 @@
+"use client";
+// Страница краулера: метрики, разложение репутации, сигналы и управление для владельца.
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useState } from "react";
+import { Pause, Play, Store, Save, ArrowLeft } from "lucide-react";
+import { Card, CardHeader, Stat } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input, Label, Segmented } from "@/components/ui/field";
+import { NarrativeBadge, SourceBadge, StatusBadge, TierBadge } from "@/components/ui/badge";
+import { RepBreakdown } from "@/components/crawler/rep-breakdown";
+import { SignalFeed } from "@/components/signal-feed";
+import { useWallet } from "@/components/wallet-provider";
+import { useToast } from "@/components/ui/toast";
+import { useApi } from "@/lib/client/use-api";
+import { patch, post } from "@/lib/client/api";
+import { TIERS, TOKEN } from "@/lib/economy";
+import type { PublicCrawler, Signal } from "@/lib/types";
+import { fmt, short, timeAgo, timeLeft } from "@/lib/utils";
+
+type Detail = PublicCrawler & { recentSignals: Signal[] };
+
+function hours(sec: number) {
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  if (sec < 86400 * 2) return `${(sec / 3600).toFixed(1)}h`;
+  return `${(sec / 86400).toFixed(1)}d`;
+}
+
+export function CrawlerView() {
+  const { id } = useParams<{ id: string }>();
+  const { address } = useWallet();
+  const toast = useToast();
+  const { data: c, error, reload } = useApi<Detail>(`/api/crawlers/${id}`, 4000);
+
+  if (error) return <div className="py-20 text-center text-muted">{error}</div>;
+  if (!c) return <div className="py-20 text-center text-muted">Loading crawler…</div>;
+
+  const isOwner = address && c.owner === address;
+  const isRenter = address && c.renter === address;
+  const precision = c.stats.signals ? (c.stats.hits / c.stats.signals) * 100 : 0;
+
+  const toggle = async () => {
+    try {
+      await patch(`/api/crawlers/${c.id}`, { status: c.status === "paused" ? "active" : "paused" });
+      toast(c.status === "paused" ? "Crawler resumed" : "Crawler paused. Uptime will drop while it sleeps.");
+      reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
+
+  return (
+    <>
+      <Link href="/" className="mb-4 inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+        <ArrowLeft className="size-3" /> Swarm
+      </Link>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="num text-xs text-muted">{c.id}</div>
+          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">{c.name}</h1>
+          <div className="mt-2 flex flex-wrap gap-1">
+            <SourceBadge source={c.source} />
+            <TierBadge tier={c.tier} />
+            <StatusBadge status={c.status} />
+            {c.narratives.map((n) => (
+              <NarrativeBadge key={n} n={n} />
+            ))}
+          </div>
+          <div className="mt-2 text-xs text-muted">
+            owner <span className="num text-fg">{short(c.owner)}</span>
+            {isOwner && " (you)"} · spawned {timeAgo(c.createdAt)} · burned{" "}
+            <span className="num text-honey">{fmt(c.burned)}</span> {TOKEN}
+            {c.renter && (
+              <>
+                {" "}
+                · rented by <span className="num text-violet">{short(c.renter)}</span>
+                {isRenter && " (you)"}, {c.rentedUntil ? timeLeft(c.rentedUntil) : ""}
+              </>
+            )}
+          </div>
+        </div>
+        {isOwner && c.status !== "rented" && (
+          <Button variant="outline" onClick={toggle}>
+            {c.status === "paused" ? <Play className="size-4" /> : <Pause className="size-4" />}
+            {c.status === "paused" ? "Resume" : "Pause"}
+          </Button>
+        )}
+      </div>
+
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Stat label="Items" value={fmt(c.stats.items)} />
+        <Stat label="Signals" value={fmt(c.stats.signals)} />
+        <Stat label="Hit rate" value={`${precision.toFixed(1)}%`} hint={`${fmt(c.stats.hits)} hits`} />
+        <Stat label="Uptime" value={`${((c.stats.uptimeSec / Math.max(1, c.stats.totalSec)) * 100).toFixed(1)}%`} hint={`${hours(c.stats.uptimeSec)} of ${hours(c.stats.totalSec)}`} />
+        <Stat label="Cycle" value={`${c.frequencyMin}m`} hint={`${c.targets.length} targets`} />
+        <Stat label="Earned" value={fmt(c.stats.rewards)} hint={TOKEN} accent />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex flex-col gap-5">
+          <Card>
+            <CardHeader title="Targets" sub={`${c.targets.length} of ${TIERS[c.tier].maxTargets} on ${TIERS[c.tier].label} · chain ${c.chain}`} />
+            {isOwner || isRenter ? (
+              <EditTargets c={c} onSaved={reload} />
+            ) : (
+              <div className="flex flex-wrap gap-1.5 p-4">
+                {c.targets.map((t) => (
+                  <span key={t} className="num rounded-md bg-panel-2 px-2 py-1 text-xs">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </Card>
+          <Card>
+            <CardHeader title="Recent signals" sub="From this crawler since the server started" />
+            <SignalFeed signals={c.recentSignals} max={20} />
+          </Card>
+        </div>
+        <div className="flex flex-col gap-5">
+          <Card className="p-4">
+            <RepBreakdown crawler={c} />
+          </Card>
+          {isOwner && c.status !== "rented" && <ListForm c={c} />}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function EditTargets({ c, onSaved }: { c: Detail; onSaved: () => void }) {
+  const toast = useToast();
+  const [text, setText] = useState(c.targets.join(", "));
+  const [freq, setFreq] = useState(c.frequencyMin);
+  const save = async () => {
+    try {
+      await patch(`/api/crawlers/${c.id}`, {
+        targets: text.split(",").map((s) => s.trim()).filter(Boolean),
+        frequencyMin: freq,
+      });
+      toast("Targets updated");
+      onSaved();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
+  return (
+    <div className="flex flex-col gap-3 p-4">
+      <div>
+        <Label hint="comma separated">Targets</Label>
+        <Input value={text} onChange={(e) => setText(e.target.value)} className="num" />
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-40">
+          <Label hint={`min ${TIERS[c.tier].minFrequency}`}>Every N min</Label>
+          <Input type="number" min={TIERS[c.tier].minFrequency} max={1440} value={freq} onChange={(e) => setFreq(Number(e.target.value))} />
+        </div>
+        <Button variant="outline" onClick={save}>
+          <Save className="size-4" /> Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ListForm({ c }: { c: Detail }) {
+  const toast = useToast();
+  const [type, setType] = useState<"sale" | "rent">("sale");
+  const base = Math.round(TIERS[c.tier].burn * (0.6 + c.reputation / 600));
+  const [price, setPrice] = useState(base);
+  const [days, setDays] = useState(7);
+  const list = async () => {
+    try {
+      await post("/api/market", { crawlerId: c.id, type, price, rentDays: type === "rent" ? days : undefined });
+      toast(type === "sale" ? "Listed for sale" : "Listed for rent");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
+  return (
+    <Card>
+      <CardHeader title="List on marketplace" sub="2.5% fee is burned on every trade" />
+      <div className="flex flex-col gap-3 p-4">
+        <Segmented
+          options={["sale", "rent"] as const}
+          value={type}
+          onChange={(v) => {
+            setType(v);
+            setPrice(v === "rent" ? Math.round(base / 40) : base);
+          }}
+          render={(v) => (v === "sale" ? "Sell" : "Rent out")}
+        />
+        <div>
+          <Label hint={type === "rent" ? "per day" : `suggested ${fmt(base)}`}>Price, {TOKEN}</Label>
+          <Input type="number" min={1} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="num" />
+        </div>
+        {type === "rent" && (
+          <div>
+            <Label>Lease, days</Label>
+            <Input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Number(e.target.value))} />
+          </div>
+        )}
+        <Button onClick={list}>
+          <Store className="size-4" /> List {type === "rent" ? `for ${fmt(price * days)} total` : `for ${fmt(price)}`}
+        </Button>
+      </div>
+    </Card>
+  );
+}

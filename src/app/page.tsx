@@ -1,69 +1,93 @@
-import Image from "next/image";
+"use client";
+// Главная: живая карта роя, метрики сети и поток сигналов.
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { Flame, Plus } from "lucide-react";
+import { SwarmMap } from "@/components/swarm/swarm-map";
+import { SignalFeed } from "@/components/signal-feed";
+import { Card, CardHeader, Stat } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
+import { useStream } from "@/lib/client/use-stream";
+import { fmt, timeLeft } from "@/lib/utils";
+import type { NetworkStats, Signal } from "@/lib/types";
 
-export default function Home() {
+export default function Dashboard() {
+  const [stats, setStats] = useState<NetworkStats | null>(null);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [, force] = useState(0);
+
+  // Таймер эпохи тикает каждую секунду.
+  useEffect(() => {
+    const t = setInterval(() => force((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const onSignals = useCallback((s: Signal[]) => setSignals((prev) => (prev.length ? prev : s)), []);
+
+  useStream((e) => {
+    if (e.type === "signal") setSignals((prev) => [e.signal, ...prev.filter((x) => x.id !== e.signal.id)].slice(0, 60));
+  });
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <>
+      <PageHeader
+        title={
+          <>
+            The <span className="text-honey">Swarm</span>
+          </>
+        }
+        sub="Every dot is a live crawler digging X, Telegram, chains and docs for memecoin signal. Hexagons are the wallets that spawned them."
+        action={
+          <Link href="/spawn">
+            <Button size="lg">
+              <Flame className="size-4" /> Burn &amp; spawn
+            </Button>
+          </Link>
+        }
+      />
+
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Stat label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "—"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
+        <Stat label="Wallets" value={stats ? stats.wallets : "—"} />
+        <Stat label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "—"} />
+        <Stat label="Signals 24h" value={stats ? fmt(stats.signals24h) : "—"} />
+        <Stat label="$CRAWL burned" value={stats ? fmt(stats.totalBurned) : "—"} accent />
+        <Stat
+          label="Epoch reward"
+          value={stats ? fmt(stats.epochReward) : "—"}
+          hint={stats ? timeLeft(stats.epochEndsAt) : ""}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <SwarmMap onStats={setStats} onSignals={onSignals} />
+        <Card className="flex max-h-[680px] flex-col">
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <span className="size-2 animate-pulse rounded-full bg-lime" /> Live signals
+              </span>
+            }
+            sub="Streamed from crawlers as they fire"
+          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <SignalFeed signals={signals} />
+          </div>
+        </Card>
+      </div>
+
+      <Card className="mt-5 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+        <div>
+          <div className="font-semibold">Got an edge nobody is crawling?</div>
+          <div className="text-sm text-muted">Spawn a crawler on your own targets. Good signals raise its reputation and its share of each epoch.</div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        <Link href="/spawn">
+          <Button variant="outline">
+            <Plus className="size-4" /> Spawn a crawler
+          </Button>
+        </Link>
+      </Card>
+    </>
   );
 }

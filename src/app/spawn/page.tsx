@@ -1,0 +1,341 @@
+"use client";
+// Spawner: выбор тира (сколько сжечь), источника, целей и частоты. Справа живое превью.
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { Flame, Plus, X as Close } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Chips, Input, Label, Segmented } from "@/components/ui/field";
+import { NarrativeBadge, SourceBadge, TierBadge } from "@/components/ui/badge";
+import { useWallet } from "@/components/wallet-provider";
+import { useToast } from "@/components/ui/toast";
+import { post } from "@/lib/client/api";
+import { TIERS, TIER_ORDER, TOKEN } from "@/lib/economy";
+import { computeReputation } from "@/lib/reputation";
+import { CHAINS, NARRATIVES, SOURCES, type Chain, type Narrative, type PublicCrawler, type Source, type Tier } from "@/lib/types";
+import { NARRATIVE_LABEL, SOURCE_META, cn, fmt } from "@/lib/utils";
+
+const SUGGESTED: Record<Source, string[]> = {
+  x: ["@kolwhale", "@degenalpha", "@soltrends", "@memeradar", "@aiagents_daily"],
+  telegram: ["t.me/solcalls", "t.me/memebrew", "t.me/alphahive", "t.me/pumpwatch"],
+  onchain: ["pump.fun/new", "raydium:new_pools", "jupiter:volume", "whale_wallets:top100"],
+  docs: ["github.com/trending", "docs.solana.com", "mirror.xyz", "gitbook:whitepapers"],
+};
+
+const PLACEHOLDER: Record<Source, string> = {
+  x: "@handle or search query",
+  telegram: "t.me/channel",
+  onchain: "program, pool or wallet",
+  docs: "domain or repo",
+};
+
+const SOURCE_HINT: Record<Source, string> = {
+  x: "Tracks accounts and searches, fires on mention spikes and KOL calls.",
+  telegram: "Joins public channels and groups, fires on coordinated calls.",
+  onchain: "Watches new pools, volume and whale wallets.",
+  docs: "Diffs docs, repos and blogs for launches and roadmap changes.",
+};
+
+export default function SpawnPage() {
+  const router = useRouter();
+  const toast = useToast();
+  const { address, info, connect, refresh, mode } = useWallet();
+
+  const [tier, setTier] = useState<Tier>("worker");
+  const [name, setName] = useState("");
+  const [source, setSource] = useState<Source>("x");
+  const [chain, setChain] = useState<Chain>("solana");
+  const [narratives, setNarratives] = useState<Narrative[]>(["ai"]);
+  const [targets, setTargets] = useState<string[]>([]);
+  const [draft, setDraft] = useState("");
+  const [freq, setFreq] = useState(15);
+  const [busy, setBusy] = useState(false);
+
+  const t = TIERS[tier];
+  const effFreq = Math.max(freq, t.minFrequency);
+  const itemsPerHour = Math.round((targets.length * 40 * 60) / (effFreq * 60) * 60) || 0;
+  const balance = info?.balance ?? 0;
+  const enough = balance >= t.burn;
+  // Стартовая репутация: точность ещё нейтральная, uptime 100%, данных ноль, плюс вклад сожжённого.
+  const startRep = computeReputation({
+    burned: t.burn,
+    stats: { items: 0, signals: 0, hits: 0, uptimeSec: 0, totalSec: 0, rewards: 0 },
+  });
+
+  const problems = useMemo(() => {
+    const p: string[] = [];
+    if (name.trim().length < 2) p.push("Name your crawler");
+    if (!narratives.length) p.push("Pick at least one narrative");
+    if (!targets.length) p.push("Add at least one target");
+    if (targets.length > t.maxTargets) p.push(`${t.label} allows ${t.maxTargets} targets`);
+    return p;
+  }, [name, narratives, targets, t]);
+
+  const addTarget = (v: string) => {
+    const x = v.trim();
+    if (!x || targets.includes(x)) return;
+    if (targets.length >= t.maxTargets) {
+      toast(`${t.label} tier is capped at ${t.maxTargets} targets`, "error");
+      return;
+    }
+    setTargets([...targets, x]);
+    setDraft("");
+  };
+
+  const spawn = async () => {
+    if (!address) return connect();
+    setBusy(true);
+    try {
+      const c = await post<PublicCrawler>("/api/crawlers", {
+        name,
+        source,
+        chain,
+        narratives,
+        targets,
+        frequencyMin: effFreq,
+        tier,
+      });
+      toast(`🔥 Burned ${fmt(t.burn)} ${TOKEN}. ${c.name} joined the swarm.`);
+      await refresh();
+      router.push(`/crawler/${c.id}`);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <PageHeader
+        title="Spawn a crawler"
+        sub={`Burn ${TOKEN} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex flex-col gap-5">
+          {/* 1. Тир */}
+          <Card>
+            <CardHeader title="1 · Tier" sub="What you burn decides what the crawler can do" />
+            <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
+              {TIER_ORDER.map((k) => {
+                const v = TIERS[k];
+                return (
+                  <button
+                    key={k}
+                    onClick={() => {
+                      setTier(k);
+                      setTargets((x) => x.slice(0, v.maxTargets));
+                    }}
+                    className={cn(
+                      "rounded-xl border p-3 text-left transition-colors",
+                      tier === k ? "border-honey bg-honey/5" : "border-line hover:border-honey/40",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{v.label}</span>
+                      {k === "queen" && <span className="text-[10px] text-honey">♛</span>}
+                    </div>
+                    <div className="num mt-2 text-lg text-honey">{fmt(v.burn)}</div>
+                    <div className="text-[11px] text-muted">{TOKEN} burned</div>
+                    <ul className="mt-2 space-y-0.5 text-[11px] text-muted">
+                      <li>{v.maxTargets} targets</li>
+                      <li>every {v.minFrequency} min</li>
+                      <li>{v.rewardBoost}× rewards</li>
+                    </ul>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* 2. Источник и темы */}
+          <Card>
+            <CardHeader title="2 · What it crawls" />
+            <div className="grid gap-5 p-4 md:grid-cols-2">
+              <div>
+                <Label>Name</Label>
+                <Input value={name} maxLength={24} onChange={(e) => setName(e.target.value)} placeholder="Night Mantis" />
+              </div>
+              <div>
+                <Label>Chain focus</Label>
+                <Segmented options={CHAINS} value={chain} onChange={setChain} />
+              </div>
+              <div className="md:col-span-2">
+                <Label hint={SOURCE_HINT[source]}>Source</Label>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  {SOURCES.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        setSource(s);
+                        setTargets([]);
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+                        source === s ? "border-honey/70 bg-honey/5" : "border-line text-muted hover:text-fg",
+                      )}
+                    >
+                      <span className="size-2 rounded-full" style={{ background: SOURCE_META[s].color }} />
+                      {SOURCE_META[s].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <Label hint="up to 3">Narratives</Label>
+                <Chips
+                  options={NARRATIVES}
+                  value={narratives}
+                  onChange={(v) => setNarratives(v.slice(-3))}
+                  render={(n) => `#${NARRATIVE_LABEL[n]}`}
+                />
+              </div>
+            </div>
+          </Card>
+
+          {/* 3. Цели и частота */}
+          <Card>
+            <CardHeader title="3 · Targets & frequency" sub={`${targets.length}/${t.maxTargets} targets on ${t.label}`} />
+            <div className="flex flex-col gap-4 p-4">
+              <div>
+                <Label>Targets</Label>
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    addTarget(draft);
+                  }}
+                >
+                  <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={PLACEHOLDER[source]} />
+                  <Button type="submit" variant="outline" disabled={!draft.trim()}>
+                    <Plus className="size-4" /> Add
+                  </Button>
+                </form>
+                {targets.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {targets.map((x) => (
+                      <span key={x} className="num inline-flex items-center gap-1 rounded-md bg-panel-2 px-2 py-1 text-xs">
+                        {x}
+                        <button onClick={() => setTargets(targets.filter((y) => y !== x))} className="text-muted hover:text-danger">
+                          <Close className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                  Suggested:
+                  {SUGGESTED[source]
+                    .filter((x) => !targets.includes(x))
+                    .map((x) => (
+                      <button key={x} onClick={() => addTarget(x)} className="num rounded border border-dashed border-line px-1.5 py-0.5 hover:text-honey">
+                        + {x}
+                      </button>
+                    ))}
+                </div>
+              </div>
+              <div>
+                <Label hint={`${t.label}: every ${t.minFrequency} min at most`}>Crawl every {effFreq} min</Label>
+                <input
+                  type="range"
+                  min={1}
+                  max={120}
+                  value={freq}
+                  onChange={(e) => setFreq(Number(e.target.value))}
+                  className="w-full accent-[var(--honey)]"
+                />
+                {freq < t.minFrequency && (
+                  <p className="mt-1 text-[11px] text-honey">Capped at {t.minFrequency} min for {t.label}. Upgrade the tier to crawl faster.</p>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* Превью и кнопка сжечь */}
+        <div className="xl:sticky xl:top-6 xl:self-start">
+          <Card>
+            <CardHeader title="Preview" />
+            <div className="p-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className="grid size-12 place-items-center rounded-full"
+                  style={{ background: `${SOURCE_META[source].color}22`, boxShadow: `0 0 24px ${SOURCE_META[source].color}55` }}
+                >
+                  <span className="size-4 rounded-full" style={{ background: SOURCE_META[source].color }} />
+                </div>
+                <div>
+                  <div className="font-semibold">{name.trim() || "Unnamed crawler"}</div>
+                  <div className="num text-[11px] text-muted">CRWL-????</div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1">
+                <SourceBadge source={source} />
+                <TierBadge tier={tier} />
+                {narratives.map((n) => (
+                  <NarrativeBadge key={n} n={n} />
+                ))}
+              </div>
+              <dl className="mt-4 space-y-1.5 text-sm">
+                <Row k="Targets" v={`${targets.length} / ${t.maxTargets}`} />
+                <Row k="Cycle" v={`every ${effFreq} min`} />
+                <Row k="Est. items / hour" v={fmt(itemsPerHour)} />
+                <Row k="Reward boost" v={`${t.rewardBoost}×`} />
+                <Row k="Starting rep" v={`${startRep}`} />
+              </dl>
+
+              <div className="mt-4 rounded-lg border border-honey/30 bg-honey/5 p-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm">You burn</span>
+                  <span className="num text-xl font-bold text-honey">
+                    {fmt(t.burn)} <span className="text-xs">{TOKEN}</span>
+                  </span>
+                </div>
+                {address && (
+                  <div className={cn("num mt-1 text-right text-[11px]", enough ? "text-muted" : "text-danger")}>
+                    balance {fmt(balance)}
+                  </div>
+                )}
+              </div>
+
+              {problems.length > 0 && address && (
+                <ul className="mt-3 space-y-0.5 text-[11px] text-muted">
+                  {problems.map((p) => (
+                    <li key={p}>· {p}</li>
+                  ))}
+                </ul>
+              )}
+
+              <Button
+                size="lg"
+                className="mt-4 w-full"
+                onClick={spawn}
+                disabled={busy || (!!address && (problems.length > 0 || !enough))}
+              >
+                <Flame className="size-4" />
+                {!address ? "Connect wallet to spawn" : busy ? "Burning…" : `Burn ${fmt(t.burn)} & spawn`}
+              </Button>
+              {mode === "demo" && (
+                <p className="mt-2 text-center text-[11px] text-muted">Demo wallet: the burn is simulated, nothing leaves a real wallet.</p>
+              )}
+              {mode === "phantom" && (
+                <p className="mt-2 text-center text-[11px] text-muted">MVP: the burn is simulated server-side; on-chain burn comes next.</p>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex justify-between">
+      <dt className="text-muted">{k}</dt>
+      <dd className="num">{v}</dd>
+    </div>
+  );
+}
