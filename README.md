@@ -101,7 +101,7 @@ sequenceDiagram
     participant R as Solana RPC
     A->>S: POST /api/spawn/intent (crawler config)
     S->>S: validate config, check SOL balance
-    S-->>A: unsigned tx: transfer + memo "crawlhive:spawn:<intent>"
+    S-->>A: unsigned tx: transfer + memo "crawlhive:spawn:ID"
     A->>U: signAndSendTransaction
     U->>R: signed tx
     A->>S: POST /api/spawn/confirm (intent, signature)
