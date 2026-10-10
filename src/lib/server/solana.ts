@@ -1,6 +1,6 @@
 // On-chain оплата спавна. Два режима, переключаются PAYMENT_TOKEN:
-//   sol   — фаза 1, до запуска токена: перевод SOL на incinerator (сжигание) или в казну;
-//   crawl — фаза 2: burnChecked $CRAWL из кошелька пользователя.
+//   sol   — фаза 1, до запуска токена: перевод SOL в казну проекта (будущий байбек токена);
+//   crawl — фаза 2, после запуска токена: burnChecked токена проекта из кошелька пользователя.
 // Без PAYMENT_TOKEN сеть работает на симулированных сжиганиях (см. store.ts).
 //
 // Схема одна для обоих режимов: сервер собирает неподписанную транзакцию с memo «crawlhive:spawn:<id>»,
@@ -25,7 +25,7 @@ import {
   createMintToCheckedInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import { SOL_INCINERATOR, TIERS, TIER_PRICE_SOL } from "../economy";
+import { BUYBACK_TREASURY, SOL_INCINERATOR, TIERS, TIER_PRICE_SOL } from "../economy";
 import type { PaymentMode, PublicConfig, Tier } from "../types";
 import { ApiError, type SpawnInput } from "./store";
 
@@ -53,10 +53,24 @@ function env() {
     cluster: process.env.SOLANA_CLUSTER?.trim() || "devnet",
     rpc: process.env.SOLANA_RPC_URL?.trim() || "https://api.devnet.solana.com",
     decimals: Number(process.env.CRAWL_DECIMALS ?? 6),
-    solRecipient: process.env.SPAWN_SOL_RECIPIENT?.trim() || SOL_INCINERATOR,
+    solRecipient: process.env.SPAWN_SOL_RECIPIENT?.trim() || BUYBACK_TREASURY,
     // Секретный ключ кошелька-фосета, JSON-массив байт (как в файле solana-keygen). Только для devnet.
     faucetKey: process.env.DEVNET_FAUCET_SECRET?.trim() || null,
+    solPrices: solPrices(),
   };
+}
+
+// SPAWN_PRICE_SOL="0.001,0.002,0.003,0.005" (larva,worker,soldier,queen) переопределяет TIER_PRICE_SOL —
+// например, для теста на mainnet с копеечными суммами.
+function solPrices(): Record<Tier, number> {
+  const raw = process.env.SPAWN_PRICE_SOL?.trim();
+  if (!raw) return TIER_PRICE_SOL;
+  const v = raw.split(",").map((x) => Number(x.trim()));
+  if (v.length !== 4 || v.some((x) => !(x > 0 && x < 1000))) {
+    console.warn("SPAWN_PRICE_SOL must be 4 positive numbers, using defaults");
+    return TIER_PRICE_SOL;
+  }
+  return { larva: v[0], worker: v[1], soldier: v[2], queen: v[3] };
 }
 
 export function isOnchain() {
@@ -72,6 +86,11 @@ export function publicConfig(): PublicConfig {
     decimals: e.decimals,
     solRecipient: e.payment === "sol" ? e.solRecipient : null,
     solBurned: e.payment === "sol" && e.solRecipient === SOL_INCINERATOR,
+    buyback: e.payment === "sol" && e.solRecipient === BUYBACK_TREASURY,
+    prices:
+      e.payment === "sol"
+        ? e.solPrices
+        : { larva: TIERS.larva.burn, worker: TIERS.worker.burn, soldier: TIERS.soldier.burn, queen: TIERS.queen.burn },
     // Фосет только на devnet и только если у сервера есть ключ кошелька-фосета.
     faucet: e.payment !== "simulated" && e.cluster === "devnet" && !!e.faucetKey,
   };
@@ -79,7 +98,8 @@ export function publicConfig(): PublicConfig {
 
 // Цена спавна в текущем режиме: для UI и для сверки суммы.
 export function spawnPrice(tier: Tier): { amount: number; unit: "SOL" | "$CRAWL" } {
-  return env().payment === "sol" ? { amount: TIER_PRICE_SOL[tier], unit: "SOL" } : { amount: TIERS[tier].burn, unit: "$CRAWL" };
+  const e = env();
+  return e.payment === "sol" ? { amount: e.solPrices[tier], unit: "SOL" } : { amount: TIERS[tier].burn, unit: "$CRAWL" };
 }
 
 // ---------- состояние (на globalThis, как и store) ----------

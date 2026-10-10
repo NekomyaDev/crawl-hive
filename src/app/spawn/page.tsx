@@ -59,7 +59,7 @@ export default function SpawnPage() {
   const payment = cfg?.payment ?? "simulated";
   const onchain = payment !== "simulated";
   // Фаза 1 — платим SOL, фаза 2 — сжигаем $CRAWL; в симуляции — внутренний $CRAWL.
-  const priceOf = (k: Tier) => (payment === "sol" ? TIER_PRICE_SOL[k] : TIERS[k].burn);
+  const priceOf = (k: Tier) => cfg?.prices[k] ?? (payment === "sol" ? TIER_PRICE_SOL[k] : TIERS[k].burn);
   const unit = payment === "sol" ? "SOL" : TOKEN;
   const fmtPrice = (n: number) => (payment === "sol" ? `${n}` : fmt(n));
 
@@ -146,7 +146,7 @@ export default function SpawnPage() {
         title="Spawn a crawler"
         sub={
           payment === "sol"
-            ? `Pay SOL to hatch a crawler (pre-launch phase: ${TOKEN} burns switch on after the token launches). Higher tiers get more targets, faster crawl cycles and a reward boost.`
+            ? `Pay SOL to hatch a crawler. Pre-launch phase: the SOL goes to the project treasury and will fund buybacks of the project token once it launches. Higher tiers get more targets, faster crawl cycles and a reward boost.`
             : `Burn ${TOKEN} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`
         }
       />
@@ -381,7 +381,16 @@ export default function SpawnPage() {
                       ) : (
                         <>
                           {" "}
-                          to the treasury <span className="num">{cfg.solRecipient?.slice(0, 4)}…{cfg.solRecipient?.slice(-4)}</span>.
+                          to the {cfg.buyback ? "project treasury" : "treasury"}{" "}
+                          <a
+                            className="num hover:text-honey"
+                            href={`https://explorer.solana.com/address/${cfg.solRecipient}${cfg.cluster === "mainnet-beta" ? "" : `?cluster=${cfg.cluster}`}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {cfg.solRecipient?.slice(0, 4)}…{cfg.solRecipient?.slice(-4)}
+                          </a>
+                          {cfg.buyback ? <>. It will fund buybacks of the project token once the token launches.</> : "."}
                         </>
                       )}{" "}
                       Phantom must be on the same network.

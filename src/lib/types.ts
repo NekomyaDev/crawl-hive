@@ -141,5 +141,7 @@ export interface PublicConfig {
   decimals: number;
   solRecipient: string | null; // куда уходит SOL в режиме sol
   solBurned: boolean; // true, если получатель — incinerator
+  buyback: boolean; // true, если получатель — казна проекта (будущий байбек токена)
+  prices: Record<Tier, number>; // цена спавна по тирам в текущей единице (SOL или $CRAWL)
   faucet: boolean; // на devnet можно получить тестовые средства
 }

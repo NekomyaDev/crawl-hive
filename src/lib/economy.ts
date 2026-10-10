@@ -25,7 +25,10 @@ export const TIER_PRICE_SOL: Record<Tier, number> = {
   queen: 2.5,
 };
 
-// Куда уходит SOL, если не задан SPAWN_SOL_RECIPIENT: incinerator, с него вывести нельзя — это сжигание.
+// Казна проекта: SOL за спавны в фазе 1 копится здесь; после запуска токена проекта пойдёт на его выкуп
+// (решение владельца, 10.10.2026; токена пока нет, тикер не выбран).
+// Переопределяется SPAWN_SOL_RECIPIENT, например на incinerator для чистого сжигания.
+export const BUYBACK_TREASURY = "DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ";
 export const SOL_INCINERATOR = "1nc1nerator11111111111111111111111111111111";
 
 // Новый демо-кошелёк получает стартовый баланс, чтобы можно было пощупать спавн.

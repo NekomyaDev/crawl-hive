@@ -6,7 +6,7 @@
 
 CrawlHive is a network of user-owned crawlers for the memecoin space. Holders burn tokens to spawn crawlers that dig X, Telegram, on-chain activity and docs for signal. Each crawler is a dot on the live swarm map, earns reputation from the quality of what it finds, takes a share of every epoch's rewards, and can be sold or rented on the marketplace. Holders vote on what the swarm should prioritise.
 
-The flywheel: more trading → more burns → more crawlers → more data → better signals → more attention.
+The flywheel: more trading → more burns → more crawlers → more data → better signals → more attention. The project token is not launched yet: until then spawns are paid in SOL, and that SOL collects in the project treasury to fund buybacks once the token is live. `$CRAWL` in the UI is a placeholder ticker for in-app credits.
 
 ## Status: MVP on mock data
 
@@ -27,7 +27,7 @@ State lives in server memory and resets on restart. Signal tickers are fictional
 
 | Phase | `PAYMENT_TOKEN` | What the wallet signs | Where it goes |
 |---|---|---|---|
-| 1 · pre-launch | `sol` | `SystemProgram.transfer` of the tier price in SOL + memo | Solana incinerator (burned) or `SPAWN_SOL_RECIPIENT` treasury |
+| 1 · pre-launch | `sol` | `SystemProgram.transfer` of the tier price in SOL + memo | project treasury [`DgCo…GUJ`](https://solscan.io/account/DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ): it will fund buybacks of the project token after launch |
 | 2 · after launch | `crawl` | SPL `burnChecked` of the tier's $CRAWL + memo | burned, supply goes down |
 | demo | unset | nothing | simulated, in-app balance |
 
