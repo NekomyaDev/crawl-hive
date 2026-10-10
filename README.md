@@ -12,10 +12,6 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square">
 </p>
 
-<p align="center">
-  <b>English</b> · <a href="docs/README.ru.md">Русский</a>
-</p>
-
 ---
 
 ## What is CrawlHive
