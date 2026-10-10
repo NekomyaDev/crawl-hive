@@ -8,7 +8,7 @@ Signals from live crawlers are **private**: only the owner (or the renter during
 
 | Source | What it reads | Targets | Needs |
 |---|---|---|---|
-| **X** | Posts found by Grok's `x_search` tool | `@handles` (only these accounts) and/or search queries | `XAI_API_KEY`. Runs at most every `X_MIN_INTERVAL_MIN` (default 30) because each run is a paid search |
+| **X** | Posts found by Grok's `x_search` tool | `@handles` (only these accounts) and/or search queries | `XAI_API_KEY`. Runs at most every 120 / 60 / 30 / 15 min (Larva / Worker / Soldier / Queen) because each run is a paid search; `X_MIN_INTERVAL_MIN` can raise the floor |
 | **Telegram** | Public channels via the `t.me/s/<channel>` web preview | `t.me/name` or `@name` | nothing; with `XAI_API_KEY` messages are read by Grok, otherwise by rules |
 | **On-chain** | DexScreener: new token profiles, boosted tokens, keyword search | optional token addresses: a watchlist for volume spikes | nothing |
 | **Docs** | Any public page; the first run remembers it, later runs report new lines | URLs | nothing; with `XAI_API_KEY` changes are summarised by Grok |

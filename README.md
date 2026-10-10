@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://crawlhive.193-233-233-118.sslip.io"><b>🐝 Open the live app →</b></a>
+  <a href="https://crawlhive.xyz"><b>🐝 Open the live app: crawlhive.xyz →</b></a>
 </p>
 
 ---
@@ -22,34 +22,40 @@
 
 Memecoin alpha is scattered: a KOL post on X, a coordinated call in a Telegram group, a whale wallet buying a fresh pool. Nobody can watch all of it, and one bot only sees what its owner told it to watch.
 
-**CrawlHive turns that into a shared swarm.** Anyone can spawn a *crawler*: a small agent pointed at the sources they know best (accounts, channels, contracts, sites). Every crawler reports signals into one live feed. The network keeps score: crawlers whose signals play out gain **reputation** and a bigger share of every reward epoch, while spammy or idle ones sink. Good crawlers can be **sold or rented** on the marketplace, and holders **vote** on which narratives the swarm should dig into next.
+**CrawlHive gives everyone their own crawler.** Spawn one, point it at the sources you know best (X accounts, Telegram channels, new on-chain pairs, project docs) and tell it in plain words what to hunt for. It crawls on a schedule, an AI reads everything through your instructions, and the matches come to you privately: on the site and in Telegram. Every signal that names a token is checked against the real price later, so you see which of your crawlers is actually right.
 
-In one line: *you bring the edge, the swarm pays you for being right.*
+All crawlers live on one public **swarm map** with a **reputation** score. After the project token launches, proven crawlers can be **sold or rented**, and holders will **vote** on what the swarm should dig into.
+
+In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 <p align="center">
-  <img src="docs/images/swarm.png" alt="Swarm map: every dot is a crawler, hexagons are wallets" width="100%">
-  <br><sub>The swarm map. Every dot is a live crawler (colour = source, size = reputation), hexagons are the wallets that spawned them, dots flash when they fire a signal.</sub>
+  <img src="docs/images/home-live.png" alt="crawlhive.xyz home page" width="100%">
+  <br><sub>crawlhive.xyz today: real crawlers only, so the swarm starts empty. Spawn the first one. (The octopus-spider crawls around the site; poke it.)</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/swarm.png" alt="Swarm map in demo mode: every dot is a crawler, hexagons are wallets" width="100%">
+  <br><sub>The same map in demo mode (local runs): every dot is a crawler (colour = source, size = reputation), hexagons are the wallets that spawned them, dots flash when they fire a signal.</sub>
 </p>
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A["👤 You<br/>pick sources you know"] -->|"spawn & pay<br/>via Phantom"| B["🕷 Crawler"]
-    B -->|"watches X · Telegram<br/>on-chain · docs"| C["⚡ Signals"]
-    C --> D["🐝 Swarm feed<br/>& map"]
-    C -->|"did it play out?"| E["⭐ Reputation"]
-    E -->|"share of each epoch"| F["💰 Rewards"]
+    A["👤 You<br/>sources + instructions"] -->|"pay in SOL<br/>via Phantom · 30 days"| B["🕷 Crawler"]
+    B -->|"crawls X · Telegram<br/>on-chain · docs"| C["⚡ Private signals"]
+    C --> T["📬 My Signals<br/>& Telegram"]
+    C -->|"price after your horizon"| E["⭐ Hit / miss<br/>Reputation"]
     E --> G["🏆 Leaderboard"]
-    B -->|"sell / rent"| H["🛒 Marketplace"]
-    I["🗳 Holders"] -->|"vote on priorities"| D
+    B -->|"renew any time"| B
+    B -.->|"after token launch"| H["🛒 Marketplace · 🗳 Governance"]
 ```
 
-1. **Spawn.** Choose a tier, a source, up to three narratives and your targets. Write your crawler's **specification**: plain-language instructions, keywords, filters, and what counts as a hit. Pay for it on-chain from Phantom.
+1. **Spawn.** Choose a tier, a source, up to three narratives and your targets. Write your crawler's **specification**: plain-language instructions, keywords, filters, and what counts as a hit. Pay in SOL from Phantom. A payment buys **30 days** of crawling.
 2. **Crawl.** Your crawler sweeps its targets on a schedule: X through Grok search, public Telegram channels, DexScreener, or any web page. An AI reads what it finds through your instructions.
-3. **Get your signals.** Signals land in your private *My Signals* inbox with links to the source. Nobody else sees their content.
-4. **Earn reputation.** Every signal with a token is checked against the real price after your horizon: a hit or a miss. Precision, uptime, data volume and stake make up the score.
-5. **Get paid.** Every epoch's rewards are split by reputation × tier. Sell or rent the crawler once it has a track record.
+3. **Get your signals.** Signals land in your private *My Signals* inbox and, if you connect the bot, in your **Telegram DMs**, with links to the source. Nobody else sees their content.
+4. **See who was right.** Every signal with a token is checked against the real price after your horizon: a hit or a miss. Precision, uptime, data volume and stake make up the crawler's reputation.
+5. **Renew.** Three days before the term ends the bot reminds you. One click on the crawler page adds another 30 days; an expired crawler simply pauses until you renew.
 
 Full specification format, sources and limits: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
 
@@ -76,20 +82,25 @@ Signals are **yours alone**. They land in *My Signals* with links to the source,
 
 What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
 
+### Signals in Telegram
+
+Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. The site gives you a one-time link (valid 15 minutes) that ties your wallet to that chat; nothing else is shared. From then on every new signal from your crawlers arrives as a DM with the ticker, contract address, confidence, source links and a link back to the crawler. `/status` shows linked wallets, `/stop` unlinks.
+
 ## Status: read this first
 
 CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out later.
 
 | Part | State |
 |---|---|
-| Spawn payment in SOL through Phantom, verified on-chain | ✅ **real** (mainnet or devnet) |
+| Spawn and renewal payments in SOL through Phantom, verified on-chain | ✅ **real**, mainnet; 30 days of crawling per payment |
 | Crawlers you spawn: X (via Grok), Telegram channels, on-chain (DexScreener), page changes | ✅ **real data**, read through your own specification |
 | Private signals in *My Signals*, scored against the real price after your horizon | ✅ **real** |
+| Signal delivery to Telegram, renewal reminders | ✅ **built**; the bot goes live on crawlhive.xyz as soon as its token is configured |
 | Sign-in with your wallet (signed message, no transaction) | ✅ **real** |
-| The 130 crawlers you see on the map at launch | 🧪 a **simulated demo network**, marked `demo`, so the map isn't empty |
-| Marketplace, leaderboard, governance | ✅ work, balances are in-app **credits**, not a token |
+| Swarm map and leaderboard on crawlhive.xyz | ✅ **real crawlers only**. A simulated demo network exists for local runs (`DEMO_NETWORK`), never on the live site |
+| Marketplace and governance | ⏳ **after the token launch**. They run on in-app credits in demo mode; on the live site they are switched off so nobody trades real crawlers for points |
 | Project token | ⏳ **not launched**. No ticker, no contract. Anything claiming otherwise is not us |
-| Persistence | ✅ live crawlers, signals and payments are saved to disk; Postgres is on the roadmap |
+| Persistence | ✅ live crawlers, signals and payments are saved to disk with a daily backup; Postgres is on the roadmap |
 
 ## Screens
 
@@ -99,12 +110,16 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
     <td width="50%"><img src="docs/images/crawler.png" alt="Crawler page"><br><sub><b>Crawler page (public view).</b> Stats and reputation breakdown; the specification and signal contents stay private.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/leaderboard.png" alt="Leaderboard"><br><sub><b>Leaderboard.</b> Rank by reputation, rewards, data volume, signal quality or uptime, plus top wallets.</sub></td>
-    <td><img src="docs/images/market.png" alt="Marketplace"><br><sub><b>Marketplace.</b> Buy a proven crawler or rent it for 1–30 days; 2.5% of every trade is burned.</sub></td>
+    <td><img src="docs/images/leaderboard.png" alt="Leaderboard"><br><sub><b>Leaderboard</b> (demo data). Rank by reputation, rewards, data volume, signal quality or uptime, plus top wallets.</sub></td>
+    <td><img src="docs/images/my-crawlers.png" alt="My crawlers"><br><sub><b>My Crawlers.</b> Your fleet, pause / resume, paid term.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/governance.png" alt="Governance"><br><sub><b>Governance.</b> Vote on boosted narratives, reward split and reputation weights; anyone can propose.</sub></td>
-    <td><img src="docs/images/my-crawlers.png" alt="My crawlers"><br><sub><b>My Crawlers.</b> Your fleet and rentals, pause / resume, earnings.</sub></td>
+    <td><img src="docs/images/market.png" alt="Marketplace"><br><sub><b>Marketplace</b> (demo mode, after token launch). Buy a proven crawler or rent it for 1–30 days.</sub></td>
+    <td><img src="docs/images/governance.png" alt="Governance"><br><sub><b>Governance</b> (demo mode, after token launch). Vote on boosted narratives, reward split and reputation weights.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/terms.png" alt="Terms and risks"><br><sub><b>Terms & risks.</b> What a payment buys, why signals are not advice, what stays private.</sub></td>
+    <td></td>
   </tr>
 </table>
 
@@ -112,7 +127,7 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 ## Trust & safety
 
-**What the app asks your wallet to do:** sign one transaction per spawn. Phantom shows you the exact amount and recipient before you approve. CrawlHive never asks for a seed phrase or private key, and it cannot move funds without your signature.
+**What the app asks your wallet to do:** sign a message to log in (free, no transaction) and one transaction per spawn or renewal. Phantom shows you the exact amount and recipient before you approve. CrawlHive never asks for a seed phrase or private key, and it cannot move funds without your signature.
 
 **Where spawn payments go.** Until the project token exists, spawns are paid in SOL to the public project treasury:
 
@@ -139,7 +154,8 @@ sequenceDiagram
     S-->>A: crawler created
 ```
 
-- The memo binds a payment to one specific spawn, so a transaction can't be replayed for a second crawler.
+- The memo binds a payment to one specific spawn or renewal (`crawlhive:spawn:ID`, `crawlhive:renew:ID`), so a transaction can't be replayed for a second crawler or a second term.
+- An intent is locked while its payment is being checked, so two parallel confirmations can't both succeed.
 - The crawler config comes from the server-side intent, not from the confirm request, so it can't be swapped after paying.
 - Classic SPL Token and Token-2022 are both supported for the future token-burn phase.
 
@@ -151,12 +167,18 @@ sequenceDiagram
 
 **Spawner.** Four tiers with different limits:
 
-| Tier | Targets | Fastest cycle | Reward boost |
-|---|---|---|---|
-| Larva | 3 | 30 min | 1× |
-| Worker | 8 | 10 min | 1.15× |
-| Soldier | 20 | 5 min | 1.35× |
-| Queen | 50 | 1 min | 1.75× |
+| Tier | Targets | Fastest cycle | Fastest X cycle | Reward boost |
+|---|---|---|---|---|
+| Larva | 3 | 30 min | 120 min | 1× |
+| Worker | 8 | 10 min | 60 min | 1.15× |
+| Soldier | 20 | 5 min | 30 min | 1.35× |
+| Queen | 50 | 1 min | 15 min | 1.75× |
+
+X crawls go through paid Grok search, so they have their own, slower floor per tier.
+
+**Paid term.** Every spawn or renewal buys 30 days (`CRAWLER_TERM_DAYS`). The crawler page shows the end date and a *Renew* button; renewing early adds to the remaining time.
+
+**Telegram bot.** Long-polling bot (no webhook or open port): wallet linking by one-time code, signal DMs, renewal reminders 3 days ahead.
 
 **Reputation.** 0–1000 with grades S/A/B/C/D, recalculated continuously (`src/lib/reputation.ts`):
 
@@ -167,11 +189,11 @@ sequenceDiagram
 | Data volume | 20% | `log10(items + 1) / 5`, capped, so spam doesn't pay |
 | Stake | 15% | tier stake, log-scaled |
 
-**Marketplace.** Sell outright or rent for 1–30 days; while rented, rewards go to the renter and the crawler returns automatically when the lease ends.
-
 **Leaderboard.** Crawlers by five metrics, plus top wallets by average reputation × fleet size.
 
-**Governance.** Credit-weighted proposals on crawl priorities, reward split and network parameters, re-voting allowed until close.
+**Marketplace and governance** (demo mode now, live after the token launch). Sell or rent a crawler for 1–30 days, with rewards going to the renter during the lease; credit-weighted proposals on crawl priorities, reward split and network parameters.
+
+**Mascot.** The logo's octopus-spider crawls over the site with inverse-kinematics legs, runs from the cursor and hides with one click (off automatically for reduced-motion users).
 
 ## Run it locally
 
@@ -182,7 +204,7 @@ npm install
 npm run dev            # http://localhost:3000, simulated payments
 ```
 
-Node 20+. Without configuration payments are simulated and a demo wallet with 250k credits is created if Phantom is not installed. Telegram, on-chain and page-change crawlers work without any API key; X crawlers need `XAI_API_KEY`.
+Node 20+. Without configuration payments are simulated, the demo network is on, and a demo wallet with 250k credits is created if Phantom is not installed. On a server with real payments only Phantom can sign in. Telegram, on-chain and page-change crawlers work without any API key; X crawlers need `XAI_API_KEY`.
 
 ### Docker
 
@@ -202,7 +224,10 @@ SOLANA_RPC_URL=https://api.devnet.solana.com
 # SPAWN_SOL_RECIPIENT=...                      # defaults to the project treasury
 # SPAWN_PRICE_SOL=0.001,0.002,0.003,0.005      # optional per-tier prices (larva..queen)
 XAI_API_KEY=...                                # enables X crawlers and AI reading of Telegram/docs
-# XAI_DAILY_CALLS=300  X_MIN_INTERVAL_MIN=30   # cost limits
+# XAI_DAILY_CALLS=300                          # Grok cost limit per day
+# DEMO_NETWORK=0                               # production: real crawlers only
+# CRAWLER_TERM_DAYS=30                         # days per spawn / renewal
+# TELEGRAM_BOT_TOKEN=...  PUBLIC_URL=https://crawlhive.xyz   # signal delivery
 # SESSION_SECRET=...                           # optional, otherwise generated and stored in .data/
 ```
 
@@ -218,10 +243,14 @@ Default tier prices in SOL: 0.05 / 0.2 / 0.75 / 2.5.
 src/
   app/
     page.tsx                 swarm dashboard
-    spawn/ my/ market/ leaderboard/ governance/ crawler/[id]/
+    spawn/ my/ signals/ market/ leaderboard/ governance/ terms/ crawler/[id]/
     api/
       swarm/                 graph + stats + recent signals
-      crawlers/ [id]/        list, detail, pause/resume, edit targets
+      crawlers/ [id]/        list, detail, pause/resume, edit targets and specification
+      crawlers/[id]/renew/   renewal payment intent + confirm
+      signals/               private inbox
+      telegram/              link / status / unlink
+      auth/                  nonce + signed-message sign-in
       spawn/intent/          build the unsigned payment tx
       spawn/confirm/         verify the tx on-chain, create the crawler
       market/ [id]/          list, buy / rent, delist
@@ -230,8 +259,10 @@ src/
   components/                swarm map (react-force-graph-2d), UI kit, wallet provider
   lib/
     economy.ts reputation.ts types.ts
-    server/store.ts          network state + simulation tick
-    server/solana.ts         payment intents, on-chain verification, devnet faucet
+    server/store.ts          network state, paid terms, live crawler bookkeeping
+    server/solana.ts         payment intents (spawn / renew), on-chain verification, devnet faucet
+    server/telegram.ts       bot: wallet linking, signal DMs, renewal reminders
+    server/crawl/            scheduler and sources: X (Grok), Telegram, on-chain, docs
 db/schema.sql                target Postgres schema
 ```
 
@@ -244,7 +275,10 @@ db/schema.sql                target Postgres schema
 - [x] Real crawlers (X via Grok, Telegram, DexScreener, page changes) with per-crawler specifications
 - [x] Private signal inbox, outcome scoring against real prices
 - [x] Sign-in with a wallet signature
-- [ ] Signal delivery to Telegram
+- [x] Signal delivery to Telegram, renewal reminders
+- [x] Paid 30-day terms with on-chain renewal
+- [x] Production mode: real crawlers only, own domain (crawlhive.xyz), terms & risks
+- [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks
 - [ ] Governance results applied automatically (narrative boosts, reputation weights)
