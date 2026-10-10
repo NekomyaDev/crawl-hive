@@ -11,7 +11,8 @@ import { SwarmMap } from "@/components/swarm/swarm-map";
 import { SignalFeed } from "@/components/signal-feed";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/page-header";
+import { InstantCrawl } from "@/components/instant-crawl";
+import { Shipped } from "@/components/shipped";
 import { useStream } from "@/lib/client/use-stream";
 import { fmt, timeLeft } from "@/lib/utils";
 import type { NetworkStats, Signal } from "@/lib/types";
@@ -54,21 +55,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader
-        title={
-          <>
-            The <span className="text-gradient">Swarm</span>
-          </>
-        }
-        sub="Your own crawlers digging X, Telegram, new on-chain pairs and project docs for memecoin signal. Every dot on the map is one of them."
-        action={
-          <Link href="/spawn">
-            <Button size="lg">
-              <Flame className="size-4" /> Spawn a crawler
-            </Button>
-          </Link>
-        }
-      />
+      <InstantCrawl />
 
       <TreasuryCard className="mb-5" />
 
@@ -168,6 +155,8 @@ export default function Dashboard() {
           </Button>
         </Link>
       </Card>
+
+      <Shipped />
     </>
   );
 }

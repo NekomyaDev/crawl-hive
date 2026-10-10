@@ -334,6 +334,9 @@ async function verifyPayment(wallet: string, intentId: string, signature: string
   }
 }
 
+// Общее подключение к RPC для других модулей (скан токенов).
+export const rpcConnection = () => chain().conn;
+
 // Баланс казны (куда идёт SOL за спавны) для счётчика на главной. Кэш на минуту, чтобы не дёргать RPC.
 export async function treasuryBalance(): Promise<number | null> {
   const e = env();
