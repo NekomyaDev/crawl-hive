@@ -10,7 +10,7 @@ import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
 import { patch } from "@/lib/client/api";
-import { TOKEN } from "@/lib/economy";
+import { CREDITS } from "@/lib/economy";
 import type { PublicCrawler } from "@/lib/types";
 import { fmt } from "@/lib/utils";
 
@@ -26,7 +26,7 @@ export default function MyCrawlers() {
         <Card className="flex flex-col items-center gap-3 px-6 py-16 text-center">
           <Wallet className="size-8 text-honey" />
           <div className="font-semibold">Connect a wallet to see your crawlers</div>
-          <p className="max-w-sm text-sm text-muted">No Phantom? You get a demo wallet with 250k {TOKEN} to play with.</p>
+          <p className="max-w-sm text-sm text-muted">No Phantom? You get a demo wallet with 250k {CREDITS} to play with.</p>
           <Button onClick={connect}>Connect</Button>
         </Card>
       </>
@@ -59,7 +59,7 @@ export default function MyCrawlers() {
         }
       />
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Balance" value={info ? fmt(info.balance) : "—"} hint={TOKEN} accent />
+        <Stat label="Balance" value={info ? fmt(info.balance) : "—"} hint={CREDITS} accent />
         <Stat label="Crawlers" value={owned.length} hint={rented.length ? `+${rented.length} rented` : undefined} />
         <Stat label="Avg reputation" value={info?.reputation ?? "—"} />
         <Stat label="Burned by you" value={info ? fmt(info.burned) : "—"} hint={`all-time earned ${fmt(earned)}`} />

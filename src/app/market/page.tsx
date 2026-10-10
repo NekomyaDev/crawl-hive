@@ -10,7 +10,7 @@ import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
 import { del, post } from "@/lib/client/api";
-import { MARKET_FEE_BURN, TOKEN } from "@/lib/economy";
+import { MARKET_FEE_BURN, CREDITS } from "@/lib/economy";
 import type { Listing, PublicCrawler } from "@/lib/types";
 import { fmt, short, timeAgo } from "@/lib/utils";
 
@@ -37,7 +37,7 @@ export default function Market() {
     setBusy(l.id);
     try {
       const r = await post<{ paid: number; burnedFee: number }>(`/api/market/${l.id}`);
-      toast(`${l.type === "sale" ? "Bought" : "Rented"} ${l.crawler.name} for ${fmt(r.paid)} ${TOKEN}. ${fmt(r.burnedFee)} burned as fee.`);
+      toast(`${l.type === "sale" ? "Bought" : "Rented"} ${l.crawler.name} for ${fmt(r.paid)} ${CREDITS}. ${fmt(r.burnedFee)} burned as fee.`);
       reload();
       refresh();
     } catch (e) {
@@ -91,7 +91,7 @@ export default function Market() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="num text-lg font-semibold text-honey">
-                      {fmt(l.price)} <span className="text-xs">{TOKEN}</span>
+                      {fmt(l.price)} <span className="text-xs">{CREDITS}</span>
                       {l.type === "rent" && <span className="text-xs text-muted"> /day</span>}
                     </div>
                     <div className="text-[11px] text-muted">

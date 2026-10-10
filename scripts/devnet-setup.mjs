@@ -1,12 +1,12 @@
 // Разовая настройка devnet. Создаёт кошелёк-фосет (.devnet/authority.json), пробует airdrop
-// и пишет .env.local (туда же кладёт секрет фосета — файл в .gitignore). Режим берётся из аргумента: sol (по умолчанию, фаза 1) или crawl (фаза 2,
-// дополнительно выпускает тестовый минт $CRAWL).
-//   node scripts/devnet-setup.mjs [sol|crawl]
+// и пишет .env.local (туда же кладёт секрет фосета — файл в .gitignore). Режим берётся из аргумента: sol (по умолчанию, фаза 1) или token (фаза 2,
+// дополнительно выпускает тестовый минт токена проекта).
+//   node scripts/devnet-setup.mjs [sol|token]
 import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { createMint } from "@solana/spl-token";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 
-const MODE = process.argv[2] === "crawl" ? "crawl" : "sol";
+const MODE = process.argv[2] === "token" ? "token" : "sol";
 const RPC = process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
 const KEY = ".devnet/authority.json";
 const DECIMALS = 6;
@@ -31,8 +31,8 @@ for (let i = 0; bal < 1 * LAMPORTS_PER_SOL && i < 2; i++) {
 }
 console.log("SOL", bal / LAMPORTS_PER_SOL);
 
-let mint = process.env.CRAWL_MINT;
-if (MODE === "crawl" && !mint) {
+let mint = process.env.TOKEN_MINT;
+if (MODE === "token" && !mint) {
   if (bal < 0.01 * LAMPORTS_PER_SOL) {
     console.log("Нужен SOL на создание минта. Пополни кошелёк на https://faucet.solana.com и запусти снова.");
     process.exit(1);
@@ -48,7 +48,7 @@ const lines = [
   `SOLANA_RPC_URL=${RPC}`,
   `DEVNET_FAUCET_SECRET=${JSON.stringify([...authority.secretKey])}`,
 ];
-if (MODE === "crawl") lines.push(`CRAWL_MINT=${mint}`, `CRAWL_DECIMALS=${DECIMALS}`);
+if (MODE === "token") lines.push(`TOKEN_MINT=${mint}`, `TOKEN_DECIMALS=${DECIMALS}`);
 writeFileSync(".env.local", lines.join("\n") + "\n");
 console.log("written .env.local");
 if (bal < 0.5 * LAMPORTS_PER_SOL)

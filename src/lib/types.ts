@@ -26,7 +26,7 @@ export interface CrawlerStats {
   hits: number; // сигналы, которые подтвердились (токен вырос / новость подтвердилась)
   uptimeSec: number; // сколько секунд краулер реально работал
   totalSec: number; // сколько секунд прошло с момента спавна
-  rewards: number; // заработано $CRAWL
+  rewards: number; // заработано credits
 }
 
 export interface Crawler {
@@ -41,9 +41,9 @@ export interface Crawler {
   targets: string[]; // аккаунты, каналы, контракты, домены
   frequencyMin: number; // как часто проходит по целям
   tier: Tier;
-  burned: number; // сколько $CRAWL сожжено при спавне
-  // On-chain оплата спавна: SOL (фаза 1) или сжигание $CRAWL (фаза 2). Нет поля — спавн симулирован.
-  payment?: { unit: "SOL" | "$CRAWL"; amount: number; tx: string };
+  burned: number; // эквивалент тира в credits: вес «ставки» в репутации
+  // On-chain оплата спавна: SOL (фаза 1) или сжигание токена проекта (фаза 2). Нет поля — спавн симулирован.
+  payment?: { unit: string; amount: number; tx: string };
   status: CrawlerStatus;
   createdAt: number;
   stats: CrawlerStats;
@@ -72,7 +72,7 @@ export interface Listing {
   crawlerId: string;
   seller: string;
   type: "sale" | "rent";
-  price: number; // $CRAWL; для аренды — за день
+  price: number; // credits; для аренды — за день
   rentDays?: number;
   createdAt: number;
 }
@@ -80,7 +80,7 @@ export interface Listing {
 export interface ProposalOption {
   id: string;
   label: string;
-  votes: number; // вес голосов в $CRAWL
+  votes: number; // вес голосов в credits
 }
 
 export interface Proposal {
@@ -132,16 +132,17 @@ export interface WalletInfo {
   onchain?: { tokens: number; sol: number }; // реальный баланс кошелька, если включён on-chain режим
 }
 
-export type PaymentMode = "simulated" | "sol" | "crawl";
+export type PaymentMode = "simulated" | "sol" | "token";
 
 export interface PublicConfig {
-  payment: PaymentMode; // simulated — без сети; sol — оплата в SOL; crawl — сжигание $CRAWL
+  payment: PaymentMode; // simulated — без сети; sol — оплата в SOL; token — сжигание токена проекта
   cluster: string; // devnet | mainnet-beta | ...
-  mint: string | null; // минт $CRAWL (только в режиме crawl)
+  mint: string | null; // минт токена проекта (только в режиме token)
+  symbol: string | null; // тикер токена проекта (только в режиме token)
   decimals: number;
   solRecipient: string | null; // куда уходит SOL в режиме sol
   solBurned: boolean; // true, если получатель — incinerator
   buyback: boolean; // true, если получатель — казна проекта (будущий байбек токена)
-  prices: Record<Tier, number>; // цена спавна по тирам в текущей единице (SOL или $CRAWL)
+  prices: Record<Tier, number>; // цена спавна по тирам в текущей единице (SOL или токен проекта)
   faucet: boolean; // на devnet можно получить тестовые средства
 }

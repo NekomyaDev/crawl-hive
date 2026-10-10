@@ -15,7 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
 import { useConfig, explorerTx } from "@/lib/client/use-config";
 import { patch, post } from "@/lib/client/api";
-import { TIERS, TOKEN } from "@/lib/economy";
+import { TIERS, CREDITS } from "@/lib/economy";
 import type { PublicCrawler, Signal } from "@/lib/types";
 import { fmt, short, timeAgo, timeLeft } from "@/lib/utils";
 
@@ -83,7 +83,7 @@ export function CrawlerView() {
               </>
             ) : (
               <>
-                burned <span className="num text-honey">{fmt(c.burned)}</span> {TOKEN}
+                burned <span className="num text-honey">{fmt(c.burned)}</span> {CREDITS}
               </>
             )}
             {c.renter && (
@@ -109,7 +109,7 @@ export function CrawlerView() {
         <Stat label="Hit rate" value={`${precision.toFixed(1)}%`} hint={`${fmt(c.stats.hits)} hits`} />
         <Stat label="Uptime" value={`${((c.stats.uptimeSec / Math.max(1, c.stats.totalSec)) * 100).toFixed(1)}%`} hint={`${hours(c.stats.uptimeSec)} of ${hours(c.stats.totalSec)}`} />
         <Stat label="Cycle" value={`${c.frequencyMin}m`} hint={`${c.targets.length} targets`} />
-        <Stat label="Earned" value={fmt(c.stats.rewards)} hint={TOKEN} accent />
+        <Stat label="Earned" value={fmt(c.stats.rewards)} hint={CREDITS} accent />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -207,7 +207,7 @@ function ListForm({ c }: { c: Detail }) {
           render={(v) => (v === "sale" ? "Sell" : "Rent out")}
         />
         <div>
-          <Label hint={type === "rent" ? "per day" : `suggested ${fmt(base)}`}>Price, {TOKEN}</Label>
+          <Label hint={type === "rent" ? "per day" : `suggested ${fmt(base)}`}>Price, {CREDITS}</Label>
           <Input type="number" min={1} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="num" />
         </div>
         {type === "rent" && (

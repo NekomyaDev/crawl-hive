@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
     const r = await verifySpawnPayment(wallet, String(intentId), sig);
     const payment =
       r.payment === "sol"
-        ? { unit: "SOL" as const, amount: r.paidSol, tx: sig }
-        : { unit: "$CRAWL" as const, amount: r.burnedTokens, tx: sig };
+        ? { unit: "SOL", amount: r.paidSol, tx: sig }
+        : { unit: r.symbol, amount: r.burnedTokens, tx: sig };
     return spawnCrawlerPaid(wallet, r.input, payment, r.burnedTokens);
   });
 }

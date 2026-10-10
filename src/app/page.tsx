@@ -52,7 +52,7 @@ export default function Dashboard() {
         <Stat label="Wallets" value={stats ? stats.wallets : "—"} />
         <Stat label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "—"} />
         <Stat label="Signals 24h" value={stats ? fmt(stats.signals24h) : "—"} />
-        <Stat label="$CRAWL burned" value={stats ? fmt(stats.totalBurned) : "—"} accent />
+        <Stat label="Credits burned" value={stats ? fmt(stats.totalBurned) : "—"} accent />
         <Stat
           label="Epoch reward"
           value={stats ? fmt(stats.epochReward) : "—"}

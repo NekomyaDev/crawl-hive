@@ -2,23 +2,23 @@
 
 # CrawlHive
 
-**Burn $CRAWL, spawn a crawler, join the swarm.**
+**Spawn a crawler, join the swarm.**
 
 CrawlHive is a network of user-owned crawlers for the memecoin space. Holders burn tokens to spawn crawlers that dig X, Telegram, on-chain activity and docs for signal. Each crawler is a dot on the live swarm map, earns reputation from the quality of what it finds, takes a share of every epoch's rewards, and can be sold or rented on the marketplace. Holders vote on what the swarm should prioritise.
 
-The flywheel: more trading → more burns → more crawlers → more data → better signals → more attention. The project token is not launched yet: until then spawns are paid in SOL, and that SOL collects in the project treasury to fund buybacks once the token is live. `$CRAWL` in the UI is a placeholder ticker for in-app credits.
+The flywheel: more trading → more burns → more crawlers → more data → better signals → more attention. The project token is not launched yet: until then spawns are paid in SOL, and that SOL collects in the project treasury to fund buybacks once the token is live. Balances, rewards, marketplace prices and votes inside the app are in-app **credits** for now.
 
 ## Status: MVP on mock data
 
 | Part | State |
 |---|---|
 | Swarm map, filters, live signal stream | works, on a simulated network (130 seeded crawlers, 28 wallets) |
-| Spawner (tiers, sources, targets, frequency) | works; payment is **on-chain via Phantom** (SOL now, $CRAWL burn after launch) or simulated |
+| Spawner (tiers, sources, targets, frequency) | works; payment is **on-chain via Phantom** (SOL now, project-token burn after launch) or simulated |
 | Reputation | works, real formula over simulated stats |
 | Marketplace (sell / rent, 2.5% fee burn) | works |
 | Leaderboard (crawlers + wallets) | works |
 | Governance (token-weighted votes, new proposals) | works |
-| Wallet | Phantom connect if installed, otherwise a demo wallet with 250k $CRAWL |
+| Wallet | Phantom connect if installed, otherwise a demo wallet with 250k credits |
 | Real crawlers, Postgres, SIWS auth | **not yet**: see Roadmap |
 
 State lives in server memory and resets on restart. Signal tickers are fictional on purpose.
@@ -28,7 +28,7 @@ State lives in server memory and resets on restart. Signal tickers are fictional
 | Phase | `PAYMENT_TOKEN` | What the wallet signs | Where it goes |
 |---|---|---|---|
 | 1 · pre-launch | `sol` | `SystemProgram.transfer` of the tier price in SOL + memo | project treasury [`DgCo…GUJ`](https://solscan.io/account/DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ): it will fund buybacks of the project token after launch |
-| 2 · after launch | `crawl` | SPL `burnChecked` of the tier's $CRAWL + memo | burned, supply goes down |
+| 2 · after launch | `token` | SPL `burnChecked` of the project token + memo (`TOKEN_MINT`, `TOKEN_SYMBOL`) | burned, supply goes down |
 | demo | unset | nothing | simulated, in-app balance |
 
 Tier prices in SOL: Larva 0.05 · Worker 0.2 · Soldier 0.75 · Queen 2.5 (`TIER_PRICE_SOL` in `src/lib/economy.ts`).
@@ -44,10 +44,10 @@ Classic SPL Token and Token-2022 mints both work (the program is read from the m
 ### Devnet setup
 
 ```bash
-node scripts/devnet-setup.mjs sol      # or: crawl (also creates a test $CRAWL mint)
+node scripts/devnet-setup.mjs sol      # or: token (also creates a test project-token mint)
 ```
 
-It writes `.env.local` and creates a faucet wallet in `.devnet/` (gitignored). The public devnet airdrop is often dry; if so, top up the printed faucet address at https://faucet.solana.com. With a funded faucet, the Spawn page shows a **Get test SOL / $CRAWL** button. Switch Phantom to devnet (Settings → Developer settings → Testnet mode).
+It writes `.env.local` and creates a faucet wallet in `.devnet/` (gitignored). The public devnet airdrop is often dry; if so, top up the printed faucet address at https://faucet.solana.com. With a funded faucet, the Spawn page shows a **Get test SOL / token** button. Switch Phantom to devnet (Settings → Developer settings → Testnet mode).
 
 End-to-end check without a browser (a keypair plays Phantom): `node scripts/e2e-spawn.mjs .devnet/tester.json http://localhost:3000`.
 
@@ -72,7 +72,7 @@ Node 20+.
 - `/crawler/[id]`: a crawler's stats, reputation breakdown, recent signals; the owner can edit targets and list it on the market.
 - `/market`: **Marketplace**. Buy outright or rent for N days. While rented, the renter earns the rewards.
 - `/leaderboard`: ranks by reputation, rewards, data volume, signal quality or uptime, plus top wallets.
-- `/governance`: proposals on crawl priorities, reward split and network params. 1 $CRAWL = 1 vote, re-voting allowed until close.
+- `/governance`: proposals on crawl priorities, reward split and network params. 1 credit = 1 vote, re-voting allowed until close.
 
 ## Economy
 
@@ -83,9 +83,9 @@ Node 20+.
 | Soldier | 25,000 | 20 | 5 min | 1.35× |
 | Queen | 100,000 | 50 | 1 min | 1.75× |
 
-- Every epoch (10 min in the demo) emits 50k $CRAWL, split across working crawlers by `reputation × tier boost`.
+- Every epoch (10 min in the demo) emits 50k credits, split across working crawlers by `reputation × tier boost`.
 - A marketplace trade burns 2.5% of the price.
-- Creating a proposal needs a 10k $CRAWL balance.
+- Creating a proposal needs a 10k-credit balance.
 
 Parameters live in `src/lib/economy.ts`.
 
@@ -143,4 +143,4 @@ db/schema.sql                target Postgres schema
 3. **Real workers:** a job queue and Playwright/API workers per source; signals scored on outcome (price move, confirmation) to compute real hits.
 4. **Snapshot voting:** vote weight from a balance snapshot at proposal start, not the live balance.
 5. **Governance → params:** apply winning `params` and `priority` proposals automatically (reputation weights, narrative boosts).
-6. **Token launch:** flip `PAYMENT_TOKEN=crawl`, set `CRAWL_MINT`; marketplace and governance move from in-app credits to the token.
+6. **Token launch:** flip `PAYMENT_TOKEN=token`, set `TOKEN_MINT` and `TOKEN_SYMBOL`; marketplace and governance move from in-app credits to the token.

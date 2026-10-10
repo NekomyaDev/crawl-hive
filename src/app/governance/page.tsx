@@ -1,6 +1,6 @@
 "use client";
 // Governance: холдеры голосуют за приоритеты краулинга, награды и параметры сети.
-// Вес голоса = баланс $CRAWL в момент голосования.
+// Вес голоса = баланс credits в момент голосования.
 import { useState } from "react";
 import { Check, Plus, X as Close } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -12,7 +12,7 @@ import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
 import { post } from "@/lib/client/api";
-import { PROPOSAL_MIN_BALANCE, TOKEN } from "@/lib/economy";
+import { PROPOSAL_MIN_BALANCE, CREDITS } from "@/lib/economy";
 import type { Proposal } from "@/lib/types";
 import { cn, fmt, short, timeLeft } from "@/lib/utils";
 
@@ -35,7 +35,7 @@ export default function Governance() {
     if (!address) return connect();
     try {
       await post(`/api/governance/${p.id}`, { optionId });
-      toast(`Voted with ${fmt(info?.balance ?? 0)} ${TOKEN}`);
+      toast(`Voted with ${fmt(info?.balance ?? 0)} ${CREDITS}`);
       reload();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -46,7 +46,7 @@ export default function Governance() {
     <>
       <PageHeader
         title="Swarm Governance"
-        sub={`Holders steer the swarm: which narratives get boosted, how rewards split, how reputation is weighted. One ${TOKEN} = one vote; you can change your vote until it closes.`}
+        sub={`Holders steer the swarm: which narratives get boosted, how rewards split, how reputation is weighted. One credit = one vote; you can change your vote until it closes.`}
         action={
           <Button variant="outline" onClick={() => (address ? setCreating((x) => !x) : connect())}>
             <Plus className="size-4" /> New proposal
@@ -56,7 +56,7 @@ export default function Governance() {
 
       {address && (
         <div className="mb-5 text-sm text-muted">
-          Your voting power: <span className="num font-semibold text-honey">{fmt(info?.balance ?? 0)}</span> {TOKEN}
+          Your voting power: <span className="num font-semibold text-honey">{fmt(info?.balance ?? 0)}</span> {CREDITS}
           {mode === "demo" && " (demo)"}
         </div>
       )}
@@ -109,7 +109,7 @@ export default function Governance() {
                 })}
               </div>
               <div className="mt-3 text-[11px] text-muted">
-                by <span className="num">{short(p.author)}</span> · {fmt(total)} {TOKEN} voted
+                by <span className="num">{short(p.author)}</span> · {fmt(total)} {CREDITS} voted
               </div>
             </Card>
           );
@@ -141,7 +141,7 @@ function CreateProposal({ onDone }: { onDone: () => void }) {
     <Card className="mb-5 p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="font-semibold">New proposal</h3>
-        <span className="text-[11px] text-muted">needs {fmt(PROPOSAL_MIN_BALANCE)} {TOKEN} balance</span>
+        <span className="text-[11px] text-muted">needs {fmt(PROPOSAL_MIN_BALANCE)} {CREDITS} balance</span>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="md:col-span-2">

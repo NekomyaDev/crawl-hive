@@ -342,7 +342,7 @@ function ensureWallet(s: State, address: string) {
 function debit(s: State, address: string, amount: number) {
   ensureWallet(s, address);
   const bal = s.balances.get(address)!;
-  if (bal < amount) throw new ApiError(`Not enough $CRAWL: need ${amount.toLocaleString()}, have ${Math.floor(bal).toLocaleString()}`);
+  if (bal < amount) throw new ApiError(`Not enough credits: need ${amount.toLocaleString()}, have ${Math.floor(bal).toLocaleString()}`);
   s.balances.set(address, bal - amount);
 }
 
@@ -390,7 +390,7 @@ export function spawnCrawler(wallet: string, input: SpawnInput): PublicCrawler {
 }
 
 // On-chain спавн: оплата уже проверена по транзакции, внутренний баланс не трогаем.
-// burnedTokens > 0 только при реальном сжигании $CRAWL; оплата в SOL в счётчик сожжённых токенов не идёт.
+// burnedTokens > 0 только при реальном сжигании токена проекта; оплата в SOL в счётчик сожжённых токенов не идёт.
 export function spawnCrawlerPaid(
   wallet: string,
   input: SpawnInput,
@@ -552,7 +552,7 @@ export function vote(wallet: string, proposalId: string, optionId: string) {
   if (!opt) throw new ApiError("Unknown option");
   ensureWallet(s, wallet);
   const weight = Math.floor(s.balances.get(wallet) ?? 0);
-  if (weight <= 0) throw new ApiError("You need $CRAWL to vote");
+  if (weight <= 0) throw new ApiError("You need credits to vote");
   if (!s.votes.has(p.id)) s.votes.set(p.id, new Map());
   const byWallet = s.votes.get(p.id)!;
   // Переголосование: снимаем старый вес и ставим заново по текущему балансу.
@@ -573,7 +573,7 @@ export function createProposal(
   const s = state();
   ensureWallet(s, wallet);
   if ((s.balances.get(wallet) ?? 0) < PROPOSAL_MIN_BALANCE)
-    throw new ApiError(`Need ${PROPOSAL_MIN_BALANCE.toLocaleString()} $CRAWL to create a proposal`);
+    throw new ApiError(`Need ${PROPOSAL_MIN_BALANCE.toLocaleString()} credits to create a proposal`);
   const title = String(input.title ?? "").trim();
   if (title.length < 6 || title.length > 90) throw new ApiError("Title must be 6–90 characters");
   const options = (input.options ?? []).map((o) => String(o).trim()).filter(Boolean);

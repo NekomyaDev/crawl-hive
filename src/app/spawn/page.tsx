@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { post } from "@/lib/client/api";
 import { useConfig } from "@/lib/client/use-config";
 import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
-import { TIERS, TIER_ORDER, TIER_PRICE_SOL, TOKEN } from "@/lib/economy";
+import { TIERS, TIER_ORDER, TIER_PRICE_SOL, CREDITS } from "@/lib/economy";
 import { computeReputation } from "@/lib/reputation";
 import { CHAINS, NARRATIVES, SOURCES, type Chain, type Narrative, type PublicCrawler, type Source, type Tier } from "@/lib/types";
 import { NARRATIVE_LABEL, SOURCE_META, cn, fmt } from "@/lib/utils";
@@ -58,9 +58,11 @@ export default function SpawnPage() {
   const cfg = useConfig();
   const payment = cfg?.payment ?? "simulated";
   const onchain = payment !== "simulated";
-  // Фаза 1 — платим SOL, фаза 2 — сжигаем $CRAWL; в симуляции — внутренний $CRAWL.
+  // Фаза 1 — платим SOL, фаза 2 — сжигаем токен проекта; в симуляции — внутренние credits.
   const priceOf = (k: Tier) => cfg?.prices[k] ?? (payment === "sol" ? TIER_PRICE_SOL[k] : TIERS[k].burn);
-  const unit = payment === "sol" ? "SOL" : TOKEN;
+  // Тикер токена проекта приходит из конфига (TOKEN_SYMBOL), пока токена нет — режим token выключен.
+  const tokenName = cfg?.symbol ?? "token";
+  const unit = payment === "sol" ? "SOL" : payment === "token" ? tokenName : CREDITS;
   const fmtPrice = (n: number) => (payment === "sol" ? `${n}` : fmt(n));
 
   const t = TIERS[tier];
@@ -68,7 +70,7 @@ export default function SpawnPage() {
   const itemsPerHour = Math.round((targets.length * 40 * 60) / (effFreq * 60) * 60) || 0;
   // On-chain сжигаем реальные токены из кошелька, иначе — внутренний баланс.
   const balance =
-    payment === "sol" ? (info?.onchain?.sol ?? 0) : payment === "crawl" ? (info?.onchain?.tokens ?? 0) : (info?.balance ?? 0);
+    payment === "sol" ? (info?.onchain?.sol ?? 0) : payment === "token" ? (info?.onchain?.tokens ?? 0) : (info?.balance ?? 0);
   const price = priceOf(tier);
   const needPhantom = onchain && !!address && mode !== "phantom";
   const enough = balance >= price + (payment === "sol" ? 0.00002 : 0);
@@ -108,7 +110,7 @@ export default function SpawnPage() {
       toast(
         payment === "sol"
           ? `Paid ${price} SOL on-chain. ${c.name} joined the swarm.`
-          : `🔥 Burned ${fmt(price)} ${TOKEN}${onchain ? " on-chain" : ""}. ${c.name} joined the swarm.`,
+          : `🔥 Burned ${fmt(price)} ${unit}${onchain ? " on-chain" : ""}. ${c.name} joined the swarm.`,
       );
       await refresh();
       router.push(`/crawler/${c.id}`);
@@ -120,12 +122,12 @@ export default function SpawnPage() {
     }
   };
 
-  // Devnet: получить тестовые $CRAWL и SOL на комиссию.
+  // Devnet: получить тестовые SOL или токены проекта на комиссию.
   const drip = async () => {
     setDripping(true);
     try {
       const r = await post<{ signature: string; tokens: number; sol: number }>("/api/faucet");
-      toast(r.tokens ? `Got ${fmt(r.tokens)} test ${TOKEN}${r.sol ? ` and ${r.sol} SOL for fees` : ""}` : `Got ${r.sol} devnet SOL`);
+      toast(r.tokens ? `Got ${fmt(r.tokens)} test ${tokenName}${r.sol ? ` and ${r.sol} SOL for fees` : ""}` : `Got ${r.sol} devnet SOL`);
       await refresh();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -147,7 +149,7 @@ export default function SpawnPage() {
         sub={
           payment === "sol"
             ? `Pay SOL to hatch a crawler. Pre-launch phase: the SOL goes to the project treasury and will fund buybacks of the project token once it launches. Higher tiers get more targets, faster crawl cycles and a reward boost.`
-            : `Burn ${TOKEN} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`
+            : `Burn ${unit} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`
         }
       />
 
@@ -176,7 +178,7 @@ export default function SpawnPage() {
                       {k === "queen" && <span className="text-[10px] text-honey">♛</span>}
                     </div>
                     <div className="num mt-2 text-lg text-honey">{fmtPrice(priceOf(k))}</div>
-                    <div className="text-[11px] text-muted">{payment === "sol" ? "SOL" : `${TOKEN} burned`}</div>
+                    <div className="text-[11px] text-muted">{payment === "sol" ? "SOL" : `${unit} burned`}</div>
                     <ul className="mt-2 space-y-0.5 text-[11px] text-muted">
                       <li>{v.maxTargets} targets</li>
                       <li>every {v.minFrequency} min</li>
@@ -334,12 +336,12 @@ export default function SpawnPage() {
                 {address && (
                   <div className={cn("num mt-1 text-right text-[11px]", enough ? "text-muted" : "text-danger")}>
                     {onchain ? "in wallet" : "balance"} {payment === "sol" ? balance.toFixed(3) : fmt(balance)} {payment === "sol" && "SOL"}
-                    {payment === "crawl" && info?.onchain && <span> · {info.onchain.sol.toFixed(3)} SOL</span>}
+                    {payment === "token" && info?.onchain && <span> · {info.onchain.sol.toFixed(3)} SOL</span>}
                   </div>
                 )}
                 {cfg?.faucet && address && mode === "phantom" && (
                   <button onClick={drip} disabled={dripping} className="mt-1 w-full text-right text-[11px] text-honey hover:underline disabled:opacity-50">
-                    {dripping ? "Sending…" : `Get test ${payment === "sol" ? "SOL" : TOKEN} (devnet)`}
+                    {dripping ? "Sending…" : `Get test ${payment === "sol" ? "SOL" : tokenName} (devnet)`}
                   </button>
                 )}
               </div>
@@ -396,9 +398,9 @@ export default function SpawnPage() {
                       Phantom must be on the same network.
                     </>
                   )}
-                  {payment === "crawl" && (
+                  {payment === "token" && (
                     <>
-                      Real SPL burn of {TOKEN} on <span className="text-fg">{cfg.cluster}</span>
+                      Real SPL burn of {tokenName} on <span className="text-fg">{cfg.cluster}</span>
                       {cfg.mint && (
                         <>
                           {" "}

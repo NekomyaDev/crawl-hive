@@ -3,7 +3,7 @@
 
 create table wallets (
   address      text primary key,               -- base58 Solana-адрес
-  balance      numeric(20, 2) not null default 0, -- кэш баланса $CRAWL (источник правды — чейн)
+  balance      numeric(20, 2) not null default 0, -- внутренние credits
   burned       numeric(20, 2) not null default 0,
   created_at   timestamptz not null default now()
 );
@@ -26,7 +26,7 @@ create table crawlers (
   frequency_min  int not null check (frequency_min between 1 and 1440),
   tier           crawl_tier not null,
   burned         numeric(20, 2) not null,
-  payment_unit   text,                          -- SOL | $CRAWL, null для симулированного спавна
+  payment_unit   text,                          -- SOL или тикер токена проекта, null для симулированного спавна
   payment_amount numeric(20, 9),
   payment_tx     text unique,                   -- подпись транзакции оплаты
   status         crawl_status not null default 'active',

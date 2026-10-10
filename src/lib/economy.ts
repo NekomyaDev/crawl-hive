@@ -1,7 +1,8 @@
 // Параметры экономики сети. Часть из них меняется через governance (kind: "params").
 import type { Tier } from "./types";
 
-export const TOKEN = "$CRAWL";
+// Внутренняя валюта приложения: баланс, награды, маркет, голосования. Токена проекта пока нет.
+export const CREDITS = "credits";
 
 // Сколько нужно сжечь за спавн краулера каждого тира и что тир даёт.
 export const TIERS: Record<
@@ -16,8 +17,8 @@ export const TIERS: Record<
 
 export const TIER_ORDER: Tier[] = ["larva", "worker", "soldier", "queen"];
 
-// Фаза 1 (до запуска токена): спавн оплачивается в SOL. Фаза 2: сжигание $CRAWL по TIERS.burn.
-// Переключается переменной PAYMENT_TOKEN=sol|crawl.
+// Фаза 1 (до запуска токена): спавн оплачивается в SOL. Фаза 2: сжигание токена проекта по TIERS.burn.
+// Переключается переменной PAYMENT_TOKEN=sol|token.
 export const TIER_PRICE_SOL: Record<Tier, number> = {
   larva: 0.05,
   worker: 0.2,

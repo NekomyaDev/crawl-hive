@@ -222,7 +222,7 @@ export function seedNetwork(now: number, seed = 1337): SeedState {
     {
       id: "HIP-10",
       title: "Epoch reward split",
-      description: "How the 50k $CRAWL epoch emission is divided between crawler owners and the treasury.",
+      description: "How the 50k-credit epoch emission is divided between crawler owners and the treasury.",
       kind: "rewards",
       options: [
         { id: "90-10", label: "90% crawlers / 10% treasury", votes: 1_450_000 },

@@ -1,4 +1,4 @@
-// Devnet: тестовые $CRAWL и немного SOL на комиссию для подключённого кошелька.
+// Devnet: тестовые токены проекта и немного SOL на комиссию для подключённого кошелька.
 import type { NextRequest } from "next/server";
 import { handle, walletFrom } from "@/lib/server/http";
 import { faucet } from "@/lib/server/solana";

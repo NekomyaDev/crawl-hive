@@ -28,7 +28,7 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
     <div className={cn("flex items-center gap-2", !compact && "rounded-lg border border-line bg-panel-2 p-2.5")}>
       <div className="min-w-0 flex-1">
         <div className="num truncate text-xs">{short(address)}</div>
-        <div className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} $CRAWL</div>
+        <div className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} credits</div>
         {!compact && <div className="text-[10px] text-muted">{mode === "phantom" ? "Phantom" : "Demo wallet"}</div>}
       </div>
       <button onClick={disconnect} className="text-muted hover:text-fg" title="Disconnect">

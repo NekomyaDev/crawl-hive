@@ -11,7 +11,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "CrawlHive — the crawler swarm",
-  description: "Burn $CRAWL, spawn a crawler, join the swarm. Reputation, marketplace, leaderboard and governance for memecoin data.",
+  description: "Spawn a crawler, join the swarm. Reputation, marketplace, leaderboard and governance for memecoin data.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

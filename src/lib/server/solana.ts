@@ -1,6 +1,6 @@
 // On-chain оплата спавна. Два режима, переключаются PAYMENT_TOKEN:
 //   sol   — фаза 1, до запуска токена: перевод SOL в казну проекта (будущий байбек токена);
-//   crawl — фаза 2, после запуска токена: burnChecked токена проекта из кошелька пользователя.
+//   token — фаза 2, после запуска токена: burnChecked токена проекта из кошелька пользователя.
 // Без PAYMENT_TOKEN сеть работает на симулированных сжиганиях (см. store.ts).
 //
 // Схема одна для обоих режимов: сервер собирает неподписанную транзакцию с memo «crawlhive:spawn:<id>»,
@@ -32,7 +32,7 @@ import { ApiError, type SpawnInput } from "./store";
 export const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const INTENT_TTL_MS = 10 * 60_000;
 const FAUCET_TOKENS = 250_000;
-const FAUCET_SOL_FEES = 0.05; // режим crawl: SOL только на комиссии
+const FAUCET_SOL_FEES = 0.05; // режим token: SOL только на комиссии
 const FAUCET_SOL_SPAWN = 1; // режим sol: хватает на пару спавнов Worker
 const FAUCET_COOLDOWN_MS = 10 * 60_000;
 const FEE_RESERVE_SOL = 0.00002;
@@ -41,10 +41,10 @@ const FEE_RESERVE_SOL = 0.00002;
 
 function env() {
   const raw = process.env.PAYMENT_TOKEN?.trim().toLowerCase();
-  const mint = process.env.CRAWL_MINT?.trim() || null;
-  let payment: PaymentMode = raw === "sol" ? "sol" : raw === "crawl" ? "crawl" : "simulated";
-  if (payment === "crawl" && !mint) {
-    console.warn("PAYMENT_TOKEN=crawl without CRAWL_MINT, falling back to simulated burns");
+  const mint = process.env.TOKEN_MINT?.trim() || null;
+  let payment: PaymentMode = raw === "sol" ? "sol" : raw === "token" ? "token" : "simulated";
+  if (payment === "token" && !mint) {
+    console.warn("PAYMENT_TOKEN=token without TOKEN_MINT, falling back to simulated burns");
     payment = "simulated";
   }
   return {
@@ -52,7 +52,8 @@ function env() {
     mint,
     cluster: process.env.SOLANA_CLUSTER?.trim() || "devnet",
     rpc: process.env.SOLANA_RPC_URL?.trim() || "https://api.devnet.solana.com",
-    decimals: Number(process.env.CRAWL_DECIMALS ?? 6),
+    decimals: Number(process.env.TOKEN_DECIMALS ?? 6),
+    symbol: process.env.TOKEN_SYMBOL?.trim() || "TOKEN",
     solRecipient: process.env.SPAWN_SOL_RECIPIENT?.trim() || BUYBACK_TREASURY,
     // Секретный ключ кошелька-фосета, JSON-массив байт (как в файле solana-keygen). Только для devnet.
     faucetKey: process.env.DEVNET_FAUCET_SECRET?.trim() || null,
@@ -82,7 +83,8 @@ export function publicConfig(): PublicConfig {
   return {
     payment: e.payment,
     cluster: e.cluster,
-    mint: e.payment === "crawl" ? e.mint : null,
+    mint: e.payment === "token" ? e.mint : null,
+    symbol: e.payment === "token" ? e.symbol : null,
     decimals: e.decimals,
     solRecipient: e.payment === "sol" ? e.solRecipient : null,
     solBurned: e.payment === "sol" && e.solRecipient === SOL_INCINERATOR,
@@ -97,9 +99,9 @@ export function publicConfig(): PublicConfig {
 }
 
 // Цена спавна в текущем режиме: для UI и для сверки суммы.
-export function spawnPrice(tier: Tier): { amount: number; unit: "SOL" | "$CRAWL" } {
+export function spawnPrice(tier: Tier): { amount: number; unit: string } {
   const e = env();
-  return e.payment === "sol" ? { amount: e.solPrices[tier], unit: "SOL" } : { amount: TIERS[tier].burn, unit: "$CRAWL" };
+  return e.payment === "sol" ? { amount: e.solPrices[tier], unit: "SOL" } : { amount: TIERS[tier].burn, unit: e.symbol };
 }
 
 // ---------- состояние (на globalThis, как и store) ----------
@@ -108,7 +110,7 @@ interface Intent {
   id: string;
   wallet: string;
   input: SpawnInput;
-  payment: "sol" | "crawl";
+  payment: "sol" | "token";
   amountRaw: bigint; // лампорты или минимальные единицы токена
   createdAt: number;
   used: boolean;
@@ -141,7 +143,7 @@ function chain() {
 
 function mintKey(): PublicKey {
   const m = env().mint;
-  if (!m) throw new ApiError("CRAWL mint is not configured", 400);
+  if (!m) throw new ApiError("Project token mint is not configured", 400);
   return new PublicKey(m);
 }
 
@@ -150,9 +152,9 @@ async function mintProgram(): Promise<PublicKey> {
   const c = chain();
   if (c.mintProgram) return c.mintProgram;
   const info = await c.conn.getAccountInfo(mintKey());
-  if (!info) throw new ApiError("CRAWL mint not found on this cluster", 500);
+  if (!info) throw new ApiError("Project token mint not found on this cluster", 500);
   if (!info.owner.equals(TOKEN_PROGRAM_ID) && !info.owner.equals(TOKEN_2022_PROGRAM_ID))
-    throw new ApiError("CRAWL_MINT is not a token mint", 500);
+    throw new ApiError("TOKEN_MINT is not a token mint", 500);
   c.mintProgram = info.owner;
   return info.owner;
 }
@@ -167,7 +169,7 @@ export async function onchainBalances(wallet: string): Promise<{ tokens: number;
   const owner = new PublicKey(wallet);
   const lamports = await c.conn.getBalance(owner);
   let tokens = 0;
-  if (env().payment === "crawl") {
+  if (env().payment === "token") {
     const accounts = await c.conn.getParsedTokenAccountsByOwner(owner, { mint: mintKey() });
     let raw = BigInt(0);
     for (const a of accounts.value) raw += BigInt(a.account.data.parsed.info.tokenAmount.amount);
@@ -214,7 +216,7 @@ export async function createSpawnIntent(wallet: string, input: SpawnInput) {
     const program = await mintProgram();
     amountRaw = tokensToRaw(price.amount);
     if (tokensToRaw(Math.floor(tokens)) < amountRaw)
-      throw new ApiError(`Not enough $CRAWL in your wallet: need ${price.amount.toLocaleString()}, have ${Math.floor(tokens).toLocaleString()}`);
+      throw new ApiError(`Not enough ${e.symbol} in your wallet: need ${price.amount.toLocaleString()}, have ${Math.floor(tokens).toLocaleString()}`);
     if (sol < FEE_RESERVE_SOL) throw new ApiError("Your wallet has no SOL to pay the network fee");
     const ata = getAssociatedTokenAddressSync(mint, owner, false, program);
     tx.add(createBurnCheckedInstruction(ata, mint, owner, amountRaw, e.decimals, [], program));
@@ -235,11 +237,11 @@ export async function createSpawnIntent(wallet: string, input: SpawnInput) {
   };
 }
 
-// Сумма, которую транзакция действительно перевела на получателя (sol) или сожгла (crawl) от имени кошелька.
-async function paidAmount(tx: ParsedTransactionWithMeta, wallet: string, payment: "sol" | "crawl"): Promise<bigint> {
+// Сумма, которую транзакция действительно перевела на получателя (sol) или сожгла (token) от имени кошелька.
+async function paidAmount(tx: ParsedTransactionWithMeta, wallet: string, payment: "sol" | "token"): Promise<bigint> {
   let total = BigInt(0);
   const e = env();
-  const program = payment === "crawl" ? (await mintProgram()).toBase58() : SystemProgram.programId.toBase58();
+  const program = payment === "token" ? (await mintProgram()).toBase58() : SystemProgram.programId.toBase58();
   for (const ix of tx.transaction.message.instructions) {
     if (ix.programId.toBase58() !== program || !("parsed" in ix)) continue;
     const { type, info } = ix.parsed ?? {};
@@ -281,16 +283,17 @@ export async function verifySpawnPayment(wallet: string, intentId: string, signa
 
   const paid = await paidAmount(tx, wallet, intent.payment);
   if (paid < intent.amountRaw)
-    throw new ApiError(intent.payment === "sol" ? "Transaction paid less SOL than the tier costs" : "Transaction burned less $CRAWL than the tier requires");
+    throw new ApiError(intent.payment === "sol" ? "Transaction paid less SOL than the tier costs" : `Transaction burned less ${env().symbol} than the tier requires`);
 
   intent.used = true;
   c.usedSigs.add(signature);
   return {
     input: intent.input,
     payment: intent.payment,
-    // В статистику сети «сожжённых $CRAWL» идёт только реальное сжигание токена.
-    burnedTokens: intent.payment === "crawl" ? Number(paid / BigInt(10) ** BigInt(env().decimals)) : 0,
+    // В статистику сети «сожжённого» идёт только реальное сжигание токена проекта.
+    burnedTokens: intent.payment === "token" ? Number(paid / BigInt(10) ** BigInt(env().decimals)) : 0,
     paidSol: intent.payment === "sol" ? Number(paid) / LAMPORTS_PER_SOL : 0,
+    symbol: env().symbol,
   };
 }
 
@@ -302,7 +305,7 @@ function faucetKeypair(): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secret)));
 }
 
-// Режим sol: даёт тестовый SOL на спавн. Режим crawl: тестовые $CRAWL плюс немного SOL на комиссию.
+// Режим sol: даёт тестовый SOL на спавн. Режим token: тестовые токены проекта плюс немного SOL на комиссию.
 export async function faucet(wallet: string) {
   if (!publicConfig().faucet) throw new ApiError("Faucet works on devnet only", 400);
   const c = chain();
