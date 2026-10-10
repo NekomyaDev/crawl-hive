@@ -4,6 +4,7 @@ import "./globals.css";
 import { Nav } from "@/components/nav";
 import { WalletProvider } from "@/components/wallet-provider";
 import { ToastProvider } from "@/components/ui/toast";
+import { Mascot } from "@/components/mascot";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Nav />
               <main className="min-w-0 flex-1 px-4 py-5 lg:px-8 lg:py-7">{children}</main>
             </div>
+            <Mascot />
           </ToastProvider>
         </WalletProvider>
       </body>
