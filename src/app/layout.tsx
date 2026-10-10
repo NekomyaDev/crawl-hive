@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Suspense } from "react";
-import { Nav, NavShell } from "@/components/nav";
+import { Nav } from "@/components/nav";
 import { WalletProvider } from "@/components/wallet-provider";
 import { ToastProvider } from "@/components/ui/toast";
 
@@ -21,9 +20,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <WalletProvider>
           <ToastProvider>
             <div className="flex min-h-screen flex-col lg:flex-row">
-              <Suspense fallback={<NavShell path="" />}>
-                <Nav />
-              </Suspense>
+              <Nav />
               <main className="min-w-0 flex-1 px-4 py-5 lg:px-8 lg:py-7">{children}</main>
             </div>
           </ToastProvider>

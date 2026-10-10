@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
@@ -38,10 +39,26 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
   );
 }
 
-// usePathname — данные запроса, поэтому в layout Nav стоит в Suspense,
-// а в fallback рендерится та же оболочка без подсветки активного пункта.
+// Путь — данные запроса: с cacheComponents его можно читать только внутри Suspense.
+// Поэтому сама навигация рендерится один раз и без него, а активный пункт подсвечивает
+// невидимый PathSync, который сообщает путь через эффект. Так HTML с сервера и первый
+// клиентский рендер совпадают, и нет второй копии навигации в fallback.
+function PathSync({ onPath }: { onPath: (p: string) => void }) {
+  const path = usePathname();
+  useEffect(() => onPath(path), [path, onPath]);
+  return null;
+}
+
 export function Nav() {
-  return <NavShell path={usePathname()} />;
+  const [path, setPath] = useState("");
+  return (
+    <>
+      <Suspense fallback={null}>
+        <PathSync onPath={setPath} />
+      </Suspense>
+      <NavShell path={path} />
+    </>
+  );
 }
 
 export function NavShell({ path }: { path: string }) {

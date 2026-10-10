@@ -1,146 +1,217 @@
-<p align="center"><img src="public/brand/crawlhive-mark.svg" width="120" alt="CrawlHive"></p>
+<p align="center">
+  <img src="docs/images/banner.png" alt="CrawlHive: a swarm of user-owned crawlers hunting memecoin signal on Solana" width="100%">
+</p>
 
-# CrawlHive
+<p align="center">
+  <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-ffb020?style=flat-square">
+  <img alt="Solana" src="https://img.shields.io/badge/Solana-mainnet%20%7C%20devnet-9945FF?style=flat-square&logo=solana&logoColor=white">
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs">
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="Wallet: Phantom" src="https://img.shields.io/badge/wallet-Phantom-ab9ff2?style=flat-square">
+</p>
 
-**Spawn a crawler, join the swarm.**
+<p align="center">
+  <b>English</b> · <a href="docs/README.ru.md">Русский</a>
+</p>
 
-CrawlHive is a network of user-owned crawlers for the memecoin space. Holders burn tokens to spawn crawlers that dig X, Telegram, on-chain activity and docs for signal. Each crawler is a dot on the live swarm map, earns reputation from the quality of what it finds, takes a share of every epoch's rewards, and can be sold or rented on the marketplace. Holders vote on what the swarm should prioritise.
+---
 
-The flywheel: more trading → more burns → more crawlers → more data → better signals → more attention. The project token is not launched yet: until then spawns are paid in SOL, and that SOL collects in the project treasury to fund buybacks once the token is live. Balances, rewards, marketplace prices and votes inside the app are in-app **credits** for now.
+## What is CrawlHive
 
-## Status: MVP on mock data
+Memecoin alpha is scattered: a KOL post on X, a coordinated call in a Telegram group, a whale wallet buying a fresh pool. Nobody can watch all of it, and one bot only sees what its owner told it to watch.
+
+**CrawlHive turns that into a shared swarm.** Anyone can spawn a *crawler*: a small agent pointed at the sources they know best (accounts, channels, contracts, sites). Every crawler reports signals into one live feed. The network keeps score: crawlers whose signals play out gain **reputation** and a bigger share of every reward epoch, while spammy or idle ones sink. Good crawlers can be **sold or rented** on the marketplace, and holders **vote** on which narratives the swarm should dig into next.
+
+In one line: *you bring the edge, the swarm pays you for being right.*
+
+<p align="center">
+  <img src="docs/images/swarm.png" alt="Swarm map: every dot is a crawler, hexagons are wallets" width="100%">
+  <br><sub>The swarm map. Every dot is a live crawler (colour = source, size = reputation), hexagons are the wallets that spawned them, dots flash when they fire a signal.</sub>
+</p>
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["👤 You<br/>pick sources you know"] -->|"spawn & pay<br/>via Phantom"| B["🕷 Crawler"]
+    B -->|"watches X · Telegram<br/>on-chain · docs"| C["⚡ Signals"]
+    C --> D["🐝 Swarm feed<br/>& map"]
+    C -->|"did it play out?"| E["⭐ Reputation"]
+    E -->|"share of each epoch"| F["💰 Rewards"]
+    E --> G["🏆 Leaderboard"]
+    B -->|"sell / rent"| H["🛒 Marketplace"]
+    I["🗳 Holders"] -->|"vote on priorities"| D
+```
+
+1. **Spawn.** Choose a tier, a source, up to three narratives and your targets. Pay for it on-chain from Phantom.
+2. **Crawl.** Your crawler sweeps its targets on a schedule and fires signals: mention spikes, KOL calls, new pairs, whale buys, docs updates.
+3. **Earn reputation.** Signals that play out raise its score; uptime, data volume and stake count too.
+4. **Get paid.** Every epoch's rewards are split by reputation × tier. Sell or rent the crawler once it has a track record.
+
+## Status: read this first
+
+CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out later.
 
 | Part | State |
 |---|---|
-| Swarm map, filters, live signal stream | works, on a simulated network (130 seeded crawlers, 28 wallets) |
-| Spawner (tiers, sources, targets, frequency) | works; payment is **on-chain via Phantom** (SOL now, project-token burn after launch) or simulated |
-| Reputation | works, real formula over simulated stats |
-| Marketplace (sell / rent, 2.5% fee burn) | works |
-| Leaderboard (crawlers + wallets) | works |
-| Governance (token-weighted votes, new proposals) | works |
-| Wallet | Phantom connect if installed, otherwise a demo wallet with 250k credits |
-| Real crawlers, Postgres, SIWS auth | **not yet**: see Roadmap |
-
-State lives in server memory and resets on restart. Signal tickers are fictional on purpose.
-
-## Spawn payment: two phases
-
-| Phase | `PAYMENT_TOKEN` | What the wallet signs | Where it goes |
-|---|---|---|---|
-| 1 · pre-launch | `sol` | `SystemProgram.transfer` of the tier price in SOL + memo | project treasury [`DgCo…GUJ`](https://solscan.io/account/DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ): it will fund buybacks of the project token after launch |
-| 2 · after launch | `token` | SPL `burnChecked` of the project token + memo (`TOKEN_MINT`, `TOKEN_SYMBOL`) | burned, supply goes down |
-| demo | unset | nothing | simulated, in-app balance |
-
-Tier prices in SOL: Larva 0.05 · Worker 0.2 · Soldier 0.75 · Queen 2.5 (`TIER_PRICE_SOL` in `src/lib/economy.ts`).
-
-How a spawn is verified, same in both phases:
-
-1. `POST /api/spawn/intent` validates the crawler config, checks the wallet balance and returns an unsigned transaction with the memo `crawlhive:spawn:<intentId>`.
-2. Phantom signs and sends it (`signAndSendTransaction`).
-3. `POST /api/spawn/confirm` fetches the transaction from RPC and checks: it succeeded, it is signed by the wallet, the memo matches this intent, and the transfer/burn covers the tier price to the right recipient/mint. The signature can't be reused; the crawler config comes from the intent, not from the second request.
-
-Classic SPL Token and Token-2022 mints both work (the program is read from the mint account).
-
-### Devnet setup
-
-```bash
-node scripts/devnet-setup.mjs sol      # or: token (also creates a test project-token mint)
-```
-
-It writes `.env.local` and creates a faucet wallet in `.devnet/` (gitignored). The public devnet airdrop is often dry; if so, top up the printed faucet address at https://faucet.solana.com. With a funded faucet, the Spawn page shows a **Get test SOL / token** button. Switch Phantom to devnet (Settings → Developer settings → Testnet mode).
-
-End-to-end check without a browser (a keypair plays Phantom): `node scripts/e2e-spawn.mjs .devnet/tester.json http://localhost:3000`.
-
-All variables: `.env.example`.
-
-## Run
-
-```bash
-npm install
-npm run dev          # http://localhost:3000
-# or
-npm run build && npm start
-```
-
-Node 20+.
+| Spawn payment in SOL through Phantom, verified on-chain | ✅ **real** (mainnet or devnet) |
+| Swarm map, live feed, filters, reputation formula | ✅ works, but runs on a **simulated network** (130 seeded crawlers) |
+| Marketplace, leaderboard, governance | ✅ work, balances are in-app **credits**, not a token |
+| Crawlers actually fetching X / Telegram / chain data | ⏳ **not yet**: signals are generated by the simulation |
+| Project token | ⏳ **not launched**. No ticker, no contract. Anything claiming otherwise is not us |
+| Persistent database, signed-message auth | ⏳ not yet: state lives in server memory and resets on restart |
 
 ## Screens
 
-- `/`: **Swarm**. Force-directed map: dots are crawlers (colour = source, size and glow = reputation), hexagons are wallets. Filter by narrative, source, chain and minimum reputation. Dots flash when they fire a signal. Network stats and the epoch timer sit on top.
-- `/spawn`: **Spawner**. Pick a tier (how much you burn), a source, narratives, targets and crawl frequency; a live preview shows the cost and starting reputation.
-- `/my`: **My Crawlers**. Your fleet and the crawlers you rent, with pause/resume.
-- `/crawler/[id]`: a crawler's stats, reputation breakdown, recent signals; the owner can edit targets and list it on the market.
-- `/market`: **Marketplace**. Buy outright or rent for N days. While rented, the renter earns the rewards.
-- `/leaderboard`: ranks by reputation, rewards, data volume, signal quality or uptime, plus top wallets.
-- `/governance`: proposals on crawl priorities, reward split and network params. 1 credit = 1 vote, re-voting allowed until close.
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/spawn.png" alt="Spawn a crawler"><br><sub><b>Spawn.</b> Tier, source, narratives, targets, frequency. Price is paid in SOL through Phantom.</sub></td>
+    <td width="50%"><img src="docs/images/crawler.png" alt="Crawler page"><br><sub><b>Crawler page.</b> Stats, reputation breakdown, its latest signals; the owner edits targets or lists it.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/leaderboard.png" alt="Leaderboard"><br><sub><b>Leaderboard.</b> Rank by reputation, rewards, data volume, signal quality or uptime, plus top wallets.</sub></td>
+    <td><img src="docs/images/market.png" alt="Marketplace"><br><sub><b>Marketplace.</b> Buy a proven crawler or rent it for 1–30 days; 2.5% of every trade is burned.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/governance.png" alt="Governance"><br><sub><b>Governance.</b> Vote on boosted narratives, reward split and reputation weights; anyone can propose.</sub></td>
+    <td><img src="docs/images/my-crawlers.png" alt="My crawlers"><br><sub><b>My Crawlers.</b> Your fleet and rentals, pause / resume, earnings.</sub></td>
+  </tr>
+</table>
 
-## Economy
+<p align="center"><img src="docs/images/mobile.png" alt="Mobile" width="280"><br><sub>Works on a phone too.</sub></p>
 
-| Tier | Burn | Targets | Fastest cycle | Reward boost |
-|---|---|---|---|---|
-| Larva | 1,000 | 3 | 30 min | 1× |
-| Worker | 5,000 | 8 | 10 min | 1.15× |
-| Soldier | 25,000 | 20 | 5 min | 1.35× |
-| Queen | 100,000 | 50 | 1 min | 1.75× |
+## Trust & safety
 
-- Every epoch (10 min in the demo) emits 50k credits, split across working crawlers by `reputation × tier boost`.
-- A marketplace trade burns 2.5% of the price.
-- Creating a proposal needs a 10k-credit balance.
+**What the app asks your wallet to do:** sign one transaction per spawn. Phantom shows you the exact amount and recipient before you approve. CrawlHive never asks for a seed phrase or private key, and it cannot move funds without your signature.
 
-Parameters live in `src/lib/economy.ts`.
+**Where spawn payments go.** Until the project token exists, spawns are paid in SOL to the public project treasury:
 
-## Reputation
+> **[`DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ`](https://solscan.io/account/DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ)**
 
-0–1000, recalculated on every tick (`src/lib/reputation.ts`):
+Anyone can audit its balance and history on Solscan. The plan is to use it for buybacks of the project token once it launches.
+
+**How a payment is verified** (`src/lib/server/solana.ts`):
+
+```mermaid
+sequenceDiagram
+    participant U as You (Phantom)
+    participant A as CrawlHive app
+    participant S as CrawlHive server
+    participant R as Solana RPC
+    A->>S: POST /api/spawn/intent (crawler config)
+    S->>S: validate config, check SOL balance
+    S-->>A: unsigned tx: transfer + memo "crawlhive:spawn:<intent>"
+    A->>U: signAndSendTransaction
+    U->>R: signed tx
+    A->>S: POST /api/spawn/confirm (intent, signature)
+    S->>R: getParsedTransaction
+    S->>S: success? signed by you? memo = this intent?<br/>amount ≥ price? recipient = treasury? not reused?
+    S-->>A: crawler created
+```
+
+- The memo binds a payment to one specific spawn, so a transaction can't be replayed for a second crawler.
+- The crawler config comes from the server-side intent, not from the confirm request, so it can't be swapped after paying.
+- Classic SPL Token and Token-2022 are both supported for the future token-burn phase.
+
+**The code is open.** Everything that touches your wallet is in this repository; read it before you sign.
+
+## Features
+
+**Swarm map.** Force-directed live map of every crawler and wallet. Filter by narrative (AI, Dogs, Cats, PolitiFi, Gaming, RWA, DePIN, Celeb), source, chain and minimum reputation. Network stats and the epoch timer on top, live signal feed on the side.
+
+**Spawner.** Four tiers with different limits:
+
+| Tier | Targets | Fastest cycle | Reward boost |
+|---|---|---|---|
+| Larva | 3 | 30 min | 1× |
+| Worker | 8 | 10 min | 1.15× |
+| Soldier | 20 | 5 min | 1.35× |
+| Queen | 50 | 1 min | 1.75× |
+
+**Reputation.** 0–1000 with grades S/A/B/C/D, recalculated continuously (`src/lib/reputation.ts`):
 
 | Component | Weight | Measured as |
 |---|---|---|
-| Signal quality | 40% | `(hits + 2.5) / (signals + 5)`: smoothed so a 1/1 newcomer doesn't top the board |
+| Signal quality | 40% | `(hits + 2.5) / (signals + 5)`: smoothed so a 1-for-1 newcomer doesn't top the board |
 | Uptime | 25% | time online / time since spawn |
-| Data volume | 20% | `log10(items + 1) / 5`, capped at 1, so spam doesn't pay |
-| Stake | 15% | `log10(burned + 1) / 5` |
+| Data volume | 20% | `log10(items + 1) / 5`, capped, so spam doesn't pay |
+| Stake | 15% | tier stake, log-scaled |
 
-Grades: S ≥ 800, A ≥ 650, B ≥ 500, C ≥ 350, D below that.
+**Marketplace.** Sell outright or rent for 1–30 days; while rented, rewards go to the renter and the crawler returns automatically when the lease ends.
+
+**Leaderboard.** Crawlers by five metrics, plus top wallets by average reputation × fleet size.
+
+**Governance.** Credit-weighted proposals on crawl priorities, reward split and network parameters, re-voting allowed until close.
+
+## Run it locally
+
+```bash
+git clone https://github.com/h100envy/crawl-hive.git
+cd crawl-hive
+npm install
+npm run dev            # http://localhost:3000, simulated payments
+```
+
+Node 20+. Without configuration the app runs fully simulated: a demo wallet with 250k credits is created if Phantom is not installed.
+
+### Real payments
+
+Copy `.env.example` to `.env.local`:
+
+```bash
+PAYMENT_TOKEN=sol                              # sol now; "token" after the project token launches
+SOLANA_CLUSTER=devnet                          # or mainnet-beta
+SOLANA_RPC_URL=https://api.devnet.solana.com
+# SPAWN_SOL_RECIPIENT=...                      # defaults to the project treasury
+# SPAWN_PRICE_SOL=0.001,0.002,0.003,0.005      # optional per-tier prices (larva..queen)
+```
+
+Default tier prices in SOL: 0.05 / 0.2 / 0.75 / 2.5.
+
+**Devnet helper.** `node scripts/devnet-setup.mjs sol` writes `.env.local` and creates a faucet wallet in `.devnet/` (gitignored). If the public airdrop is dry, top it up at [faucet.solana.com](https://faucet.solana.com); the Spawn page then shows a *Get test SOL* button. Switch Phantom to devnet in Settings → Developer settings.
+
+**End-to-end check without a browser:** `node scripts/e2e-spawn.mjs <keypair.json> http://localhost:3000` (a local keypair plays the role of Phantom and also checks that a replayed transaction is rejected).
 
 ## Architecture
 
 ```
 src/
   app/
-    page.tsx                 Swarm dashboard
+    page.tsx                 swarm dashboard
     spawn/ my/ market/ leaderboard/ governance/ crawler/[id]/
     api/
-      swarm/                 GET graph + stats + recent signals
-      crawlers/              GET list (filters), POST spawn
-      crawlers/[id]/         GET detail, PATCH status / targets
-      market/                GET listings, POST list
-      market/[id]/           POST buy/rent, DELETE delist
-      leaderboard/           GET ?sort=
-      governance/            GET proposals, POST create
-      governance/[id]/       POST vote
-      wallet/[address]/      GET balance, burned, fleet
-      stream/                GET Server-Sent Events: signals, spawns, trades
-  components/
-    swarm/                   map (react-force-graph-2d on canvas) and its filters
-    ui/                      button, card, badge, fields, toast
-    wallet-provider.tsx      Phantom / demo wallet
+      swarm/                 graph + stats + recent signals
+      crawlers/ [id]/        list, detail, pause/resume, edit targets
+      spawn/intent/          build the unsigned payment tx
+      spawn/confirm/         verify the tx on-chain, create the crawler
+      market/ [id]/          list, buy / rent, delist
+      leaderboard/ governance/ wallet/ config/ faucet/
+      stream/                Server-Sent Events: signals, spawns, trades
+  components/                swarm map (react-force-graph-2d), UI kit, wallet provider
   lib/
-    types.ts economy.ts reputation.ts
-    server/store.ts          in-memory state + simulation tick
-    server/seed.ts           deterministic seed network
+    economy.ts reputation.ts types.ts
+    server/store.ts          network state + simulation tick
+    server/solana.ts         payment intents, on-chain verification, devnet faucet
 db/schema.sql                target Postgres schema
 ```
 
-- **Stack:** Next.js 16 (App Router, Cache Components), React 19, Tailwind 4, react-force-graph-2d, lucide-react. UI primitives are hand-rolled in the shadcn style instead of pulling in the CLI.
-- **Auth:** the API trusts an `x-wallet` header for reads, market and votes; spawns in on-chain mode are authenticated by the signed payment itself. Production needs SIWS for the rest.
-- **Real-time:** one SSE connection per tab (`/api/stream`); its timer also drives the simulation tick.
-- **Simulation:** each tick, a crawler accrues items from `targets × cycles`, fires signals as a Poisson process, turns them into hits with a hidden per-crawler skill, and earns its share of emission.
+**Stack:** Next.js 16 (App Router, Cache Components) · React 19 · Tailwind 4 · `@solana/web3.js` + `@solana/spl-token` · react-force-graph-2d · lucide-react.
 
 ## Roadmap
 
-1. **SIWS auth:** replace the `x-wallet` header with a signed message and a session.
-2. **Postgres:** move `store.ts` onto `db/schema.sql`, keep the same function signatures.
-3. **Real workers:** a job queue and Playwright/API workers per source; signals scored on outcome (price move, confirmation) to compute real hits.
-4. **Snapshot voting:** vote weight from a balance snapshot at proposal start, not the live balance.
-5. **Governance → params:** apply winning `params` and `priority` proposals automatically (reputation weights, narrative boosts).
-6. **Token launch:** flip `PAYMENT_TOKEN=token`, set `TOKEN_MINT` and `TOKEN_SYMBOL`; marketplace and governance move from in-app credits to the token.
+- [x] Swarm map, reputation, marketplace, leaderboard, governance
+- [x] Real on-chain spawn payments through Phantom, server-side verification
+- [ ] Real crawler workers (X, Telegram, on-chain, docs) with outcome-based signal scoring
+- [ ] Postgres persistence (`db/schema.sql`)
+- [ ] Sign-In With Solana for market and governance actions
+- [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks
+- [ ] Governance results applied automatically (narrative boosts, reputation weights)
+
+## Known issues
+
+- On the production build the home page occasionally logs a recoverable React hydration warning (#418) in the console. It has no visible effect: React re-renders that part on the client. Being tracked.
+
+---
+
+<p align="center"><img src="public/brand/crawlhive-mark.svg" width="56" alt=""><br><sub>CrawlHive · built in the open</sub></p>

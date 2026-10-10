@@ -41,7 +41,7 @@ export default function Dashboard() {
         action={
           <Link href="/spawn">
             <Button size="lg">
-              <Flame className="size-4" /> Burn &amp; spawn
+              <Flame className="size-4" /> Spawn a crawler
             </Button>
           </Link>
         }

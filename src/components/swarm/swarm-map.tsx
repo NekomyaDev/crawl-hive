@@ -38,6 +38,10 @@ export function SwarmMap({
   height?: number;
 }) {
   const [nodes, setNodes] = useState<GNode[]>([]);
+  // Канвас монтируем только после гидратации: иначе, если чанк уже в кэше, клиент рендерит
+  // граф сразу, а в HTML с сервера была заглушка — React ругается на расхождение (#418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [links, setLinks] = useState<LinkIn[]>([]);
   const byId = useRef(new Map<string, GNode>());
   const pulses = useRef(new Map<string, number>());
@@ -157,15 +161,21 @@ export function SwarmMap({
       </div>
 
       <div className="relative">
-        <SwarmCanvas
-          nodes={nodes}
-          links={links as never}
-          isVisible={isVisible}
-          selectedId={selected ? String(selected.id) : null}
-          pulses={pulses}
-          onSelect={setSelected}
-          height={height}
-        />
+        {mounted ? (
+          <SwarmCanvas
+            nodes={nodes}
+            links={links as never}
+            isVisible={isVisible}
+            selectedId={selected ? String(selected.id) : null}
+            pulses={pulses}
+            onSelect={setSelected}
+            height={height}
+          />
+        ) : (
+          <div className="grid place-items-center text-sm text-muted" style={{ height }}>
+            Hatching the swarm…
+          </div>
+        )}
         {selected && <NodePanel node={selected} onClose={() => setSelected(null)} />}
       </div>
     </Card>

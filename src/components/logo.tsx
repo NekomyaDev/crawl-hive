@@ -1,11 +1,10 @@
-import { useId } from "react";
-
 // Знак CrawlHive: мантия спрута с паучьими глазами и восемь суставчатых ног, переходящих в щупальца.
 // Тот же рисунок лежит в public/brand/crawlhive-mark.svg и (на плашке) в app/icon.svg.
 export function Logo({ size = 28 }: { size?: number }) {
-  const id = useId();
-  const grad = `${id}-body`;
-  const legs = `${id}-legs`;
+  // Статичные id: лого рендерится и в заглушке навигации, и в самой навигации, а useId в разных ветках
+  // Suspense давал расхождение при гидратации. Определения одинаковые, поэтому дубли id безвредны.
+  const grad = "crawlhive-logo-body";
+  const legs = "crawlhive-logo-legs";
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
       <defs>
