@@ -12,6 +12,10 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square">
 </p>
 
+<p align="center">
+  <a href="https://crawlhive.193-233-233-118.sslip.io"><b>🐝 Open the live app →</b></a>
+</p>
+
 ---
 
 ## What is CrawlHive
@@ -49,6 +53,29 @@ flowchart LR
 
 Full specification format, sources and limits: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
 
+## Your crawler, your rules
+
+Every crawler you spawn gets a **specification**: what it should look for, written in plain language, plus filters and a scoring rule. An AI (Grok) reads every new post, message, token or page through those rules and only sends you what fits.
+
+<p align="center">
+  <img src="docs/images/spawn-spec.png" alt="Crawler specification at spawn time" width="100%">
+  <br><sub>Writing the specification while spawning: instructions, keywords, signal types, minimum confidence, on-chain filters and what counts as a hit.</sub>
+</p>
+
+Signals are **yours alone**. They land in *My Signals* with links to the source, and each one that points at a token is checked against the real price after your horizon: a **hit** or a **miss**. Other users only see that your crawler fired.
+
+<p align="center">
+  <img src="docs/images/my-signals.png" alt="My Signals: private inbox with hit/miss scoring" width="100%">
+  <br><sub>My Signals: a real on-chain crawler's output. 10 signals scored against DexScreener prices 15 minutes later, 5 hits.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/crawler-live.png" alt="Live crawler page: status, specification, private signals" width="80%">
+  <br><sub>A live crawler's page as its owner sees it: crawl status, editable specification, reputation breakdown, private signals.</sub>
+</p>
+
+What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
+
 ## Status: read this first
 
 CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out later.
@@ -69,7 +96,7 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 <table>
   <tr>
     <td width="50%"><img src="docs/images/spawn.png" alt="Spawn a crawler"><br><sub><b>Spawn.</b> Tier, source, narratives, targets, frequency. Price is paid in SOL through Phantom.</sub></td>
-    <td width="50%"><img src="docs/images/crawler.png" alt="Crawler page"><br><sub><b>Crawler page.</b> Stats, reputation breakdown, its latest signals; the owner edits targets or lists it.</sub></td>
+    <td width="50%"><img src="docs/images/crawler.png" alt="Crawler page"><br><sub><b>Crawler page (public view).</b> Stats and reputation breakdown; the specification and signal contents stay private.</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/leaderboard.png" alt="Leaderboard"><br><sub><b>Leaderboard.</b> Rank by reputation, rewards, data volume, signal quality or uptime, plus top wallets.</sub></td>
@@ -155,7 +182,14 @@ npm install
 npm run dev            # http://localhost:3000, simulated payments
 ```
 
-Node 20+. Without configuration the app runs fully simulated: a demo wallet with 250k credits is created if Phantom is not installed.
+Node 20+. Without configuration payments are simulated and a demo wallet with 250k credits is created if Phantom is not installed. Telegram, on-chain and page-change crawlers work without any API key; X crawlers need `XAI_API_KEY`.
+
+### Docker
+
+```bash
+cp .env.example .env      # set PAYMENT_TOKEN, SOLANA_*, XAI_API_KEY
+docker compose up -d --build    # serves on 127.0.0.1:8796, state in ./data
+```
 
 ### Real payments
 
