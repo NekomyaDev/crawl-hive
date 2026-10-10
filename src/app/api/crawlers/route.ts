@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 // Симулированный спавн. Когда настроен минт, спавн идёт только через /api/spawn/intent + confirm.
 export async function POST(req: NextRequest) {
   return handle(async () => {
-    if (isOnchain()) throw new ApiError("On-chain burn required: use /api/spawn/intent", 409);
+    if (isOnchain()) throw new ApiError("On-chain payment required: use /api/spawn/intent", 409);
     return spawnCrawler(walletFrom(req), await body<SpawnInput>(req));
   });
 }

@@ -52,7 +52,7 @@ export function SignalFeed({ signals, max = 30, showCrawler = true }: { signals:
           </div>
           <p className={cn("mt-1 text-[13px] leading-snug", s.redacted && "flex items-center gap-1.5 text-muted")}>
             {s.redacted && <Lock className="size-3" />}
-            {s.ticker && !s.redacted && <span className="num mr-1 text-honey">${s.ticker}</span>}
+            {s.live && s.ticker && !s.redacted && <span className="num mr-1 text-honey">${s.ticker}</span>}
             {s.text}
           </p>
           {!!s.urls?.length && (

@@ -32,11 +32,15 @@ export async function crawlOnchain(job: LiveJob): Promise<SourceResult> {
 
   const now = Date.now();
   const candidates: Candidate[] = [];
+  // Клоны: несколько токенов с одним тикером — частая ловушка, помечаем в тексте сигнала.
+  const bySymbol = new Map<string, number>();
+  for (const p of pairs.values()) bySymbol.set(p.baseToken.symbol.toUpperCase(), (bySymbol.get(p.baseToken.symbol.toUpperCase()) ?? 0) + 1);
   for (const [addr, p] of pairs) {
     const liq = p.liquidity?.usd ?? 0;
     const vol1h = p.volume?.h1 ?? 0;
     const ageH = p.pairCreatedAt ? (now - p.pairCreatedAt) / 3600_000 : Infinity;
-    const label = `${p.baseToken.name} ($${p.baseToken.symbol})`;
+    const clones = bySymbol.get(p.baseToken.symbol.toUpperCase()) ?? 1;
+    const label = `${p.baseToken.name} ($${p.baseToken.symbol}, CA ${addr.slice(0, 4)}…${addr.slice(-4)}${clones > 1 ? `, ⚠ ${clones} tokens share this ticker` : ""})`;
     const facts = `liq ${usd(liq)}, vol 1h ${usd(vol1h)}, FDV ${usd(p.fdv)}, 1h ${p.priceChange?.h1 ?? 0}%`;
 
     if (watch.includes(addr)) {
