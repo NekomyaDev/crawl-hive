@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { body, handle, walletFrom } from "@/lib/server/http";
-import { listCrawlers, spawnCrawler, type SpawnInput } from "@/lib/server/store";
+import { ApiError, listCrawlers, spawnCrawler, type SpawnInput } from "@/lib/server/store";
+import { isOnchain } from "@/lib/server/solana";
 
 export async function GET(req: NextRequest) {
   return handle(() => {
@@ -14,7 +15,10 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// Спавн: сжигаем $CRAWL и создаём краулера.
+// Симулированный спавн. Когда настроен минт, спавн идёт только через /api/spawn/intent + confirm.
 export async function POST(req: NextRequest) {
-  return handle(async () => spawnCrawler(walletFrom(req), await body<SpawnInput>(req)));
+  return handle(async () => {
+    if (isOnchain()) throw new ApiError("On-chain burn required: use /api/spawn/intent", 409);
+    return spawnCrawler(walletFrom(req), await body<SpawnInput>(req));
+  });
 }

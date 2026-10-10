@@ -42,3 +42,8 @@ next-env.d.ts
 
 # exFAT
 ._*
+
+# devnet ключи (mint authority, тестовые кошельки)
+.devnet/
+
+!.env.example

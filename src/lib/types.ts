@@ -42,6 +42,8 @@ export interface Crawler {
   frequencyMin: number; // как часто проходит по целям
   tier: Tier;
   burned: number; // сколько $CRAWL сожжено при спавне
+  // On-chain оплата спавна: SOL (фаза 1) или сжигание $CRAWL (фаза 2). Нет поля — спавн симулирован.
+  payment?: { unit: "SOL" | "$CRAWL"; amount: number; tx: string };
   status: CrawlerStatus;
   createdAt: number;
   stats: CrawlerStats;
@@ -127,4 +129,17 @@ export interface WalletInfo {
   burned: number;
   crawlers: number;
   reputation: number; // средняя репутация краулеров кошелька
+  onchain?: { tokens: number; sol: number }; // реальный баланс кошелька, если включён on-chain режим
+}
+
+export type PaymentMode = "simulated" | "sol" | "crawl";
+
+export interface PublicConfig {
+  payment: PaymentMode; // simulated — без сети; sol — оплата в SOL; crawl — сжигание $CRAWL
+  cluster: string; // devnet | mainnet-beta | ...
+  mint: string | null; // минт $CRAWL (только в режиме crawl)
+  decimals: number;
+  solRecipient: string | null; // куда уходит SOL в режиме sol
+  solBurned: boolean; // true, если получатель — incinerator
+  faucet: boolean; // на devnet можно получить тестовые средства
 }

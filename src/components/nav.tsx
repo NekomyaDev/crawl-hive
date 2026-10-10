@@ -51,7 +51,7 @@ export function NavShell({ path }: { path: string }) {
       {/* десктоп: боковая панель */}
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-line bg-panel/60 p-3 lg:flex">
         <Link href="/" className="mb-6 flex items-center gap-2 px-2 pt-1">
-          <Logo />
+          <Logo size={34} />
           <span className="text-lg font-bold tracking-tight">
             Crawl<span className="text-honey">Hive</span>
           </span>
@@ -80,7 +80,7 @@ export function NavShell({ path }: { path: string }) {
       <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-2.5">
           <Link href="/" className="flex items-center gap-2">
-            <Logo size={24} />
+            <Logo size={30} />
             <span className="font-bold">
               Crawl<span className="text-honey">Hive</span>
             </span>

@@ -13,6 +13,7 @@ import { SignalFeed } from "@/components/signal-feed";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
+import { useConfig, explorerTx } from "@/lib/client/use-config";
 import { patch, post } from "@/lib/client/api";
 import { TIERS, TOKEN } from "@/lib/economy";
 import type { PublicCrawler, Signal } from "@/lib/types";
@@ -31,6 +32,7 @@ export function CrawlerView() {
   const { address } = useWallet();
   const toast = useToast();
   const { data: c, error, reload } = useApi<Detail>(`/api/crawlers/${id}`, 4000);
+  const cfg = useConfig();
 
   if (error) return <div className="py-20 text-center text-muted">{error}</div>;
   if (!c) return <div className="py-20 text-center text-muted">Loading crawler…</div>;
@@ -68,8 +70,22 @@ export function CrawlerView() {
           </div>
           <div className="mt-2 text-xs text-muted">
             owner <span className="num text-fg">{short(c.owner)}</span>
-            {isOwner && " (you)"} · spawned {timeAgo(c.createdAt)} · burned{" "}
-            <span className="num text-honey">{fmt(c.burned)}</span> {TOKEN}
+            {isOwner && " (you)"} · spawned {timeAgo(c.createdAt)} ·{" "}
+            {c.payment ? (
+              <>
+                {c.payment.unit === "SOL" ? "paid" : "burned"}{" "}
+                <span className="num text-honey">{c.payment.unit === "SOL" ? c.payment.amount : fmt(c.payment.amount)}</span> {c.payment.unit}{" "}
+                on-chain (
+                <a href={explorerTx(c.payment.tx, cfg?.cluster ?? "devnet")} target="_blank" rel="noreferrer" className="num text-fg hover:text-honey">
+                  tx {c.payment.tx.slice(0, 6)}…
+                </a>
+                )
+              </>
+            ) : (
+              <>
+                burned <span className="num text-honey">{fmt(c.burned)}</span> {TOKEN}
+              </>
+            )}
             {c.renter && (
               <>
                 {" "}

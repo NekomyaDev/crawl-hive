@@ -26,7 +26,9 @@ create table crawlers (
   frequency_min  int not null check (frequency_min between 1 and 1440),
   tier           crawl_tier not null,
   burned         numeric(20, 2) not null,
-  burn_tx        text,                          -- подпись транзакции сжигания
+  payment_unit   text,                          -- SOL | $CRAWL, null для симулированного спавна
+  payment_amount numeric(20, 9),
+  payment_tx     text unique,                   -- подпись транзакции оплаты
   status         crawl_status not null default 'active',
   created_at     timestamptz not null default now(),
   -- счётчики, которые обновляют воркеры

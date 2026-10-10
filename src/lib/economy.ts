@@ -16,6 +16,18 @@ export const TIERS: Record<
 
 export const TIER_ORDER: Tier[] = ["larva", "worker", "soldier", "queen"];
 
+// Фаза 1 (до запуска токена): спавн оплачивается в SOL. Фаза 2: сжигание $CRAWL по TIERS.burn.
+// Переключается переменной PAYMENT_TOKEN=sol|crawl.
+export const TIER_PRICE_SOL: Record<Tier, number> = {
+  larva: 0.05,
+  worker: 0.2,
+  soldier: 0.75,
+  queen: 2.5,
+};
+
+// Куда уходит SOL, если не задан SPAWN_SOL_RECIPIENT: incinerator, с него вывести нельзя — это сжигание.
+export const SOL_INCINERATOR = "1nc1nerator11111111111111111111111111111111";
+
 // Новый демо-кошелёк получает стартовый баланс, чтобы можно было пощупать спавн.
 export const DEMO_AIRDROP = 250_000;
 

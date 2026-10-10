@@ -11,7 +11,9 @@ import { NarrativeBadge, SourceBadge, TierBadge } from "@/components/ui/badge";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { post } from "@/lib/client/api";
-import { TIERS, TIER_ORDER, TOKEN } from "@/lib/economy";
+import { useConfig } from "@/lib/client/use-config";
+import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
+import { TIERS, TIER_ORDER, TIER_PRICE_SOL, TOKEN } from "@/lib/economy";
 import { computeReputation } from "@/lib/reputation";
 import { CHAINS, NARRATIVES, SOURCES, type Chain, type Narrative, type PublicCrawler, type Source, type Tier } from "@/lib/types";
 import { NARRATIVE_LABEL, SOURCE_META, cn, fmt } from "@/lib/utils";
@@ -51,12 +53,25 @@ export default function SpawnPage() {
   const [draft, setDraft] = useState("");
   const [freq, setFreq] = useState(15);
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState<BurnStep | null>(null);
+  const [dripping, setDripping] = useState(false);
+  const cfg = useConfig();
+  const payment = cfg?.payment ?? "simulated";
+  const onchain = payment !== "simulated";
+  // Фаза 1 — платим SOL, фаза 2 — сжигаем $CRAWL; в симуляции — внутренний $CRAWL.
+  const priceOf = (k: Tier) => (payment === "sol" ? TIER_PRICE_SOL[k] : TIERS[k].burn);
+  const unit = payment === "sol" ? "SOL" : TOKEN;
+  const fmtPrice = (n: number) => (payment === "sol" ? `${n}` : fmt(n));
 
   const t = TIERS[tier];
   const effFreq = Math.max(freq, t.minFrequency);
   const itemsPerHour = Math.round((targets.length * 40 * 60) / (effFreq * 60) * 60) || 0;
-  const balance = info?.balance ?? 0;
-  const enough = balance >= t.burn;
+  // On-chain сжигаем реальные токены из кошелька, иначе — внутренний баланс.
+  const balance =
+    payment === "sol" ? (info?.onchain?.sol ?? 0) : payment === "crawl" ? (info?.onchain?.tokens ?? 0) : (info?.balance ?? 0);
+  const price = priceOf(tier);
+  const needPhantom = onchain && !!address && mode !== "phantom";
+  const enough = balance >= price + (payment === "sol" ? 0.00002 : 0);
   // Стартовая репутация: точность ещё нейтральная, uptime 100%, данных ноль, плюс вклад сожжённого.
   const startRep = computeReputation({
     burned: t.burn,
@@ -85,39 +100,62 @@ export default function SpawnPage() {
 
   const spawn = async () => {
     if (!address) return connect();
+    if (needPhantom) return toast("On-chain burn needs Phantom. Disconnect the demo wallet and connect Phantom.", "error");
+    const payload = { name, source, chain, narratives, targets, frequencyMin: effFreq, tier };
     setBusy(true);
     try {
-      const c = await post<PublicCrawler>("/api/crawlers", {
-        name,
-        source,
-        chain,
-        narratives,
-        targets,
-        frequencyMin: effFreq,
-        tier,
-      });
-      toast(`🔥 Burned ${fmt(t.burn)} ${TOKEN}. ${c.name} joined the swarm.`);
+      const c = onchain ? await spawnWithBurn(payload, setStep) : await post<PublicCrawler>("/api/crawlers", payload);
+      toast(
+        payment === "sol"
+          ? `Paid ${price} SOL on-chain. ${c.name} joined the swarm.`
+          : `🔥 Burned ${fmt(price)} ${TOKEN}${onchain ? " on-chain" : ""}. ${c.name} joined the swarm.`,
+      );
       await refresh();
       router.push(`/crawler/${c.id}`);
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
       setBusy(false);
+      setStep(null);
     }
+  };
+
+  // Devnet: получить тестовые $CRAWL и SOL на комиссию.
+  const drip = async () => {
+    setDripping(true);
+    try {
+      const r = await post<{ signature: string; tokens: number; sol: number }>("/api/faucet");
+      toast(r.tokens ? `Got ${fmt(r.tokens)} test ${TOKEN}${r.sol ? ` and ${r.sol} SOL for fees` : ""}` : `Got ${r.sol} devnet SOL`);
+      await refresh();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setDripping(false);
+    }
+  };
+
+  const STEP_LABEL: Record<BurnStep, string> = {
+    prepare: "Preparing transaction…",
+    sign: "Confirm in Phantom…",
+    confirm: "Verifying burn on-chain…",
   };
 
   return (
     <>
       <PageHeader
         title="Spawn a crawler"
-        sub={`Burn ${TOKEN} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`}
+        sub={
+          payment === "sol"
+            ? `Pay SOL to hatch a crawler (pre-launch phase: ${TOKEN} burns switch on after the token launches). Higher tiers get more targets, faster crawl cycles and a reward boost.`
+            : `Burn ${TOKEN} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`
+        }
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex flex-col gap-5">
           {/* 1. Тир */}
           <Card>
-            <CardHeader title="1 · Tier" sub="What you burn decides what the crawler can do" />
+            <CardHeader title="1 · Tier" sub={`What you ${payment === "sol" ? "pay" : "burn"} decides what the crawler can do`} />
             <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
               {TIER_ORDER.map((k) => {
                 const v = TIERS[k];
@@ -137,8 +175,8 @@ export default function SpawnPage() {
                       <span className="font-semibold">{v.label}</span>
                       {k === "queen" && <span className="text-[10px] text-honey">♛</span>}
                     </div>
-                    <div className="num mt-2 text-lg text-honey">{fmt(v.burn)}</div>
-                    <div className="text-[11px] text-muted">{TOKEN} burned</div>
+                    <div className="num mt-2 text-lg text-honey">{fmtPrice(priceOf(k))}</div>
+                    <div className="text-[11px] text-muted">{payment === "sol" ? "SOL" : `${TOKEN} burned`}</div>
                     <ul className="mt-2 space-y-0.5 text-[11px] text-muted">
                       <li>{v.maxTargets} targets</li>
                       <li>every {v.minFrequency} min</li>
@@ -288,15 +326,21 @@ export default function SpawnPage() {
 
               <div className="mt-4 rounded-lg border border-honey/30 bg-honey/5 p-3">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-sm">You burn</span>
+                  <span className="text-sm">{payment === "sol" ? "You pay" : "You burn"}</span>
                   <span className="num text-xl font-bold text-honey">
-                    {fmt(t.burn)} <span className="text-xs">{TOKEN}</span>
+                    {fmtPrice(price)} <span className="text-xs">{unit}</span>
                   </span>
                 </div>
                 {address && (
                   <div className={cn("num mt-1 text-right text-[11px]", enough ? "text-muted" : "text-danger")}>
-                    balance {fmt(balance)}
+                    {onchain ? "in wallet" : "balance"} {payment === "sol" ? balance.toFixed(3) : fmt(balance)} {payment === "sol" && "SOL"}
+                    {payment === "crawl" && info?.onchain && <span> · {info.onchain.sol.toFixed(3)} SOL</span>}
                   </div>
+                )}
+                {cfg?.faucet && address && mode === "phantom" && (
+                  <button onClick={drip} disabled={dripping} className="mt-1 w-full text-right text-[11px] text-honey hover:underline disabled:opacity-50">
+                    {dripping ? "Sending…" : `Get test ${payment === "sol" ? "SOL" : TOKEN} (devnet)`}
+                  </button>
                 )}
               </div>
 
@@ -312,16 +356,55 @@ export default function SpawnPage() {
                 size="lg"
                 className="mt-4 w-full"
                 onClick={spawn}
-                disabled={busy || (!!address && (problems.length > 0 || !enough))}
+                disabled={busy || (!!address && (problems.length > 0 || !enough || needPhantom))}
               >
                 <Flame className="size-4" />
-                {!address ? "Connect wallet to spawn" : busy ? "Burning…" : `Burn ${fmt(t.burn)} & spawn`}
+                {!address
+                  ? "Connect wallet to spawn"
+                  : needPhantom
+                    ? "Phantom required"
+                    : step
+                      ? STEP_LABEL[step]
+                      : busy
+                        ? "Burning…"
+                        : payment === "sol"
+                          ? `Pay ${price} SOL & spawn`
+                          : `Burn ${fmt(price)} & spawn`}
               </Button>
-              {mode === "demo" && (
-                <p className="mt-2 text-center text-[11px] text-muted">Demo wallet: the burn is simulated, nothing leaves a real wallet.</p>
-              )}
-              {mode === "phantom" && (
-                <p className="mt-2 text-center text-[11px] text-muted">MVP: the burn is simulated server-side; on-chain burn comes next.</p>
+              {cfg && (
+                <p className="mt-2 text-center text-[11px] text-muted">
+                  {payment === "sol" && (
+                    <>
+                      Real SOL payment on <span className="text-fg">{cfg.cluster}</span>
+                      {cfg.solBurned ? (
+                        <>, sent to the Solana incinerator: burned for good.</>
+                      ) : (
+                        <>
+                          {" "}
+                          to the treasury <span className="num">{cfg.solRecipient?.slice(0, 4)}…{cfg.solRecipient?.slice(-4)}</span>.
+                        </>
+                      )}{" "}
+                      Phantom must be on the same network.
+                    </>
+                  )}
+                  {payment === "crawl" && (
+                    <>
+                      Real SPL burn of {TOKEN} on <span className="text-fg">{cfg.cluster}</span>
+                      {cfg.mint && (
+                        <>
+                          {" "}
+                          (
+                          <a className="num hover:text-honey" href={`https://explorer.solana.com/address/${cfg.mint}${cfg.cluster === "mainnet-beta" ? "" : `?cluster=${cfg.cluster}`}`} target="_blank" rel="noreferrer">
+                            mint {cfg.mint.slice(0, 4)}…{cfg.mint.slice(-4)}
+                          </a>
+                          )
+                        </>
+                      )}
+                      . Phantom must be on the same network.
+                    </>
+                  )}
+                  {payment === "simulated" && "Simulated burn: on-chain payment is off on this server, nothing leaves a real wallet."}
+                </p>
               )}
             </div>
           </Card>

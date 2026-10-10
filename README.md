@@ -1,3 +1,5 @@
+<p align="center"><img src="public/brand/crawlhive-mark.svg" width="120" alt="CrawlHive"></p>
+
 # CrawlHive
 
 **Burn $CRAWL, spawn a crawler, join the swarm.**
@@ -11,15 +13,45 @@ The flywheel: more trading → more burns → more crawlers → more data → be
 | Part | State |
 |---|---|
 | Swarm map, filters, live signal stream | works, on a simulated network (130 seeded crawlers, 28 wallets) |
-| Spawner (tiers, sources, targets, frequency) | works, the burn is simulated server-side |
+| Spawner (tiers, sources, targets, frequency) | works; payment is **on-chain via Phantom** (SOL now, $CRAWL burn after launch) or simulated |
 | Reputation | works, real formula over simulated stats |
 | Marketplace (sell / rent, 2.5% fee burn) | works |
 | Leaderboard (crawlers + wallets) | works |
 | Governance (token-weighted votes, new proposals) | works |
 | Wallet | Phantom connect if installed, otherwise a demo wallet with 250k $CRAWL |
-| On-chain burn, real crawlers, Postgres | **not yet**: see Roadmap |
+| Real crawlers, Postgres, SIWS auth | **not yet**: see Roadmap |
 
 State lives in server memory and resets on restart. Signal tickers are fictional on purpose.
+
+## Spawn payment: two phases
+
+| Phase | `PAYMENT_TOKEN` | What the wallet signs | Where it goes |
+|---|---|---|---|
+| 1 · pre-launch | `sol` | `SystemProgram.transfer` of the tier price in SOL + memo | Solana incinerator (burned) or `SPAWN_SOL_RECIPIENT` treasury |
+| 2 · after launch | `crawl` | SPL `burnChecked` of the tier's $CRAWL + memo | burned, supply goes down |
+| demo | unset | nothing | simulated, in-app balance |
+
+Tier prices in SOL: Larva 0.05 · Worker 0.2 · Soldier 0.75 · Queen 2.5 (`TIER_PRICE_SOL` in `src/lib/economy.ts`).
+
+How a spawn is verified, same in both phases:
+
+1. `POST /api/spawn/intent` validates the crawler config, checks the wallet balance and returns an unsigned transaction with the memo `crawlhive:spawn:<intentId>`.
+2. Phantom signs and sends it (`signAndSendTransaction`).
+3. `POST /api/spawn/confirm` fetches the transaction from RPC and checks: it succeeded, it is signed by the wallet, the memo matches this intent, and the transfer/burn covers the tier price to the right recipient/mint. The signature can't be reused; the crawler config comes from the intent, not from the second request.
+
+Classic SPL Token and Token-2022 mints both work (the program is read from the mint account).
+
+### Devnet setup
+
+```bash
+node scripts/devnet-setup.mjs sol      # or: crawl (also creates a test $CRAWL mint)
+```
+
+It writes `.env.local` and creates a faucet wallet in `.devnet/` (gitignored). The public devnet airdrop is often dry; if so, top up the printed faucet address at https://faucet.solana.com. With a funded faucet, the Spawn page shows a **Get test SOL / $CRAWL** button. Switch Phantom to devnet (Settings → Developer settings → Testnet mode).
+
+End-to-end check without a browser (a keypair plays Phantom): `node scripts/e2e-spawn.mjs .devnet/tester.json http://localhost:3000`.
+
+All variables: `.env.example`.
 
 ## Run
 
@@ -100,15 +132,15 @@ db/schema.sql                target Postgres schema
 ```
 
 - **Stack:** Next.js 16 (App Router, Cache Components), React 19, Tailwind 4, react-force-graph-2d, lucide-react. UI primitives are hand-rolled in the shadcn style instead of pulling in the CLI.
-- **Auth:** the API trusts an `x-wallet` header. That is fine for a demo; production needs a signed message (SIWS).
+- **Auth:** the API trusts an `x-wallet` header for reads, market and votes; spawns in on-chain mode are authenticated by the signed payment itself. Production needs SIWS for the rest.
 - **Real-time:** one SSE connection per tab (`/api/stream`); its timer also drives the simulation tick.
 - **Simulation:** each tick, a crawler accrues items from `targets × cycles`, fires signals as a Poisson process, turns them into hits with a hidden per-crawler skill, and earns its share of emission.
 
 ## Roadmap
 
-1. **On-chain burn:** SPL `burn` instruction signed in Phantom; the server verifies the tx signature before spawning (`crawlers.burn_tx`).
-2. **SIWS auth:** replace the `x-wallet` header with a signed message and a session.
-3. **Postgres:** move `store.ts` onto `db/schema.sql`, keep the same function signatures.
-4. **Real workers:** a job queue and Playwright/API workers per source; signals scored on outcome (price move, confirmation) to compute real hits.
-5. **Snapshot voting:** vote weight from a balance snapshot at proposal start, not the live balance.
-6. **Governance → params:** apply winning `params` and `priority` proposals automatically (reputation weights, narrative boosts).
+1. **SIWS auth:** replace the `x-wallet` header with a signed message and a session.
+2. **Postgres:** move `store.ts` onto `db/schema.sql`, keep the same function signatures.
+3. **Real workers:** a job queue and Playwright/API workers per source; signals scored on outcome (price move, confirmation) to compute real hits.
+4. **Snapshot voting:** vote weight from a balance snapshot at proposal start, not the live balance.
+5. **Governance → params:** apply winning `params` and `priority` proposals automatically (reputation weights, narrative boosts).
+6. **Token launch:** flip `PAYMENT_TOKEN=crawl`, set `CRAWL_MINT`; marketplace and governance move from in-app credits to the token.

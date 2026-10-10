@@ -362,9 +362,9 @@ export interface SpawnInput {
   tier: Tier;
 }
 
-export function spawnCrawler(wallet: string, input: SpawnInput): PublicCrawler {
-  const s = state();
-  const tier = TIERS[input.tier];
+// Проверка параметров спавна. Возвращает нормализованный ввод; ничего не меняет в состоянии.
+export function validateSpawn(input: SpawnInput): SpawnInput {
+  const tier = TIERS[input?.tier];
   if (!tier) throw new ApiError("Unknown tier");
   if (!SOURCES.includes(input.source)) throw new ApiError("Unknown source");
   if (!CHAINS.includes(input.chain)) throw new ApiError("Unknown chain");
@@ -378,32 +378,59 @@ export function spawnCrawler(wallet: string, input: SpawnInput): PublicCrawler {
   const freq = Math.round(Number(input.frequencyMin));
   if (!(freq >= tier.minFrequency && freq <= 1440))
     throw new ApiError(`${tier.label} tier crawls at most every ${tier.minFrequency} min`);
+  return { name, source: input.source, chain: input.chain, narratives, targets, frequencyMin: freq, tier: input.tier };
+}
 
-  burn(s, wallet, tier.burn);
+// Симулированный спавн: списываем из внутреннего баланса. Используется, когда минт не настроен.
+export function spawnCrawler(wallet: string, input: SpawnInput): PublicCrawler {
+  const s = state();
+  const v = validateSpawn(input);
+  burn(s, wallet, TIERS[v.tier].burn);
+  return createCrawler(s, wallet, v);
+}
 
+// On-chain спавн: оплата уже проверена по транзакции, внутренний баланс не трогаем.
+// burnedTokens > 0 только при реальном сжигании $CRAWL; оплата в SOL в счётчик сожжённых токенов не идёт.
+export function spawnCrawlerPaid(
+  wallet: string,
+  input: SpawnInput,
+  payment: NonNullable<Crawler["payment"]>,
+  burnedTokens: number,
+): PublicCrawler {
+  const s = state();
+  const v = validateSpawn(input);
+  s.totalBurned += burnedTokens;
+  s.burnedBy.set(wallet, (s.burnedBy.get(wallet) ?? 0) + burnedTokens);
+  return createCrawler(s, wallet, v, payment);
+}
+
+function createCrawler(s: State, wallet: string, v: SpawnInput, payment?: Crawler["payment"]): PublicCrawler {
+  const tier = TIERS[v.tier];
   let id = crawlerId(s.rng);
   while (s.crawlers.has(id)) id = crawlerId(s.rng);
   const c: Crawler = {
     id,
-    name,
+    name: v.name,
     owner: wallet,
-    source: input.source,
-    chain: input.chain,
-    narratives,
-    targets,
-    frequencyMin: freq,
-    tier: input.tier,
+    source: v.source,
+    chain: v.chain,
+    narratives: v.narratives,
+    targets: v.targets,
+    frequencyMin: v.frequencyMin,
+    tier: v.tier,
+    // Ставка в репутации считается от эквивалента тира, чем бы ни платили.
     burned: tier.burn,
+    payment,
     status: "active",
     createdAt: Date.now(),
     stats: { items: 0, signals: 0, hits: 0, uptimeSec: 0, totalSec: 0, rewards: 0 },
     reputation: 0,
     // В симуляции качество зависит от тира и того, насколько узко нацелен краулер.
-    skill: Math.min(0.92, 0.35 + Object.keys(TIERS).indexOf(input.tier) * 0.08 + s.rng() * 0.25),
+    skill: Math.min(0.92, 0.35 + Object.keys(TIERS).indexOf(v.tier) * 0.08 + s.rng() * 0.25),
   };
   c.reputation = computeReputation(c);
   s.crawlers.set(id, c);
-  const peers = [...s.crawlers.values()].filter((p) => p.id !== id && p.narratives[0] === narratives[0]);
+  const peers = [...s.crawlers.values()].filter((p) => p.id !== id && p.narratives[0] === v.narratives[0]);
   if (peers.length) s.narrativeLinks.push([id, pick(s.rng, peers).id]);
   const pub = toPublic(c);
   emit(s, { type: "spawn", crawler: pub });

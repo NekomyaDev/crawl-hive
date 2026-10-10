@@ -19,13 +19,14 @@ interface WalletCtx {
 
 const Ctx = createContext<WalletCtx | null>(null);
 
-interface PhantomProvider {
+export interface PhantomProvider {
   isPhantom?: boolean;
+  signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }>;
   connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: { toString(): string } }>;
   disconnect: () => Promise<void>;
 }
 
-function phantom(): PhantomProvider | null {
+export function phantom(): PhantomProvider | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { phantom?: { solana?: PhantomProvider } };
   return w.phantom?.solana?.isPhantom ? w.phantom.solana : null;
