@@ -1,0 +1,10 @@
+# Прод: приложение слушает только 127.0.0.1, наружу его отдаёт Caddy на хосте.
+services:
+  crawlhive:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8796:3000"
+    volumes:
+      - ./data:/data

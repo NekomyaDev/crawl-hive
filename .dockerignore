@@ -1,0 +1,9 @@
+node_modules
+.next
+.data
+.devnet
+.env*
+!.env.example
+.git
+._*
+docs/images
