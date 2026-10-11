@@ -1,6 +1,6 @@
 // Instant Crawl, краулер X: Grok ищет в X посты о токене за последние двое суток и коротко пересказывает,
 // что о нём говорят. Поиск идёт 30–60 секунд и стоит денег, поэтому он догружается после основного
-// вердикта, на оценку не влияет, кэшируется на 30 минут и ограничен в сутки и по IP.
+// вердикта только по кнопке, на оценку не влияет, кэшируется на 6 часов и ограничен в сутки и по IP.
 import "server-only";
 import { extractJson, grok, grokEnabled } from "./crawl/grok";
 
@@ -68,9 +68,10 @@ async function withProfiles(voices: XVoice[]): Promise<XVoice[]> {
   return out.sort((a, b) => (b.followers ?? 0) - (a.followers ?? 0));
 }
 
-const CACHE_MS = 30 * 60_000;
-const DAILY = () => Number(process.env.SCAN_X_DAILY ?? 80);
-const PER_IP_HOUR = 4;
+// Поиск платный (xAI берёт и за каждый вытянутый пост), поэтому сводку держим долго, а лимиты — маленькие.
+const CACHE_MS = 6 * 3600_000;
+const DAILY = () => Number(process.env.SCAN_X_DAILY ?? 20);
+const PER_IP_HOUR = 2;
 
 const g = globalThis as unknown as {
   __crawlhiveScanX?: { cache: Map<string, XBuzz>; inflight: Map<string, Promise<XBuzz>>; day: string; used: number; ips: Map<string, number[]> };
@@ -102,6 +103,13 @@ function admit(ip: string): string | null {
   return null;
 }
 
+// Строка для лога краулеров: настроение, предупреждения и сводка.
+export const buzzLine = (x: XBuzz) => ({
+  crawler: "crawler_x",
+  text: `${x.sentiment}${x.warnings.length ? ` · warnings: ${x.warnings.join(", ")}` : ""} · ${x.summary}`,
+  tone: x.warnings.length || x.sentiment === "bearish" ? "bad" : x.sentiment === "bullish" ? "ok" : "info",
+});
+
 const cited = (real: Set<string>, url: string) => {
   const id = url.match(/status\/(\d+)/)?.[1];
   return !!id && [...real].some((c) => c.includes(id));
@@ -123,12 +131,12 @@ export async function scanX(t: { id: string; symbol: string; name: string; chain
         "You check what people on X say about a crypto token. Search X, read the posts, and answer with JSON only: " +
         '{"sentiment":"bullish|mixed|bearish|quiet","summary":"one plain sentence, max 30 words","warnings":["short phrase"],"posts":[{"handle":"name without @","name":"display name","text":"under 140 chars","url":"https://x.com/...","stance":"bullish|bearish|neutral"}]}. ' +
         "sentiment is quiet when there are fewer than 5 relevant posts. warnings: only concrete accusations people make (rug, scam, hacked, dev sold, bundled supply, fake volume); empty if none. " +
-        "posts: up to 30 posts by different authors, most informative first, real URLs from your search only; text is a short faithful excerpt of the post. Skip pure bots and spam reposts. Ignore posts about other tokens that share the ticker.",
+        "posts: up to 8 posts by different authors, most informative first, real URLs from your search only; text is a short faithful excerpt of the post. Work from the search results; do not open posts one by one. Skip pure bots and spam reposts. Ignore posts about other tokens that share the ticker.",
       user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, ${t.chain === "robinhood" ? "Robinhood Chain" : "Solana"} contract ${t.id}. Search X for the contract address and for $${t.symbol} since ${since}.`,
       xSearch: { fromDate: since },
-      // Третий шаг поиска нужен, чтобы набрать авторов на карту, а не только пару постов.
-      maxTurns: 3,
-      timeoutMs: 110_000,
+      // Один круг поиска: каждый следующий заново скармливает модели все найденные посты и умножает счёт.
+      maxTurns: 1,
+      timeoutMs: 90_000,
     });
     const j = extractJson<Partial<XBuzz>>(text) ?? {};
     const real = new Set(citations);
@@ -153,7 +161,7 @@ export async function scanX(t: { id: string; symbol: string; name: string; chain
         posts: 1,
       });
     }
-    const voices = await withProfiles([...byHandle.values()].slice(0, 30));
+    const voices = await withProfiles([...byHandle.values()].slice(0, 8));
     const buzz: XBuzz = {
       sentiment: (["bullish", "mixed", "bearish", "quiet"] as const).includes(j.sentiment as XBuzz["sentiment"]) ? (j.sentiment as XBuzz["sentiment"]) : "quiet",
       summary: String(j.summary ?? "").slice(0, 240) || "Nothing notable on X in the last two days.",

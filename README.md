@@ -42,7 +42,7 @@ No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a
 | `crawler_bundles` | Who funded the top wallets: wallets that got their first SOL from one address, or whose first transaction was paid by the same signer, are grouped as one owner |
 | `crawler_dev` | Who created the token and how their earlier pump.fun launches ended: how many, how many graduated to a pool, how old the creator wallet is and how much of this token it still holds |
 | `crawler_telegram` | Mentions in tracked Telegram channels |
-| `crawler_x` | Grok reads X for the contract and `$TICKER` over the last two days: sentiment, a one-line summary, concrete warnings (rug, dev sold, bundled) and up to 30 authors who posted about it. Arrives about a minute after the verdict, does not change the score |
+| `crawler_x` | Grok reads X for the contract and `$TICKER` over the last two days: sentiment, a one-line summary, concrete warnings (rug, dev sold, bundled) and up to 8 authors who posted about it. Runs when you press **Check X** under the verdict (a Grok search is paid), takes about half a minute, is cached for 6 hours and does not change the score |
 
 They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for pairs under 30 minutes) with a one-line reason, a shareable page (`/scan/<address>`), and a **Watch 30 days** button that turns the one-off scan into a crawler watching that token for you.
 
@@ -254,10 +254,10 @@ sequenceDiagram
 
 | Tier | SOL | ETH (Robinhood Chain) | Targets | Fastest cycle | Fastest X cycle | Reward boost |
 |---|---|---|---|---|---|---|
-| Larva | 0.05 | 0.002 | 3 | 30 min | 120 min | 1× |
-| Worker | 0.2 | 0.008 | 8 | 10 min | 60 min | 1.15× |
-| Soldier | 0.75 | 0.03 | 20 | 5 min | 30 min | 1.35× |
-| Queen | 2.5 | 0.1 | 50 | 1 min | 15 min | 1.75× |
+| Larva | 0.05 | 0.002 | 3 | 30 min | 6 h | 1× |
+| Worker | 0.2 | 0.008 | 8 | 10 min | 3 h | 1.15× |
+| Soldier | 0.75 | 0.03 | 20 | 5 min | 60 min | 1.35× |
+| Queen | 2.5 | 0.1 | 50 | 1 min | 30 min | 1.75× |
 
 X crawls go through paid Grok search, so they have their own, slower floor per tier.
 
@@ -312,8 +312,8 @@ SOLANA_RPC_URL=https://api.devnet.solana.com
 # SPAWN_PRICE_ETH=0.002,0.008,0.03,0.1         # optional per-tier ETH prices
 # ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com
 XAI_API_KEY=...                                # enables X crawlers and AI reading of Telegram/docs
-# XAI_DAILY_CALLS=300                          # Grok cost limit per day
-# SCAN_X_DAILY=80                              # X checks in free scans per day (also 4/hour per IP, cached 30 min)
+# XAI_DAILY_CALLS=60                           # Grok cost limit per day
+# SCAN_X_DAILY=20                              # X checks in free scans per day (also 2/hour per IP, cached 6 h)
 # DEMO_NETWORK=0                               # production: real crawlers only
 # CRAWLER_TERM_DAYS=30                         # days per spawn / renewal
 # TELEGRAM_BOT_TOKEN=...  PUBLIC_URL=https://crawlhive.xyz   # signal delivery

@@ -97,6 +97,8 @@ const TONE: Record<string, string> = { ok: "text-lime", warn: "text-honey", bad:
 const usd = (n?: number) =>
   n === undefined ? "—" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(n < 1 ? 6 : 0)}`;
 const clock = (ts: number) => new Date(ts).toLocaleTimeString("en-GB", { hour12: false });
+type XState = XBuzz | null | "offer" | "loading" | undefined;
+
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export function InstantCrawl() {
@@ -106,8 +108,9 @@ export function InstantCrawl() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  // undefined — X ещё не спрашивали, "loading" — Grok ищет, null — пропущено.
-  const [x, setX] = useState<XBuzz | null | "loading" | undefined>(undefined);
+  // undefined — X недоступен, "offer" — можно запустить кнопкой, "loading" — Grok ищет, null — пропущено.
+  const [x, setX] = useState<XState>(undefined);
+  const xes = useRef<EventSource | null>(null);
   const es = useRef<EventSource | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const { data: recent, reload } = useApi<Recent[]>("/api/scan/recent", 8000);
@@ -118,6 +121,7 @@ export function InstantCrawl() {
       const v = input.trim();
       if (!v || running) return;
       es.current?.close();
+      xes.current?.close();
       setQ(v);
       setLines([{ ts: Date.now(), crawler: "swarm", text: `crawl ${v.length > 20 ? short(v) : v}`, tone: "info" }]);
       setResult(null);
@@ -141,12 +145,12 @@ export function InstantCrawl() {
           gotResult = true;
           setResult(e.result);
           setRunning(false);
-          if (e.result.chain === "solana" || e.result.chain === "robinhood") setX("loading");
           try {
             window.history.replaceState(null, "", `/?scan=${e.result.id}`);
           } catch {}
           reload();
         } else if (e.type === "x") setX(e.x);
+        else if (e.type === "xoffer") setX("offer");
         else if (e.type === "done") done();
         else if (e.type === "error") {
           setError(e.message);
@@ -163,10 +167,35 @@ export function InstantCrawl() {
     [running, reload, net],
   );
 
+  // Поиск по X платный, поэтому только по кнопке: отдельный поток /api/scan/x для уже готового вердикта.
+  const checkX = useCallback(() => {
+    if (!result) return;
+    xes.current?.close();
+    setX("loading");
+    const src = new EventSource(`/api/scan/x?id=${encodeURIComponent(result.id)}`);
+    xes.current = src;
+    const finish = () => {
+      src.close();
+      setX((cur) => (cur === "loading" ? null : cur));
+    };
+    src.onmessage = (m) => {
+      const e = JSON.parse(m.data);
+      if (e.type === "log") setLines((l) => [...l, e]);
+      else if (e.type === "x") setX(e.x);
+      else if (e.type === "done") finish();
+    };
+    src.onerror = () => {
+      if (src.readyState !== EventSource.CLOSED) finish();
+    };
+  }, [result]);
+
   useEffect(() => {
     const v = new URLSearchParams(window.location.search).get("scan");
     if (v) scan(v);
-    return () => es.current?.close();
+    return () => {
+      es.current?.close();
+      xes.current?.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -271,10 +300,10 @@ export function InstantCrawl() {
                   {error && <div className="text-danger">✕ {error}</div>}
                 </div>
               </div>
-              {result ? <ResultCard r={result} x={x} /> : <ResultSkeleton running={running} />}
+              {result ? <ResultCard r={result} x={x} onCheckX={checkX} /> : <ResultSkeleton running={running} />}
             </div>
           )}
-          {result && x !== undefined && x !== null && (
+          {result && x !== undefined && x !== null && x !== "offer" && (
             <XVoices symbol={result.symbol} loading={x === "loading"} voices={x === "loading" ? undefined : x.voices} />
           )}
         </div>
@@ -308,7 +337,7 @@ function ResultSkeleton({ running }: { running: boolean }) {
   );
 }
 
-function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefined }) {
+function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => void }) {
   const st = VERDICT_STYLE[r.verdict];
   const toast = useToast();
   const m = r.market;
@@ -368,7 +397,7 @@ function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefin
           </a>
         ))}
       </div>
-      {x !== undefined && <XPanel x={x} />}
+      {x !== undefined && <XPanel x={x} onCheck={onCheckX} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <WatchButton r={r} />
         <ShareOnX id={r.id} text={shareText(r)} />
@@ -417,8 +446,20 @@ function DevFlag({ d }: { d: NonNullable<Result["dev"]> }) {
 }
 
 const MOOD: Record<XBuzz["sentiment"], string> = { bullish: "text-lime", mixed: "text-honey", bearish: "text-danger", quiet: "text-muted" };
-function XPanel({ x }: { x: XBuzz | null | "loading" }) {
+function XPanel({ x, onCheck }: { x: Exclude<XState, undefined>; onCheck: () => void }) {
   if (x === null) return null;
+  if (x === "offer")
+    return (
+      <button
+        onClick={onCheck}
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-sky/40 bg-panel-2/60 p-3 text-left text-xs hover:bg-sky/10"
+      >
+        <span>
+          <span className="font-semibold">𝕏 Check X</span> <span className="text-muted">· Grok reads who is talking about it, about half a minute</span>
+        </span>
+        <span className="text-sky">Run →</span>
+      </button>
+    );
   return (
     <div className="rounded-lg border border-line bg-panel-2/60 p-3 text-xs">
       <div className="mb-1 flex items-center gap-2">

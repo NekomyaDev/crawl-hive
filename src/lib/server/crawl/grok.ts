@@ -9,13 +9,15 @@ export function grokEnabled() {
   return !!process.env.XAI_API_KEY?.trim();
 }
 
-const model = () => process.env.XAI_MODEL?.trim() || "grok-4.7";
+// Модель без рассуждений: в 1.6 раза дешевле на входе и в 2.4 раза на выходе, чем grok-4.7, и не тратит
+// токены на размышления. Для поиска постов и разбора текста по инструкциям этого хватает.
+const model = () => process.env.XAI_MODEL?.trim() || "grok-4.20-0309-non-reasoning";
 
 // Дневной бюджет вызовов: защита от счёта на сотни долларов, если краулеров станет много.
 const g = globalThis as unknown as { __crawlhiveGrok?: { day: string; calls: number } };
 function takeBudget() {
   const day = new Date().toISOString().slice(0, 10);
-  const limit = Number(process.env.XAI_DAILY_CALLS ?? 300);
+  const limit = Number(process.env.XAI_DAILY_CALLS ?? 60);
   const b = (g.__crawlhiveGrok ??= { day, calls: 0 });
   if (b.day !== day) Object.assign(b, { day, calls: 0 });
   if (b.calls >= limit) throw new Error(`Daily Grok budget reached (${limit} calls), crawler will retry tomorrow`);
@@ -23,7 +25,7 @@ function takeBudget() {
 }
 
 export function grokUsage() {
-  return { ...(g.__crawlhiveGrok ?? { day: "", calls: 0 }), limit: Number(process.env.XAI_DAILY_CALLS ?? 300) };
+  return { ...(g.__crawlhiveGrok ?? { day: "", calls: 0 }), limit: Number(process.env.XAI_DAILY_CALLS ?? 60) };
 }
 
 export interface XSearchOptions {
@@ -81,7 +83,7 @@ export async function grok(opts: { system: string; user: string; xSearch?: XSear
         { role: "system", content: opts.system },
         { role: "user", content: opts.user },
       ],
-      ...(tools ? { tools, max_turns: opts.maxTurns ?? 3 } : {}),
+      ...(tools ? { tools, max_turns: opts.maxTurns ?? 1 } : {}),
     }),
     // x_search делает десятки обращений к X внутри одного запроса: 50–60 с — обычное время.
     signal: AbortSignal.timeout(opts.timeoutMs ?? 170_000),
@@ -90,7 +92,20 @@ export async function grok(opts: { system: string; user: string; xSearch?: XSear
     const body = await res.text().catch(() => "");
     throw new Error(`Grok API ${res.status}: ${body.slice(0, 200)}`);
   }
-  return parse((await res.json()) as Record<string, unknown>);
+  const json = (await res.json()) as Record<string, unknown>;
+  logUsage(json);
+  return parse(json);
+}
+
+// Сколько стоил вызов: токены и, если xAI прислал, цена. Чтобы видеть расход в логах контейнера.
+function logUsage(json: Record<string, unknown>) {
+  const u = json.usage as Record<string, unknown> | undefined;
+  if (!u) return;
+  const ticks = Number(u.cost_in_usd_ticks);
+  const tools = u.server_side_tool_usage_details ?? u.num_server_side_tools_used;
+  console.log(
+    `[grok] in=${u.input_tokens ?? "?"} out=${u.output_tokens ?? "?"}${tools ? ` tools=${JSON.stringify(tools)}` : ""}${Number.isFinite(ticks) ? ` cost=$${(ticks / 1e10).toFixed(4)}` : ""}`,
+  );
 }
 
 // Модель просят ответить JSON-ом, но иногда она оборачивает его в текст или ```json.

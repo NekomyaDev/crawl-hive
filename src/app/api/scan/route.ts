@@ -1,9 +1,9 @@
 // Instant Crawl: GET /api/scan?q=<адрес или $тикер> — поток Server-Sent Events: строки лога краулеров,
-// затем результат, затем (для Solana и Robinhood Chain) догружается поиск по X и приходит событие done. Без кошелька, с лимитом по IP.
+// затем результат, затем сводка из X, если она уже есть в кэше (иначе xoffer — кнопка для /api/scan/x), и событие done. Без кошелька, с лимитом по IP.
 import type { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { allowScan, attachBuzz, runScan } from "@/lib/server/scan";
-import { cachedBuzz, scanX, scanXEnabled } from "@/lib/server/scan-x";
+import { buzzLine, cachedBuzz, scanXEnabled } from "@/lib/server/scan-x";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -25,30 +25,14 @@ export async function GET(req: NextRequest) {
         const log = (l: object) => send({ type: "log", ts: Date.now(), ...l });
         const result = await runScan(q, log, chain);
         send({ type: "result", result });
-        if ((result.chain === "solana" || result.chain === "robinhood") && scanXEnabled()) {
+        // Поиск по X платный (Grok), поэтому сам он не запускается: готовая сводка из кэша отдаётся сразу,
+        // иначе клиент показывает кнопку и зовёт /api/scan/x по нажатию.
+        if (result.chain === "solana" || result.chain === "robinhood") {
           const cached = cachedBuzz(result.id);
-          if (!cached) log({ crawler: "crawler_x", text: `Grok is reading X for $${result.symbol}: who is talking about it, about a minute…`, tone: "info" });
-          // Пустые комментарии раз в 15 с, чтобы прокси не закрыли тихое соединение.
-          const ping = setInterval(() => {
-            try {
-              controller.enqueue(enc.encode(": ping\n\n"));
-            } catch {}
-          }, 15_000);
-          try {
-            const x = cached ?? (await scanX(result, ip));
-            log({
-              crawler: "crawler_x",
-              text: `${x.sentiment}${x.warnings.length ? ` · warnings: ${x.warnings.join(", ")}` : ""} · ${x.summary}`,
-              tone: x.warnings.length || x.sentiment === "bearish" ? "bad" : x.sentiment === "bullish" ? "ok" : "info",
-            });
-            attachBuzz(result.id, x);
-            send({ type: "x", x });
-          } catch (e) {
-            log({ crawler: "crawler_x", text: `skipped: ${(e as Error).message.replace(/^(Grok API|.*(timeout|abort)).*/i, "X search is unavailable right now")}`, tone: "warn" });
-            send({ type: "x", x: null });
-          } finally {
-            clearInterval(ping);
-          }
+          if (cached) {
+            log(buzzLine(cached));
+            send({ type: "x", x: cached });
+          } else if (scanXEnabled()) send({ type: "xoffer" });
         }
         send({ type: "done" });
       } catch (e) {

@@ -44,7 +44,7 @@ const SOURCE_HINT: Record<Source, string> = {
 };
 
 const TARGETS_HINT: Record<Source, string> = {
-  x: "X crawlers run at most every 120 / 60 / 30 / 15 min by tier: each run is a paid Grok search.",
+  x: "X crawlers run at most every 6 h / 3 h / 60 min / 30 min by tier: each run is a paid Grok search.",
   telegram: "Only public channels with a web preview work.",
   onchain: "Optional. Leave empty to scan the feeds only.",
   docs: "Any public page: docs, blog, GitHub repo, changelog.",

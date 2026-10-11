@@ -39,7 +39,7 @@ export const TIER_PRICE_ETH: Record<Tier, number> = {
 export const CRAWLER_TERM_DAYS = 30;
 
 // X через Grok платный за каждый прогон, поэтому дешёвые тиры ходят в X реже, чем позволяет их частота.
-export const X_MIN_INTERVAL_MIN: Record<Tier, number> = { larva: 120, worker: 60, soldier: 30, queen: 15 };
+export const X_MIN_INTERVAL_MIN: Record<Tier, number> = { larva: 360, worker: 180, soldier: 60, queen: 30 };
 
 // Казна проекта: SOL за спавны в фазе 1 копится здесь; после запуска токена проекта пойдёт на его выкуп
 // (решение владельца, 10.10.2026; токена пока нет, тикер не выбран).
