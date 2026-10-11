@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, Stat } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CrawlerCard } from "@/components/crawler/crawler-row";
+import { GrokBots, type PublicBot } from "@/components/grok-bots";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
@@ -18,6 +19,7 @@ export default function MyCrawlers() {
   const { address, info, connect, signedIn } = useWallet();
   const toast = useToast();
   const { data, reload } = useApi<PublicCrawler[]>(address && signedIn ? `/api/crawlers?mine=1&w=${address}` : null, 5000);
+  const { data: bots, reload: reloadBots } = useApi<PublicBot[]>(address && signedIn ? `/api/bots?w=${address}` : null, 15000);
 
   if (!address)
     return (
@@ -34,6 +36,13 @@ export default function MyCrawlers() {
 
   const owned = (data ?? []).filter((c) => c.owner === address);
   const rented = (data ?? []).filter((c) => c.renter === address);
+  // Над какими краулерами стоят Grok Bots: карточка рисует спрута вместо точки.
+  const duty = new Map<string, { count: number; live: boolean }>();
+  for (const b of bots ?? [])
+    for (const id of b.crawlerIds) {
+      const cur = duty.get(id) ?? { count: 0, live: false };
+      duty.set(id, { count: cur.count + 1, live: cur.live || b.live });
+    }
   const earned = owned.reduce((s, c) => s + (c.renter ? 0 : c.stats.rewards), 0) + rented.reduce((s, c) => s + c.stats.rewards, 0);
 
   const toggle = async (c: PublicCrawler) => {
@@ -86,6 +95,7 @@ export default function MyCrawlers() {
             <CrawlerCard
               key={c.id}
               c={c}
+              bots={duty.get(c.id)}
               footer={
                 c.status === "rented" ? (
                   <span className="text-xs text-violet">Rented out — rewards go to the renter until the lease ends</span>
@@ -113,11 +123,13 @@ export default function MyCrawlers() {
           <h2 className="mb-3 mt-8 text-lg font-semibold">Rented by you</h2>
           <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
             {rented.map((c) => (
-              <CrawlerCard key={c.id} c={c} />
+              <CrawlerCard key={c.id} c={c} bots={duty.get(c.id)} />
             ))}
           </div>
         </>
       )}
+
+      {data && signedIn && <GrokBots crawlers={[...owned.filter((c) => c.live), ...rented]} bots={bots ?? []} reload={reloadBots} />}
     </>
   );
 }

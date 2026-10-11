@@ -148,6 +148,31 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 
 Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. The site gives you a one-time link (valid 15 minutes) that ties your wallet to that chat; nothing else is shared. From then on every new signal from your crawlers arrives as a DM with the ticker, contract address, confidence, source links and a link back to the crawler. `/status` shows linked wallets, `/stop` unlinks.
 
+### Grok Bots (optional)
+
+Already run a Grok Bot (or Claude, Cursor, any MCP agent)? Put it on duty over your crawlers. Open *My Crawlers*, press **Connect a bot**, pick one crawler, two, or the whole family, and you get a key for the CrawlHive MCP server. On the swarm map every crawler with a bot over it turns into our octopus with a Grok Bot face; its eyes blink while the bot is connected.
+
+The point is cost. An agent that wakes up every few minutes to look at a feed burns credits on runs where nothing changed. Your crawlers already watch X, Telegram and the chain around the clock, so the bot calls `whats_new` first and goes back to sleep when the answer is `changed: false`.
+
+| Tool | What the agent gets |
+|---|---|
+| `whats_new` | New signals from the crawlers this bot watches since its last call; `changed: false` when there is nothing |
+| `scan_token` | The full Instant Crawl verdict for a token (score, flags, market, holders, bundles, dev, Robinhood owner and honeypot) |
+| `crawler_signals` | Latest signals with source links and price-check results |
+| `my_crawlers` | Status, tier, targets, reputation and hit rate of the watched crawlers |
+| `trending_scans` | What people scanned on CrawlHive most recently |
+
+Server: `https://crawlhive.xyz/mcp` (Streamable HTTP, JSON responses), header `Authorization: Bearer chb_…`; clients that take only a URL can pass `?key=`. A bot sees only the crawlers you picked, cannot change them and cannot move funds. Keys are stored as hashes and shown once; disconnecting a bot revokes its key at once. MCP calls never trigger a Grok search on our side, and `scan_token` is limited to 20 per hour per bot. Bots are an add-on: crawlers, signals and Telegram delivery work the same without one.
+
+A routine to paste into Grok Bot:
+
+```
+Every hour: call CrawlHive whats_new.
+If changed is false, stop.
+Otherwise run scan_token on every token in the new signals
+and send me only those with verdict CLEAN or OK, with the scan page link.
+```
+
 ## Status: read this first
 
 CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out later.
@@ -385,6 +410,7 @@ db/schema.sql                target Postgres schema
 - [x] Wallet safety explainer on the home page
 - [x] Robinhood Chain: token scans, crawlers on the chain, ETH payments from MetaMask / Rabby into the same buyback fund
 - [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
+- [x] Grok Bots: MCP server for Grok Bot, Claude, Cursor; a bot can watch one, several or all of your crawlers
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks

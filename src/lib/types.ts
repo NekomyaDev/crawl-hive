@@ -175,6 +175,8 @@ export interface SwarmNode {
   reputation: number;
   status?: CrawlerStatus;
   tier?: Tier;
+  bots?: number; // сколько Grok Bots стоят над краулером
+  botLive?: boolean; // хоть один из них обращался за последние 10 минут
 }
 
 export interface SwarmLink {

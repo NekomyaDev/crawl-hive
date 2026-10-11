@@ -167,3 +167,11 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .voice-pop, .voice-line, .hub-breathe, .orbit { animation: none; }
 }
+
+/* Глаза осьминога с Grok Bot моргают, пока бот на связи. */
+@keyframes bot-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.12); }
+}
+.bot-blink { animation: bot-blink 4.2s infinite; }
+@media (prefers-reduced-motion: reduce) { .bot-blink { animation: none; } }

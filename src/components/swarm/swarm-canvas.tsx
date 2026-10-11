@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject, type LinkObject } from "react-force-graph-2d";
 import { SOURCE_META } from "@/lib/utils";
+import { BotOcto, BOT_OCTO_EYES, BOT_OCTO_LEGS, BOT_OCTO_MANTLE } from "@/components/bot-octo";
 import type { SwarmLink, SwarmNode } from "@/lib/types";
 
 export type GNode = NodeObject<SwarmNode & { owned?: number }>;
@@ -23,6 +24,11 @@ const PULSE_MS = 1800;
 // Пока краулеров немного, подписи видны всегда; в большом рое — только при приближении.
 const ALWAYS_LABEL_MAX = 40;
 const HEX = 26; // сторона соты фона в координатах графа
+
+// Спрут с ботом крупнее точки: у него ноги, и он должен читаться издалека.
+function octoRadius(n: GNode) {
+  return crawlerRadius(n) * 2.2 + 4;
+}
 
 // В маленьком рое точки крупнее: иначе на просторной карте они теряются.
 let sizeBoost = 1;
@@ -77,6 +83,71 @@ function fontFamilies() {
   fonts = { sans: pick("--font-geist-sans", "system-ui, sans-serif"), mono: pick("--font-geist-mono", "ui-monospace, monospace") };
   return fonts;
 }
+
+// Краулер с Grok Bot: спрут с логотипа с лицом бота (см. components/bot-octo.tsx). size — радиус в координатах графа.
+let octoPaths: { legs: Path2D[]; mantle: Path2D } | null = null;
+function drawBotOcto(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, live: boolean, seed: number) {
+  octoPaths ??= { legs: BOT_OCTO_LEGS.map((d) => new Path2D(d)), mantle: new Path2D(BOT_OCTO_MANTLE) };
+  const k = size / 22; // в квадрате 64×64 мантия занимает радиус около 14, ноги — около 26
+  const now = Date.now();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  ctx.translate(-32, -28);
+  if (live) {
+    // Бот на связи: мягкое дыхание свечения.
+    const breath = 0.5 + 0.5 * Math.sin(now / 600 + seed);
+    ctx.beginPath();
+    ctx.arc(32, 26, 22 + breath * 6, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.globalAlpha *= 0.12 + breath * 0.1;
+    ctx.fill();
+    ctx.globalAlpha /= 0.12 + breath * 0.1;
+  }
+  // Ноги чуть шевелятся, чтобы спрут выглядел живым.
+  const sway = Math.sin(now / 420 + seed) * 0.06;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.6;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const side of [1, -1]) {
+    ctx.save();
+    if (side === -1) {
+      ctx.translate(64, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.translate(24, 30);
+    ctx.rotate(sway * side);
+    ctx.translate(-24, -30);
+    for (const p of octoPaths.legs) ctx.stroke(p);
+    ctx.restore();
+  }
+  const grad = ctx.createRadialGradient(28, 14, 2, 32, 22, 22);
+  grad.addColorStop(0, "#ffffff");
+  grad.addColorStop(0.6, "#eef0f3");
+  grad.addColorStop(1, "#b9bec7");
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10 / k;
+  ctx.fillStyle = grad;
+  ctx.fill(octoPaths.mantle);
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 1.2;
+  ctx.globalAlpha *= 0.6;
+  ctx.stroke(octoPaths.mantle);
+  ctx.globalAlpha /= 0.6;
+  // Моргание раз в несколько секунд, у каждого спрута в своё время.
+  const phase = (now / 1000 + seed * 1.7) % 4.2;
+  const blink = live && phase > 3.95 ? 0.15 : 1;
+  ctx.fillStyle = "#0b0c0f";
+  for (const [cx, cy, rx, ry, a] of BOT_OCTO_EYES) {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry * blink, (a * Math.PI) / 180, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+const seedOf = (id: string) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7);
 
 // Подпись-плашка под узлом: имя и строка поменьше (источник · тир или «wallet»).
 // above — плашка над точкой (у кошельков), чтобы подписи кошелька и его краулера не налезали друг на друга.
@@ -152,8 +223,10 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
   // Объект graphData меняем только когда меняется состав узлов, иначе симуляция «взрывается» заново.
   const data = useMemo(() => ({ nodes, links }), [nodes, links]);
 
-  // Связи владения в обе стороны: подпись ставим с той стороны, где нет связанного узла.
-  const owners = useMemo(() => {
+  // Связи владения в обе стороны: подпись ставим с той стороны, где нет связанного узла. Пересобираем
+  // на каждом кадре: до первого шага симуляции концы связей — ещё строки, а не узлы.
+  const owners = useRef(new Map<string, GNode[]>());
+  const collectOwners = () => {
     const m = new Map<string, GNode[]>();
     for (const l of links) {
       if (l.kind !== "owns" || typeof l.source !== "object" || typeof l.target !== "object") continue;
@@ -162,8 +235,8 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
       m.set(String(a.id), [...(m.get(String(a.id)) ?? []), b]);
       m.set(String(b.id), [...(m.get(String(b.id)) ?? []), a]);
     }
-    return m;
-  }, [links, nodes]);
+    owners.current = m;
+  };
 
   const neighbours = useMemo(() => {
     const m = new Set<string>();
@@ -209,7 +282,10 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
             if (z > 3.2) f.zoom(3.2, 300);
           }, 650);
         }}
-        onRenderFramePre={(ctx, scale) => drawHoneycomb(ctx, scale)}
+        onRenderFramePre={(ctx, scale) => {
+          drawHoneycomb(ctx, scale);
+          if (labelsAlways) collectOwners();
+        }}
         nodeLabel={(n) =>
           n.kind === "wallet"
             ? `<b>Wallet</b> ${n.label}<br/>avg rep ${n.reputation}`
@@ -259,7 +335,28 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
             const color = SOURCE_META[n.source!].color;
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
-            if (n.status === "paused") {
+            if (n.bots) {
+              // Над краулером стоит Grok Bot — вместо точки спрут с лицом бота.
+              drawBotOcto(ctx, x, y, octoRadius(n), color, !!n.botLive && n.status !== "paused", seedOf(String(n.id)));
+              if (n.bots > 1) {
+                const bx = x + octoRadius(n) * 0.8;
+                const by = y - octoRadius(n) * 0.9;
+                const br = 4.5 / Math.max(1, scale * 0.6);
+                ctx.beginPath();
+                ctx.arc(bx, by, br, 0, Math.PI * 2);
+                ctx.fillStyle = "#0e1013";
+                ctx.fill();
+                ctx.lineWidth = 0.8 / scale;
+                ctx.strokeStyle = color;
+                ctx.stroke();
+                ctx.fillStyle = "#e8eaed";
+                ctx.font = `600 ${br * 1.2}px ${fontFamilies().sans}`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(`${n.bots}`, bx, by + br * 0.05);
+                ctx.textBaseline = "alphabetic";
+              }
+            } else if (n.status === "paused") {
               ctx.lineWidth = 1;
               ctx.strokeStyle = "rgba(138,144,153,0.8)";
               ctx.stroke();
@@ -296,15 +393,15 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
 
           if (selected) {
             ctx.beginPath();
-            ctx.arc(x, y, (n.kind === "wallet" ? 9 : crawlerRadius(n) + 4) + 1, 0, Math.PI * 2);
+            ctx.arc(x, y, (n.kind === "wallet" ? 9 : n.bots ? octoRadius(n) + 2 : crawlerRadius(n) + 4) + 1, 0, Math.PI * 2);
             ctx.lineWidth = 1.5;
             ctx.strokeStyle = "#ffb020";
             ctx.stroke();
           }
           // Подписи: в маленьком рое всегда, в большом — при приближении.
           if (((labelsAlways || scale > 2.6) && visible) || selected) {
-            const r = n.kind === "wallet" ? 10 * sizeBoost : crawlerRadius(n) + 4;
-            const linked = owners.get(String(n.id)) ?? [];
+            const r = n.kind === "wallet" ? 10 * sizeBoost : n.bots ? octoRadius(n) * 0.75 : crawlerRadius(n) + 4;
+            const linked = owners.current.get(String(n.id)) ?? [];
             // Связанный узел ниже — подпись сверху, и наоборот; без связей кошелёк подписан сверху, краулер снизу.
             const above = linked.length ? linked.reduce((sum, o) => sum + (o.y ?? 0), 0) / linked.length > y : n.kind === "wallet";
             const at = above ? y - r - 2 / scale : y + r + 2 / scale;
@@ -312,7 +409,7 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
               drawLabel(ctx, x, at, scale, n.label, `wallet · ${n.owned ?? 0} crawler${n.owned === 1 ? "" : "s"}`, "rgba(138,144,153,0.95)", above);
             else {
               const m = SOURCE_META[n.source!];
-              drawLabel(ctx, x, at, scale, n.label, `${m.label} · ${n.tier ?? ""}${n.status === "paused" ? " · paused" : ""}`, m.color, above);
+              drawLabel(ctx, x, at, scale, n.label, `${m.label} · ${n.tier ?? ""}${n.bots ? ` · ${n.bots} Grok Bot${n.bots > 1 ? "s" : ""}` : ""}${n.status === "paused" ? " · paused" : ""}`, m.color, above);
             }
           }
           ctx.globalAlpha = 1;
@@ -320,7 +417,7 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
         nodePointerAreaPaint={(n, color, ctx) => {
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(n.x ?? 0, n.y ?? 0, n.kind === "wallet" ? 8 : crawlerRadius(n) + 2, 0, Math.PI * 2);
+          ctx.arc(n.x ?? 0, n.y ?? 0, n.kind === "wallet" ? 8 : n.bots ? octoRadius(n) : crawlerRadius(n) + 2, 0, Math.PI * 2);
           ctx.fill();
         }}
       />
@@ -342,6 +439,9 @@ export default function SwarmCanvas({ nodes, links, isVisible, selectedId, pulse
         </span>
         <span className="flex items-center gap-1.5">
           <span className="size-2 rounded-full border border-muted" /> Paused
+        </span>
+        <span className="flex items-center gap-1.5">
+          <BotOcto size={14} color="#e8eaed" /> Grok Bot on duty
         </span>
       </div>
     </div>

@@ -2,6 +2,7 @@
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 12", title: "Grok Bots", text: "Put your Grok Bot (or Claude, Cursor) on duty over one crawler, two or all of them through our MCP server. It wakes up only when your crawlers find something new." },
   { date: "Oct 11", title: "Robinhood Chain", text: "Instant Crawl checks Robinhood Chain tokens (holders, honeypot, contract owner), crawlers can watch the chain, and spawns can be paid in ETH from MetaMask or Rabby. ETH goes to the same buyback fund." },
   { date: "Oct 11", title: "Creator history", text: "Instant Crawl reads the creator's earlier pump.fun launches on-chain and flags serial launchers." },
   { date: "Oct 11", title: "Who's talking on X", text: "A live map of the people posting about a token: tap a bubble to read the post." },
