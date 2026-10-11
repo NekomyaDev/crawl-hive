@@ -352,6 +352,29 @@ export async function treasuryBalance(): Promise<number | null> {
   }
 }
 
+// Цена SOL в долларах для счётчика казны: Jupiter, запасной — CoinGecko; кэш 5 минут.
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+const solUsdCache = globalThis as unknown as { __crawlhiveSolUsd?: { at: number; usd: number } };
+export async function solUsd(): Promise<number | null> {
+  const c = solUsdCache.__crawlhiveSolUsd;
+  if (c && Date.now() - c.at < 5 * 60_000) return c.usd;
+  const sources: [string, (j: unknown) => unknown][] = [
+    [`https://lite-api.jup.ag/price/v3?ids=${SOL_MINT}`, (j) => (j as Record<string, { usdPrice?: number }>)[SOL_MINT]?.usdPrice],
+    ["https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", (j) => (j as { solana?: { usd?: number } }).solana?.usd],
+  ];
+  for (const [url, pick] of sources) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const usd = Number(pick(await r.json()));
+      if (usd > 0) {
+        solUsdCache.__crawlhiveSolUsd = { at: Date.now(), usd };
+        return usd;
+      }
+    } catch {}
+  }
+  return c?.usd ?? null;
+}
+
 // ---------- devnet-фосет ----------
 
 function faucetKeypair(): Keypair {

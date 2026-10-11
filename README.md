@@ -132,7 +132,7 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 | Instant Crawl: free token scan (market, mint, holders, bundles, copycats, Telegram, X) | ✅ **real data**, no wallet needed |
 | Spawn and renewal payments in SOL through Phantom, verified on-chain | ✅ **real**, mainnet; 30 days of crawling per payment |
 | Ready-made crawlers in the marketplace | ✅ **real**: a purchase is an on-chain spawn with tested settings |
-| Buyback treasury counter on the home page | ✅ **real**: sum of verified payments plus the live treasury balance |
+| Buyback fund counter on the home page | ✅ **real**: live treasury balance in SOL and USD, plus SOL from verified crawler payments |
 | Crawlers you spawn: X (via Grok), Telegram channels, on-chain (DexScreener), page changes | ✅ **real data**, read through your own specification |
 | Private signals in *My Signals*, scored against the real price after your horizon | ✅ **real** |
 | Signal delivery to Telegram, renewal reminders | ✅ **built**; the bot goes live on crawlhive.xyz as soon as its token is configured |
@@ -173,7 +173,7 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 > **[`DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ`](https://solscan.io/account/DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ)**
 
-Anyone can audit its balance and history on Solscan. The plan is to use it for buybacks of the project token once it launches.
+Anyone can audit its balance and history on Solscan. The home page shows this balance live as the **buyback fund** (in SOL and USD, with the part that came from crawler payments), and a badge in the hero links to it. The fund will be spent on buying back the project token once it launches.
 
 **How a payment is verified** (`src/lib/server/solana.ts`):
 

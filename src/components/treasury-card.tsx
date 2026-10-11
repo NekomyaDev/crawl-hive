@@ -9,24 +9,30 @@ export interface TreasuryInfo {
   sol: number;
   payments: number;
   balance: number | null;
+  solUsd: number | null;
   address: string | null;
   cluster: string;
   buyback: boolean;
   templates: Record<string, number>;
 }
 
-const solFmt = (n: number) => (n >= 100 ? n.toFixed(1) : n >= 1 ? n.toFixed(3) : n.toFixed(4));
+export const solFmt = (n: number) => String(Number(n >= 100 ? n.toFixed(1) : n >= 1 ? n.toFixed(3) : n.toFixed(4)));
+const usdFmt = (n: number) => (n >= 1000 ? `$${Math.round(n).toLocaleString("en-US")}` : `$${n.toFixed(2)}`);
 
 export function useTreasury() {
   return useApi<TreasuryInfo>("/api/treasury", 30_000).data;
 }
 
+// Фонд байбека — живой баланс кошелька казны (его видно в блокчейне); пока баланс не пришёл — сумма платежей.
+export const buybackFund = (t: TreasuryInfo) => t.balance ?? t.sol;
+
 export function TreasuryCard({ className }: { className?: string }) {
   const t = useTreasury();
   if (t && !t.address) return null; // оплата не в SOL — счётчик не нужен
   const solscan = t?.address ? `https://solscan.io/account/${t.address}${t.cluster === "mainnet-beta" ? "" : `?cluster=${t.cluster}`}` : "#";
+  const fund = t ? buybackFund(t) : null;
   return (
-    <div className={cn("ring-gradient overflow-hidden rounded-2xl bg-panel/80", className)}>
+    <div id="treasury" className={cn("ring-gradient scroll-mt-6 overflow-hidden rounded-2xl bg-panel/80", className)}>
       <div className="relative flex flex-col gap-5 p-5 md:flex-row md:items-center md:justify-between lg:p-6">
         <div
           aria-hidden
@@ -34,26 +40,33 @@ export function TreasuryCard({ className }: { className?: string }) {
         />
         <div className="relative">
           <div className="mb-1 flex items-center gap-2 text-[11px] font-medium tracking-wider text-honey uppercase">
-            <Flame className="size-3.5" /> Buyback treasury
+            <Flame className="size-3.5" /> Buyback fund · collected so far
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="num text-4xl font-bold text-gradient lg:text-5xl">{t ? solFmt(t.sol) : "…"}</span>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="num text-4xl font-bold text-gradient lg:text-5xl">{fund !== null ? solFmt(fund) : "…"}</span>
             <span className="text-lg font-semibold text-fg">SOL</span>
+            {fund !== null && t?.solUsd ? <span className="num text-lg text-muted">≈ {usdFmt(fund * t.solUsd)}</span> : null}
           </div>
           <p className="mt-1 max-w-md text-sm text-muted">
-            collected from {t?.payments ?? 0} crawler {t?.payments === 1 ? "payment" : "payments"}. Every SOL paid for spawns and renewals goes to the project treasury and{" "}
-            <span className="text-fg">will be used to buy back the project token</span> once it launches.
+            Every SOL paid for spawns and renewals goes to the project treasury and{" "}
+            <span className="text-fg">will be spent on buying back the project token</span> once it launches. The balance is live from the chain.
           </p>
         </div>
         <div className="relative flex shrink-0 flex-col gap-2 md:items-end">
-          <div className="rounded-xl border border-line bg-bg/60 px-4 py-3 md:text-right">
-            <div className="flex items-center gap-1.5 text-[11px] tracking-wider text-muted uppercase md:justify-end">
-              <Landmark className="size-3.5" /> Treasury wallet balance
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-line bg-bg/60 px-4 py-3 md:text-right">
+              <div className="flex items-center gap-1.5 text-[11px] tracking-wider text-muted uppercase md:justify-end">
+                <Landmark className="size-3.5" /> From crawlers
+              </div>
+              <div className="num mt-0.5 text-xl font-semibold">{t ? `${solFmt(t.sol)} SOL` : "—"}</div>
             </div>
-            <div className="num mt-0.5 text-xl font-semibold">{t?.balance != null ? `${solFmt(t.balance)} SOL` : "—"}</div>
+            <div className="rounded-xl border border-line bg-bg/60 px-4 py-3 md:text-right">
+              <div className="text-[11px] tracking-wider text-muted uppercase">Payments</div>
+              <div className="num mt-0.5 text-xl font-semibold">{t?.payments ?? "—"}</div>
+            </div>
           </div>
           <a href={solscan} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 text-xs text-muted hover:text-honey">
-            {t?.address ? `${t.address.slice(0, 6)}…${t.address.slice(-6)}` : ""} on Solscan <ExternalLink className="size-3" />
+            verify {t?.address ? `${t.address.slice(0, 6)}…${t.address.slice(-6)}` : ""} on Solscan <ExternalLink className="size-3" />
           </a>
         </div>
       </div>

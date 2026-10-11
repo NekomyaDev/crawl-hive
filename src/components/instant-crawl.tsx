@@ -5,9 +5,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, ExternalLink, Eye, Radar, ShieldCheck } from "lucide-react";
+import { ArrowRight, ExternalLink, Eye, Flame, Radar, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShareOnX } from "@/components/share-on-x";
+import { buybackFund, solFmt, useTreasury } from "@/components/treasury-card";
 import { shareText } from "@/lib/scan-share";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
@@ -94,6 +95,7 @@ export function InstantCrawl() {
   const es = useRef<EventSource | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const { data: recent, reload } = useApi<Recent[]>("/api/scan/recent", 8000);
+  const treasury = useTreasury();
 
   const scan = useCallback(
     (input: string) => {
@@ -164,8 +166,18 @@ export function InstantCrawl() {
       <div className="ring-gradient relative overflow-hidden rounded-2xl bg-panel/70 p-5 lg:p-7">
         <div aria-hidden className="pointer-events-none absolute -top-32 left-1/3 size-96 rounded-full bg-gradient-to-br from-honey/20 via-pink/10 to-transparent blur-3xl" />
         <div className="relative">
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-line bg-bg/60 px-2.5 py-1 text-[11px] text-muted">
-            <span className="size-1.5 animate-pulse rounded-full bg-lime" /> free · no wallet · ~10 seconds
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-line bg-bg/60 px-2.5 py-1 text-[11px] text-muted">
+              <span className="size-1.5 animate-pulse rounded-full bg-lime" /> free · no wallet · ~10 seconds
+            </div>
+            {treasury?.address && (
+              <a
+                href="#treasury"
+                className="inline-flex items-center gap-1.5 rounded-full border border-honey/40 bg-honey/10 px-2.5 py-1 text-[11px] text-honey hover:bg-honey/20"
+              >
+                <Flame className="size-3" /> <span className="num font-semibold">{solFmt(buybackFund(treasury))} SOL</span> in the buyback fund
+              </a>
+            )}
           </div>
           <h1 className="max-w-3xl text-3xl leading-tight font-bold tracking-tight lg:text-5xl">
             Send the <span className="text-gradient">swarm</span> after any memecoin
