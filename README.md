@@ -39,7 +39,7 @@ No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a
 | `crawler_clones` | Other tokens with the same ticker, compared by FDV: is this the original or a copy? |
 | `crawler_bundles` | Who funded the top wallets: wallets that got their first SOL from one address, or whose first transaction was paid by the same signer, are grouped as one owner |
 | `crawler_telegram` | Mentions in tracked Telegram channels |
-| `crawler_x` | Grok reads X for the contract and `$TICKER` over the last two days: sentiment, a one-line summary, concrete warnings (rug, dev sold, bundled) and links to real posts. Arrives 30–60 s after the verdict, does not change the score |
+| `crawler_x` | Grok reads X for the contract and `$TICKER` over the last two days: sentiment, a one-line summary, concrete warnings (rug, dev sold, bundled) and up to 30 authors who posted about it. Arrives about a minute after the verdict, does not change the score |
 
 They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for pairs under 30 minutes) with a one-line reason, a shareable link (`/?scan=<address>`), and a **Watch 30 days** button that turns the one-off scan into a crawler watching that token for you.
 
@@ -47,6 +47,8 @@ They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for p
   <img src="docs/images/instant-crawl.png" alt="Instant Crawl: live crawler log and verdict for a token" width="100%">
   <br><sub>Instant Crawl on dogwifhat: the original $WIF among 10 tokens with that ticker, mint renounced, no freeze, scored CLEAN.</sub>
 </p>
+
+**Who's talking on X.** Once Grok finishes, the scan shows a map of the people who posted about the token: the crawler in the middle, authors around it on orbits, the ring colour is the stance of their post (bullish, bearish, neutral), and a bigger bubble means more posts. Tap a bubble to read the post and open it on X. Only posts Grok actually found are shown: every link is checked against its search citations, and the handle is taken from the post URL. Avatars come from unavatar.io, with a letter when there is none.
 
 **Share a result.** Every scan gets its own page, `crawlhive.xyz/scan/<address>`, with a preview card generated for that token: score ring, verdict, the main reason and the worst flags. *Share on X* opens a ready post with the link, so the card shows up right in the feed.
 
@@ -330,6 +332,7 @@ db/schema.sql                target Postgres schema
 - [x] Instant Crawl: free token scan without a wallet
 - [x] Ready-made crawlers, buyback treasury counter
 - [x] Instant Crawl: X mentions through Grok, bundle detection (wallets run by one person)
+- [x] Instant Crawl: "who's talking on X" map of the authors posting about a token
 - [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)

@@ -9,6 +9,7 @@ import { ArrowRight, ExternalLink, Eye, Flame, Radar, ShieldCheck } from "lucide
 import { Button } from "@/components/ui/button";
 import { ShareOnX } from "@/components/share-on-x";
 import { buybackFund, solFmt, useTreasury } from "@/components/treasury-card";
+import { XVoices, type XVoice } from "@/components/x-voices";
 import { shareText } from "@/lib/scan-share";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
@@ -58,6 +59,7 @@ interface XBuzz {
   summary: string;
   warnings: string[];
   posts: { handle: string; text: string; url: string }[];
+  voices?: XVoice[];
 }
 interface Recent {
   id: string;
@@ -244,6 +246,9 @@ export function InstantCrawl() {
               </div>
               {result ? <ResultCard r={result} x={x} /> : <ResultSkeleton running={running} />}
             </div>
+          )}
+          {result && x !== undefined && x !== null && (
+            <XVoices symbol={result.symbol} loading={x === "loading"} voices={x === "loading" ? undefined : x.voices} />
           )}
         </div>
       </div>

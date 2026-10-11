@@ -9,6 +9,7 @@ import { ArrowRight, ExternalLink, Radar } from "lucide-react";
 import { savedScan, type ScanResult } from "@/lib/server/scan";
 import { VERDICT_COLOR, VERDICT_LABEL, shareText } from "@/lib/scan-share";
 import { ShareOnX } from "@/components/share-on-x";
+import { XVoices } from "@/components/x-voices";
 import { cn, timeAgo } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/scan/[id]">): Promise<Metadata> {
@@ -115,6 +116,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
             )}
           </div>
         )}
+
+        {!!r.x?.voices?.length && <XVoices symbol={r.symbol} voices={r.x.voices} />}
 
         <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
           <Link

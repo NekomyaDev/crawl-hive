@@ -133,3 +133,37 @@ body::before {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Карта «who's talking»: пузыри авторов всплывают по очереди, линии к центру прорисовываются, центр дышит. */
+@keyframes voice-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.voice-pop {
+  animation: voice-pop 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+@keyframes voice-line {
+  from { stroke-dashoffset: 1; opacity: 0; }
+  to { stroke-dashoffset: 0; opacity: 1; }
+}
+.voice-line {
+  stroke-dasharray: 1;
+  animation: voice-line 0.7s ease-out both;
+}
+@keyframes hub-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 176, 32, 0.35), 0 0 40px rgba(255, 176, 32, 0.35); }
+  50% { box-shadow: 0 0 0 14px rgba(255, 176, 32, 0), 0 0 60px rgba(255, 176, 32, 0.5); }
+}
+.hub-breathe {
+  animation: hub-breathe 2.4s ease-in-out infinite;
+}
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+.orbit {
+  animation: orbit 14s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-pop, .voice-line, .hub-breathe, .orbit { animation: none; }
+}

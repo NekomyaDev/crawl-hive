@@ -9,7 +9,18 @@ export interface XBuzz {
   summary: string;
   warnings: string[]; // обвинения в скаме, руге, взломе — то, что стоит прочитать до покупки
   posts: { handle: string; text: string; url: string }[];
+  // Кто писал о токене: один человек — один пузырь на карте «who's talking», с его самым показательным постом.
+  voices?: XVoice[];
   at: number;
+}
+
+export interface XVoice {
+  handle: string;
+  name: string;
+  text: string;
+  url: string;
+  stance: "bullish" | "bearish" | "neutral";
+  posts: number; // сколько постов этого автора нашлось
 }
 
 const CACHE_MS = 30 * 60_000;
@@ -65,25 +76,46 @@ export async function scanX(t: { id: string; symbol: string; name: string }, ip:
     const { text, citations } = await grok({
       system:
         "You check what people on X say about a crypto token. Search X, read the posts, and answer with JSON only: " +
-        '{"sentiment":"bullish|mixed|bearish|quiet","summary":"one plain sentence, max 30 words","warnings":["short phrase"],"posts":[{"handle":"name without @","text":"under 120 chars","url":"https://x.com/..."}]}. ' +
+        '{"sentiment":"bullish|mixed|bearish|quiet","summary":"one plain sentence, max 30 words","warnings":["short phrase"],"posts":[{"handle":"name without @","name":"display name","text":"under 140 chars","url":"https://x.com/...","stance":"bullish|bearish|neutral"}]}. ' +
         "sentiment is quiet when there are fewer than 5 relevant posts. warnings: only concrete accusations people make (rug, scam, hacked, dev sold, bundled supply, fake volume); empty if none. " +
-        "posts: up to 4 of the most informative posts, real URLs from your search only. Ignore posts about other tokens that share the ticker.",
+        "posts: up to 30 posts by different authors, most informative first, real URLs from your search only; text is a short faithful excerpt of the post. Skip pure bots and spam reposts. Ignore posts about other tokens that share the ticker.",
       user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, Solana contract ${t.id}. Search X for the contract address and for $${t.symbol} since ${since}.`,
       xSearch: { fromDate: since },
-      maxTurns: 2,
-      timeoutMs: 90_000,
+      // Третий шаг поиска нужен, чтобы набрать авторов на карту, а не только пару постов.
+      maxTurns: 3,
+      timeoutMs: 110_000,
     });
     const j = extractJson<Partial<XBuzz>>(text) ?? {};
     const real = new Set(citations);
+    const byHandle = new Map<string, XVoice>();
+    for (const x of Array.isArray(j.posts) ? (j.posts as Partial<XVoice>[]) : []) {
+      if (!x || typeof x.url !== "string" || !/^https:\/\/(x|twitter)\.com\//.test(x.url) || !cited(real, x.url)) continue;
+      // Ник берём из самой ссылки: x.com/<ник>/status/…; модель могла записать его иначе.
+      const handle = (x.url.match(/(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/status\//)?.[1] ?? String(x.handle ?? "").replace(/^@/, "")).slice(0, 15);
+      if (!handle || handle === "i") continue;
+      const key = handle.toLowerCase();
+      const prev = byHandle.get(key);
+      if (prev) {
+        prev.posts++;
+        continue;
+      }
+      byHandle.set(key, {
+        handle,
+        name: String(x.name ?? "").slice(0, 40) || handle,
+        text: String(x.text ?? "").slice(0, 160),
+        url: x.url,
+        stance: (["bullish", "bearish", "neutral"] as const).includes(x.stance as XVoice["stance"]) ? (x.stance as XVoice["stance"]) : "neutral",
+        posts: 1,
+      });
+    }
+    const voices = [...byHandle.values()].slice(0, 30);
     const buzz: XBuzz = {
       sentiment: (["bullish", "mixed", "bearish", "quiet"] as const).includes(j.sentiment as XBuzz["sentiment"]) ? (j.sentiment as XBuzz["sentiment"]) : "quiet",
       summary: String(j.summary ?? "").slice(0, 240) || "Nothing notable on X in the last two days.",
       warnings: (Array.isArray(j.warnings) ? j.warnings : []).map((w) => String(w).slice(0, 60)).slice(0, 4),
       // Ссылки берём только те, что Grok реально нашёл, — выдуманные URL не показываем.
-      posts: (Array.isArray(j.posts) ? j.posts : [])
-        .filter((x) => x && typeof x.url === "string" && /^https:\/\/(x|twitter)\.com\//.test(x.url) && cited(real, x.url))
-        .map((x) => ({ handle: String(x.handle ?? "").replace(/^@/, "").slice(0, 30), text: String(x.text ?? "").slice(0, 140), url: x.url }))
-        .slice(0, 4),
+      posts: voices.slice(0, 4).map(({ handle, text, url }) => ({ handle, text, url })),
+      voices,
       at: Date.now(),
     };
     m.cache.set(t.id, buzz);

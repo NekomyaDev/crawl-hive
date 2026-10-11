@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
         send({ type: "result", result });
         if (result.chain === "solana" && scanXEnabled()) {
           const cached = cachedBuzz(result.id);
-          if (!cached) log({ crawler: "crawler_x", text: `Grok is reading X for $${result.symbol}, about 30–60s…`, tone: "info" });
+          if (!cached) log({ crawler: "crawler_x", text: `Grok is reading X for $${result.symbol}: who is talking about it, about a minute…`, tone: "info" });
           // Пустые комментарии раз в 15 с, чтобы прокси не закрыли тихое соединение.
           const ping = setInterval(() => {
             try {
