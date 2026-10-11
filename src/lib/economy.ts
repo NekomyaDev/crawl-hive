@@ -26,6 +26,15 @@ export const TIER_PRICE_SOL: Record<Tier, number> = {
   queen: 2.5,
 };
 
+// Те же тиры в ETH для оплаты на Robinhood Chain (примерно те же доллары при ETH ≈ 23 SOL, 11.10.2026).
+// Переопределяется SPAWN_PRICE_ETH.
+export const TIER_PRICE_ETH: Record<Tier, number> = {
+  larva: 0.002,
+  worker: 0.008,
+  soldier: 0.03,
+  queen: 0.1,
+};
+
 // Спавн и каждое продление дают столько дней работы. Переопределяется CRAWLER_TERM_DAYS.
 export const CRAWLER_TERM_DAYS = 30;
 

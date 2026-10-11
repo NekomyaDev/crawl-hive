@@ -1,4 +1,4 @@
-// Вход подписью кошелька (упрощённый Sign-In With Solana).
+// Вход подписью кошелька (упрощённый Sign-In With Solana; для кошельков EVM — personal_sign).
 // Кошелёк подписывает сообщение с одноразовым nonce, сервер проверяет ed25519-подпись
 // и выдаёт токен сессии (HMAC). Без этого любой мог бы читать чужие приватные сигналы по адресу.
 import "server-only";
@@ -6,6 +6,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { ed25519 } from "@noble/curves/ed25519";
 import { PublicKey } from "@solana/web3.js";
 import { ApiError, metaValue } from "./store";
+import { isEvmAddress, recoverEvmSigner } from "./robinhood";
 
 const NONCE_TTL_MS = 5 * 60_000;
 const SESSION_TTL_MS = 7 * 86400_000;
@@ -23,7 +24,7 @@ export function signInMessage(address: string, nonce: string, issuedAt: string) 
 }
 
 export function issueNonce(address: string) {
-  new PublicKey(address); // бросит на кривом адресе
+  if (!isEvmAddress(address)) new PublicKey(address); // бросит на кривом адресе
   const now = Date.now();
   for (const [k, v] of nonces()) if (v.exp < now) nonces().delete(k);
   const nonce = randomBytes(12).toString("base64url");
@@ -40,10 +41,13 @@ export function verifySignIn(address: string, nonce: string, issuedAt: string, s
   const n = nonces().get(nonce);
   if (!n || n.address !== address || n.exp < Date.now()) throw new ApiError("Sign-in expired, try again", 401);
   nonces().delete(nonce);
-  const msg = new TextEncoder().encode(signInMessage(address, nonce, issuedAt));
+  const text = signInMessage(address, nonce, issuedAt);
+  const sig = Buffer.from(signatureB64, "base64");
   let ok = false;
   try {
-    ok = ed25519.verify(Buffer.from(signatureB64, "base64"), msg, new PublicKey(address).toBytes());
+    ok = isEvmAddress(address)
+      ? recoverEvmSigner(text, sig) === address
+      : ed25519.verify(sig, new TextEncoder().encode(text), new PublicKey(address).toBytes());
   } catch {
     ok = false;
   }

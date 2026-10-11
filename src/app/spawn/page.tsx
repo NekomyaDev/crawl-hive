@@ -86,23 +86,32 @@ export default function SpawnPage() {
     setSpec(normalizeSpec(tpl.spec, tpl.source));
   }, []);
   const payment = cfg?.payment ?? "simulated";
-  const onchain = payment !== "simulated";
+  // Кошелёк EVM платит в ETH на Robinhood Chain, Phantom — в SOL.
+  const eth = mode === "evm" && !!cfg?.eth;
+  const onchain = payment !== "simulated" || eth;
+  const paying = eth || payment === "sol"; // перевод (SOL или ETH), а не сжигание
+  // Кошелёк Robinhood Chain: по умолчанию и краулер смотрит туда же (если не выбран шаблон).
+  useEffect(() => {
+    if (eth && !template) setChain((c) => (c === "solana" ? "robinhood" : c));
+  }, [eth, template]);
   // Фаза 1 — платим SOL, фаза 2 — сжигаем токен проекта; в симуляции — внутренние credits.
-  const priceOf = (k: Tier) => cfg?.prices[k] ?? (payment === "sol" ? TIER_PRICE_SOL[k] : TIERS[k].burn);
+  const priceOf = (k: Tier) => (eth && cfg?.eth ? cfg.eth.prices[k] : (cfg?.prices[k] ?? (payment === "sol" ? TIER_PRICE_SOL[k] : TIERS[k].burn)));
   // Тикер токена проекта приходит из конфига (TOKEN_SYMBOL), пока токена нет — режим token выключен.
   const tokenName = cfg?.symbol ?? "token";
-  const unit = payment === "sol" ? "SOL" : payment === "token" ? tokenName : CREDITS;
-  const fmtPrice = (n: number) => (payment === "sol" ? `${n}` : fmt(n));
+  const unit = eth ? "ETH" : payment === "sol" ? "SOL" : payment === "token" ? tokenName : CREDITS;
+  const fmtPrice = (n: number) => (paying ? `${n}` : fmt(n));
 
   const t = TIERS[tier];
   const effFreq = Math.max(freq, t.minFrequency);
   const itemsPerHour = Math.round((targets.length * 40 * 60) / (effFreq * 60) * 60) || 0;
   // On-chain сжигаем реальные токены из кошелька, иначе — внутренний баланс.
-  const balance =
-    payment === "sol" ? (info?.onchain?.sol ?? 0) : payment === "token" ? (info?.onchain?.tokens ?? 0) : (info?.balance ?? 0);
+  const balance = eth
+    ? (info?.onchain?.eth ?? 0)
+    : payment === "sol" ? (info?.onchain?.sol ?? 0) : payment === "token" ? (info?.onchain?.tokens ?? 0) : (info?.balance ?? 0);
   const price = priceOf(tier);
-  const needPhantom = onchain && !!address && mode !== "phantom";
-  const enough = balance >= price + (payment === "sol" ? 0.00002 : 0);
+  // Демо-кошелёк платить не может; кошелёк EVM — только если оплата в ETH включена.
+  const needPhantom = onchain && !!address && (mode === "demo" || (mode === "evm" && !cfg?.eth));
+  const enough = balance >= price + (eth ? 0.00005 : payment === "sol" ? 0.00002 : 0);
   // Стартовая репутация: точность ещё нейтральная, uptime 100%, данных ноль, плюс вклад сожжённого.
   const startRep = computeReputation({
     burned: t.burn,
@@ -131,14 +140,14 @@ export default function SpawnPage() {
 
   const spawn = async () => {
     if (!address) return connect();
-    if (needPhantom) return toast("On-chain burn needs Phantom. Disconnect the demo wallet and connect Phantom.", "error");
+    if (needPhantom) return toast("This wallet can't pay here. Disconnect it and connect Phantom.", "error");
     const payload = { name, source, chain, narratives, targets, frequencyMin: effFreq, tier, spec, template };
     setBusy(true);
     try {
       const c = onchain ? await spawnWithBurn(payload, setStep) : await post<PublicCrawler>("/api/crawlers", payload);
       toast(
-        payment === "sol"
-          ? `Paid ${price} SOL on-chain. ${c.name} joined the swarm.`
+        paying
+          ? `Paid ${price} ${unit} on-chain. ${c.name} joined the swarm.`
           : `🔥 Burned ${fmt(price)} ${unit}${onchain ? " on-chain" : ""}. ${c.name} joined the swarm.`,
       );
       await refresh();
@@ -167,8 +176,8 @@ export default function SpawnPage() {
 
   const STEP_LABEL: Record<BurnStep, string> = {
     prepare: "Preparing transaction…",
-    sign: "Confirm in Phantom…",
-    confirm: "Verifying burn on-chain…",
+    sign: eth ? "Confirm in your wallet…" : "Confirm in Phantom…",
+    confirm: paying ? "Verifying payment on-chain…" : "Verifying burn on-chain…",
   };
 
   return (
@@ -176,8 +185,8 @@ export default function SpawnPage() {
       <PageHeader
         title="Spawn a crawler"
         sub={
-          payment === "sol"
-            ? `Pay SOL to hatch a crawler. Pre-launch phase: the SOL goes to the project treasury and will fund buybacks of the project token once it launches. Higher tiers get more targets, faster crawl cycles and a reward boost.`
+          paying
+            ? `Pay ${cfg?.eth ? "SOL, or ETH on Robinhood Chain," : "SOL"} to hatch a crawler. Pre-launch phase: the payment goes to the project treasury and will fund buybacks of the project token once it launches. Higher tiers get more targets, faster crawl cycles and a reward boost.`
             : `Burn ${unit} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`
         }
       />
@@ -186,7 +195,7 @@ export default function SpawnPage() {
         <div className="flex flex-col gap-5">
           {/* 1. Тир */}
           <Card>
-            <CardHeader title="1 · Tier" sub={`What you ${payment === "sol" ? "pay" : "burn"} decides what the crawler can do`} />
+            <CardHeader title="1 · Tier" sub={`What you ${paying ? "pay" : "burn"} decides what the crawler can do`} />
             <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
               {TIER_ORDER.map((k) => {
                 const v = TIERS[k];
@@ -207,7 +216,7 @@ export default function SpawnPage() {
                       {k === "queen" && <span className="text-[10px] text-honey">♛</span>}
                     </div>
                     <div className="num mt-2 text-lg text-honey">{fmtPrice(priceOf(k))}</div>
-                    <div className="text-[11px] text-muted">{payment === "sol" ? "SOL" : `${unit} burned`}</div>
+                    <div className="text-[11px] text-muted">{paying ? unit : `${unit} burned`}</div>
                     <ul className="mt-2 space-y-0.5 text-[11px] text-muted">
                       <li>{v.maxTargets} targets</li>
                       <li>every {v.minFrequency} min</li>
@@ -370,14 +379,14 @@ export default function SpawnPage() {
 
               <div className="mt-4 rounded-lg border border-honey/30 bg-honey/5 p-3">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-sm">{payment === "sol" ? "You pay" : "You burn"}</span>
+                  <span className="text-sm">{paying ? "You pay" : "You burn"}</span>
                   <span className="num text-xl font-bold text-honey">
                     {fmtPrice(price)} <span className="text-xs">{unit}</span>
                   </span>
                 </div>
                 {address && (
                   <div className={cn("num mt-1 text-right text-[11px]", enough ? "text-muted" : "text-danger")}>
-                    {onchain ? "in wallet" : "balance"} {payment === "sol" ? balance.toFixed(3) : fmt(balance)} {payment === "sol" && "SOL"}
+                    {onchain ? "in wallet" : "balance"} {eth ? balance.toFixed(5) : payment === "sol" ? balance.toFixed(3) : fmt(balance)} {paying && unit}
                     {payment === "token" && info?.onchain && <span> · {info.onchain.sol.toFixed(3)} SOL</span>}
                   </div>
                 )}
@@ -411,13 +420,26 @@ export default function SpawnPage() {
                       ? STEP_LABEL[step]
                       : busy
                         ? "Burning…"
-                        : payment === "sol"
-                          ? `Pay ${price} SOL & spawn`
+                        : paying
+                          ? `Pay ${price} ${unit} & spawn`
                           : `Burn ${fmt(price)} & spawn`}
               </Button>
               {cfg && (
                 <p className="mt-2 text-center text-[11px] text-muted">
-                  {payment === "sol" && (
+                  {eth && cfg.eth && (
+                    <>
+                      Real ETH payment on <span className="text-fg">Robinhood Chain</span> to the project treasury{" "}
+                      <a className="num hover:text-honey" href={`${cfg.eth.explorer}/address/${cfg.eth.recipient}`} target="_blank" rel="noreferrer">
+                        {cfg.eth.recipient.slice(0, 6)}…{cfg.eth.recipient.slice(-4)}
+                      </a>
+                      . It goes to the same buyback fund as SOL. Your wallet switches to Robinhood Chain for you. Buys {cfg.termDays} days of crawling; renew any time. Payments are final, signals are not financial advice:{" "}
+                      <Link href="/terms" className="underline hover:text-fg">
+                        terms
+                      </Link>
+                      .
+                    </>
+                  )}
+                  {!eth && payment === "sol" && (
                     <>
                       Real SOL payment on <span className="text-fg">{cfg.cluster}</span>
                       {cfg.solBurned ? (

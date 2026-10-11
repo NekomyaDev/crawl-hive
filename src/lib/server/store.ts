@@ -983,6 +983,7 @@ export function recordRun(id: string, r: RunResult) {
 // Сколько собрано за спавны и продления (только проверенные on-chain платежи) — для счётчика казны.
 export function paymentTotals() {
   let sol = 0;
+  let eth = 0;
   let payments = 0;
   let tokens = 0;
   for (const c of state().crawlers.values()) {
@@ -990,10 +991,11 @@ export function paymentTotals() {
       if (!p || !p.tx) continue;
       payments++;
       if (p.unit === "SOL") sol += p.amount;
+      else if (p.unit === "ETH") eth += p.amount;
       else tokens += p.amount;
     }
   }
-  return { sol: Math.round(sol * 1e6) / 1e6, tokens, payments };
+  return { sol: Math.round(sol * 1e6) / 1e6, eth: Math.round(eth * 1e9) / 1e9, tokens, payments };
 }
 
 // Сколько живых краулеров запущено из каждого готового шаблона.

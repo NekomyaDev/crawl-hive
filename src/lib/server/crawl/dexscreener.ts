@@ -42,8 +42,9 @@ export async function bestPairs(chainId: string, addresses: string[]): Promise<M
     const batch = addresses.slice(i, i + 30);
     const pairs = await get<PairInfo[]>(`/tokens/v1/${chainId}/${batch.join(",")}`);
     for (const p of pairs ?? []) {
-      const addr = p.baseToken?.address;
-      if (!addr || !batch.includes(addr)) continue;
+      // Адреса EVM бывают в разном регистре: ключом остаётся написание из запроса.
+      const addr = batch.find((b) => b.toLowerCase() === p.baseToken?.address?.toLowerCase());
+      if (!addr) continue;
       const prev = out.get(addr);
       if (!prev || (p.liquidity?.usd ?? 0) > (prev.liquidity?.usd ?? 0)) out.set(addr, p);
     }

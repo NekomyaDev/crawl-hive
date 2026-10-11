@@ -4,12 +4,14 @@ import type { NextRequest } from "next/server";
 import { handle, walletFrom } from "@/lib/server/http";
 import { renewableCrawler, renewCrawlerWithCredits } from "@/lib/server/store";
 import { createRenewIntent, isOnchain } from "@/lib/server/solana";
+import { createEthRenewIntent, isEvmAddress } from "@/lib/server/robinhood";
 
 export async function POST(req: NextRequest, ctx: RouteContext<"/api/crawlers/[id]/renew">) {
   return handle(async () => {
     const { id } = await ctx.params;
     const wallet = walletFrom(req);
     const { tier } = renewableCrawler(wallet, id);
+    if (isEvmAddress(wallet)) return createEthRenewIntent(wallet, id, tier);
     if (!isOnchain()) return { crawler: renewCrawlerWithCredits(wallet, id) };
     return createRenewIntent(wallet, id, tier);
   });

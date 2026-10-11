@@ -72,7 +72,7 @@ export function TelegramCard() {
           <Unlink className="size-4" /> Disconnect
         </Button>
       ) : (
-        <Button size="sm" onClick={connect}>
+        <Button size="sm" onClick={() => connect()}>
           <Send className="size-4" /> {waiting ? "Open bot again" : "Connect Telegram"}
         </Button>
       )}

@@ -3,20 +3,22 @@
 // чтобы демо тоже могло подписывать) создаётся только без on-chain оплаты, то есть в локальной разработке:
 // на проде без Phantom показываем, как его поставить или открыть сайт в приложении Phantom. После подключения кошелёк подписывает сообщение (не транзакцию),
 // сервер выдаёт токен сессии, и дальше все запросы идут от имени подписанного кошелька.
+// Кошелёк EVM (MetaMask, Rabby) — для Robinhood Chain: входит через personal_sign и платит в ETH.
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { ed25519 } from "@noble/curves/ed25519";
 import { api, post, setApiSession } from "@/lib/client/api";
 import type { WalletInfo } from "@/lib/types";
 
-type Mode = "phantom" | "demo";
+type Mode = "phantom" | "evm" | "demo";
+export type WalletKind = "phantom" | "evm";
 
 interface WalletCtx {
   address: string;
   mode: Mode | null;
   signedIn: boolean;
   info: WalletInfo | null;
-  connect: () => Promise<void>;
+  connect: (kind?: WalletKind) => Promise<void>;
   signIn: () => Promise<void>;
   disconnect: () => void;
   refresh: () => Promise<void>;
@@ -31,6 +33,16 @@ export interface PhantomProvider {
   signMessage: (msg: Uint8Array, display?: "utf8" | "hex") => Promise<{ signature: Uint8Array }>;
   connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: { toString(): string } }>;
   disconnect: () => Promise<void>;
+}
+
+// EIP-1193: MetaMask, Rabby и другие кошельки EVM, встроенные в браузер.
+export interface EvmProvider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+}
+
+export function evmProvider(): EvmProvider | null {
+  if (typeof window === "undefined") return null;
+  return (window as unknown as { ethereum?: EvmProvider }).ethereum ?? null;
 }
 
 export function phantom(): PhantomProvider | null {
@@ -110,6 +122,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<WalletInfo | null>(null);
   const [hasPhantom, setHasPhantom] = useState(false);
   const [needPhantom, setNeedPhantom] = useState(false);
+  const [needEvm, setNeedEvm] = useState(false);
+  const [picker, setPicker] = useState(false);
+  const [ethOn, setEthOn] = useState(false);
 
   const apply = (v: Saved | null) => {
     setApiSession(v?.token && tokenValid(v.token) ? v.token : "");
@@ -122,7 +137,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const signer =
       v.mode === "demo" && v.seed
         ? async (m: Uint8Array) => ed25519.sign(m, fromHex(v.seed!))
-        : async (m: Uint8Array) => {
+        : v.mode === "evm"
+          ? async (m: Uint8Array) => {
+              const p = evmProvider();
+              if (!p) throw new Error("No EVM wallet found");
+              const sig = (await p.request({ method: "personal_sign", params: [`0x${toHex(m)}`, v.address] })) as string;
+              return fromHex(sig.replace(/^0x/, ""));
+            }
+          : async (m: Uint8Array) => {
             const p = phantom();
             if (!p) throw new Error("Phantom not found");
             return (await p.signMessage(m, "utf8")).signature;
@@ -133,6 +155,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setHasPhantom(!!phantom());
+    api<{ eth: unknown }>("/api/config")
+      .then((c) => setEthOn(!!c.eth))
+      .catch(() => {});
     const v = load();
     if (!v) return;
     apply(v);
@@ -162,7 +187,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [address, refresh]);
 
-  const connect = async () => {
+  const connect = async (kind?: WalletKind) => {
+    // Оплата в ETH на Robinhood Chain включена — даём выбрать кошелёк.
+    if (!kind && ethOn) {
+      setPicker(true);
+      return;
+    }
+    setPicker(false);
+    if (kind === "evm") {
+      const e = evmProvider();
+      if (!e) {
+        setNeedEvm(true);
+        return;
+      }
+      try {
+        const [acc] = (await e.request({ method: "eth_requestAccounts" })) as string[];
+        const v: Saved = { address: acc.toLowerCase(), mode: "evm" };
+        apply(v);
+        await signInWith(v);
+      } catch {
+        // отказался — кошелёк остаётся подключённым, «Sign in» предложит ещё раз
+      }
+      return;
+    }
     const p = phantom();
     if (p) {
       try {
@@ -190,7 +237,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   };
 
   const disconnect = () => {
-    phantom()?.disconnect().catch(() => {});
+    if (saved?.mode === "phantom") phantom()?.disconnect().catch(() => {});
     apply(null);
   };
 
@@ -198,6 +245,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{ address, mode: saved?.mode ?? null, signedIn, info, connect, signIn, disconnect, refresh, hasPhantom }}>
       {children}
       {needPhantom && <PhantomPrompt onClose={() => setNeedPhantom(false)} />}
+      {needEvm && <EvmPrompt onClose={() => setNeedEvm(false)} />}
+      {picker && <WalletPicker onPick={connect} onClose={() => setPicker(false)} />}
     </Ctx.Provider>
   );
 }
@@ -242,6 +291,71 @@ function PhantomPrompt({ onClose }: { onClose: () => void }) {
             Install Phantom
           </a>
           {!mobile && <p className="text-center text-xs text-muted">Already installed? Reload the page after enabling the extension.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Выбор кошелька: Phantom на Solana (оплата в SOL) или EVM-кошелёк на Robinhood Chain (оплата в ETH).
+function WalletPicker({ onPick, onClose }: { onPick: (k: WalletKind) => void; onClose: () => void }) {
+  const opts: { kind: WalletKind; title: string; text: string; dot: string }[] = [
+    { kind: "phantom", title: "Phantom", text: "Solana · pay in SOL", dot: "bg-violet" },
+    { kind: "evm", title: "MetaMask, Rabby or any EVM wallet", text: "Robinhood Chain · pay in ETH", dot: "bg-lime" },
+  ];
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative w-full max-w-sm rounded-xl border border-line bg-panel p-5" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-3 right-3 text-muted hover:text-fg" aria-label="Close">
+          <X className="size-4" />
+        </button>
+        <div className="mb-1 font-semibold">Connect a wallet</div>
+        <p className="mb-4 text-sm text-muted">Signing in is a free message, not a transaction. You pay only when you spawn or renew a crawler.</p>
+        <div className="flex flex-col gap-2">
+          {opts.map((o) => (
+            <button
+              key={o.kind}
+              type="button"
+              onClick={() => onPick(o.kind)}
+              className="flex items-center gap-3 rounded-lg border border-line px-4 py-3 text-left transition hover:border-honey/60 hover:bg-panel-2"
+            >
+              <span className={`size-2.5 shrink-0 rounded-full ${o.dot}`} />
+              <span>
+                <span className="block text-sm font-semibold">{o.title}</span>
+                <span className="block text-xs text-muted">{o.text}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Кошелька EVM в браузере нет: на телефоне открываем сайт в MetaMask, на компьютере предлагаем поставить.
+function EvmPrompt({ onClose }: { onClose: () => void }) {
+  const mobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const here = typeof window !== "undefined" ? window.location.href.replace(/^https?:\/\//, "") : "";
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative w-full max-w-sm rounded-xl border border-line bg-panel p-5" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-3 right-3 text-muted hover:text-fg" aria-label="Close">
+          <X className="size-4" />
+        </button>
+        <div className="mb-1 font-semibold">EVM wallet needed</div>
+        <p className="mb-4 text-sm text-muted">To pay in ETH on Robinhood Chain, use MetaMask, Rabby or another EVM wallet. The site adds the network for you.</p>
+        <div className="flex flex-col gap-2">
+          {mobile && (
+            <a href={`https://metamask.app.link/dapp/${here}`} className="rounded-lg bg-honey px-4 py-2 text-center text-sm font-semibold text-black">
+              Open in MetaMask app
+            </a>
+          )}
+          <a href="https://metamask.io/download" target="_blank" rel="noreferrer" className={mobile ? "rounded-lg border border-line px-4 py-2 text-center text-sm" : "rounded-lg bg-honey px-4 py-2 text-center text-sm font-semibold text-black"}>
+            Install MetaMask
+          </a>
+          <a href="https://rabby.io" target="_blank" rel="noreferrer" className="rounded-lg border border-line px-4 py-2 text-center text-sm">
+            Install Rabby
+          </a>
         </div>
       </div>
     </div>

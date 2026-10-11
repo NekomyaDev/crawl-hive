@@ -14,3 +14,12 @@ export function shareText(r: { symbol: string; score: number | null; verdict: Ve
 
 export const xIntent = (text: string, url: string) =>
   `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+
+// Сети сканера: подпись и ссылка на токен в эксплорере.
+export const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain" };
+export const explorerToken = (chain: string, id: string) =>
+  chain === "solana"
+    ? { href: `https://solscan.io/token/${id}`, label: "Solscan" }
+    : chain === "robinhood"
+      ? { href: `https://robin.etherscan.io/token/${id}`, label: "Robinhood explorer" }
+      : null;

@@ -13,8 +13,9 @@ export function walletFrom(req: Request, required = true): string {
   return w ?? "";
 }
 
+// Адрес Solana или EVM (Robinhood Chain). Адреса EVM храним в нижнем регистре.
 export function isAddress(a: string) {
-  return ADDRESS_RE.test(a);
+  return ADDRESS_RE.test(a) || /^0x[0-9a-f]{40}$/.test(a);
 }
 
 // Данные живые, поэтому каждый handler сначала ждёт реальный запрос и не пререндерится.

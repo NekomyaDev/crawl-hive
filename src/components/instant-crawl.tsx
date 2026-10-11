@@ -8,12 +8,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, ExternalLink, Eye, Flame, Radar, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ShareOnX } from "@/components/share-on-x";
-import { buybackFund, solFmt, useTreasury } from "@/components/treasury-card";
+import { buybackFund, buybackUsd, solFmt, usdFmt, useTreasury } from "@/components/treasury-card";
 import { XVoices, type XVoice } from "@/components/x-voices";
 import { shareText } from "@/lib/scan-share";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
+import { usePay } from "@/lib/client/use-pay";
+import { CHAIN_LABEL, explorerToken } from "@/lib/scan-share";
 import { useConfig } from "@/lib/client/use-config";
 import { post } from "@/lib/client/api";
 import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
@@ -51,6 +53,7 @@ interface Result {
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
   bundles?: { checked: number; clusters: { wallets: number; pct: number; funder: string }[]; fresh: { wallets: number; pct: number } };
   dev?: { creator: string; launched: number; graduated: number; walletAgeHours?: number; walletTxs: number; holdsPct?: number };
+  evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   core?: string;
   clones: number;
   original?: boolean;
@@ -73,6 +76,14 @@ interface Recent {
 }
 
 const SAMPLE = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"; // BONK
+const SAMPLE_RH = "0x500CeE0c4184faF3B3d0Cf8c0380B57B2dE44607"; // ROBINHOOD на Robinhood Chain
+// Где искать $ТИКЕР. Адреса сеть определяют сами: base58 — Solana, 0x — Robinhood Chain.
+const NETS = [
+  { id: "solana", label: "Solana" },
+  { id: "robinhood", label: "Robinhood Chain" },
+] as const;
+type Net = (typeof NETS)[number]["id"];
+
 
 export const VERDICT_STYLE: Record<Verdict, { text: string; ring: string; bg: string; label: string }> = {
   CLEAN: { text: "text-lime", ring: "#b6f23a", bg: "bg-lime/10 border-lime/40", label: "CLEAN" },
@@ -90,6 +101,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export function InstantCrawl() {
   const [q, setQ] = useState("");
+  const [net, setNet] = useState<Net>("solana");
   const [lines, setLines] = useState<LogLine[]>([]);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +124,7 @@ export function InstantCrawl() {
       setX(undefined);
       setError(null);
       setRunning(true);
-      const src = new EventSource(`/api/scan?q=${encodeURIComponent(v)}`);
+      const src = new EventSource(`/api/scan?q=${encodeURIComponent(v)}&chain=${net}`);
       es.current = src;
       let gotResult = false;
       const done = () => {
@@ -129,7 +141,7 @@ export function InstantCrawl() {
           gotResult = true;
           setResult(e.result);
           setRunning(false);
-          if (e.result.chain === "solana") setX("loading");
+          if (e.result.chain === "solana" || e.result.chain === "robinhood") setX("loading");
           try {
             window.history.replaceState(null, "", `/?scan=${e.result.id}`);
           } catch {}
@@ -148,7 +160,7 @@ export function InstantCrawl() {
         done();
       };
     },
-    [running, reload],
+    [running, reload, net],
   );
 
   useEffect(() => {
@@ -179,7 +191,7 @@ export function InstantCrawl() {
                 href="#treasury"
                 className="inline-flex items-center gap-1.5 rounded-full border border-honey/40 bg-honey/10 px-2.5 py-1 text-[11px] text-honey hover:bg-honey/20"
               >
-                <Flame className="size-3" /> <span className="num font-semibold">{solFmt(buybackFund(treasury))} SOL</span> in the buyback fund
+                <Flame className="size-3" /> <span className="num font-semibold">{treasury.ethAddress && buybackUsd(treasury) !== null ? usdFmt(buybackUsd(treasury)!) : `${solFmt(buybackFund(treasury))} SOL`}</span> in the buyback fund
               </a>
             )}
           </div>
@@ -187,7 +199,7 @@ export function InstantCrawl() {
             Send the <span className="text-gradient">swarm</span> after any memecoin
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted lg:text-base">
-            Paste a contract address or a $ticker. Crawlers check the market, the mint, who funded the top wallets, copycat tickers, Telegram and X, then return a verdict.
+            Paste a contract address or a $ticker, on Solana or Robinhood Chain. Crawlers check the market, the mint, who funded the top wallets, copycat tickers, Telegram and X, then return a verdict.
           </p>
           <form
             className="mt-5 flex max-w-3xl flex-col gap-2 sm:flex-row"
@@ -212,7 +224,20 @@ export function InstantCrawl() {
             </Button>
           </form>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <button type="button" onClick={() => scan(SAMPLE)} className="text-honey hover:underline" disabled={running}>
+            <span className="inline-flex items-center gap-1">
+              $ticker on
+              {NETS.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => setNet(n.id)}
+                  className={cn("rounded-md border px-1.5 py-0.5", net === n.id ? "border-honey/60 bg-honey/10 text-honey" : "border-line hover:text-fg")}
+                >
+                  {n.label}
+                </button>
+              ))}
+            </span>
+            <button type="button" onClick={() => scan(net === "robinhood" ? SAMPLE_RH : SAMPLE)} className="text-honey hover:underline" disabled={running}>
               try a sample →
             </button>
             <span className="inline-flex items-center gap-1">
@@ -296,7 +321,7 @@ function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefin
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xl font-bold">${r.symbol}</span>
             <span className={cn("rounded-md border px-1.5 py-0.5 text-[11px] font-semibold", st.bg, st.text)}>{st.label}</span>
-            <span className="rounded-md border border-violet/40 px-1.5 py-0.5 text-[10px] text-violet">{r.chain}</span>
+            <span className="rounded-md border border-violet/40 px-1.5 py-0.5 text-[10px] text-violet">{CHAIN_LABEL[r.chain] ?? r.chain}</span>
           </div>
           <div className="truncate text-xs text-muted">{r.name}</div>
           <div className="mt-1 text-sm">{r.reason}</div>
@@ -309,7 +334,9 @@ function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefin
           ["Age", age],
           ["Vol 1h", usd(m?.volume1h)],
           ["Buys / sells 1h", m ? `${m.buys1h ?? 0} / ${m.sells1h ?? 0}` : "—"],
-          ["Top 10 wallets", r.holders ? `${r.holders.top10.toFixed(0)}%` : "—"],
+          r.evm
+            ? ["Holders", r.evm.holders !== undefined ? r.evm.holders.toLocaleString("en-US") : "—"]
+            : ["Top 10 wallets", r.holders ? `${r.holders.top10.toFixed(0)}%` : "—"],
         ].map(([k, v]) => (
           <div key={k} className="rounded-lg bg-panel-2 px-2 py-1.5">
             <div className="text-[10px] text-muted uppercase">{k}</div>
@@ -326,6 +353,13 @@ function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefin
         )}
         {r.bundles && <BundleFlag b={r.bundles} />}
         {r.dev && <DevFlag d={r.dev} />}
+        {r.evm && (
+          <>
+            {r.evm.honeypot !== undefined && <Flag ok={!r.evm.honeypot} label={r.evm.honeypot ? "honeypot: can't sell" : "sellable"} />}
+            <Flag ok={!r.evm.owner} label={r.evm.owner ? "owner active" : "ownership renounced"} />
+            {r.evm.top10 !== undefined && <Flag ok={r.evm.top10 <= 90} label={`top 10 hold ${r.evm.top10.toFixed(0)}%`} />}
+          </>
+        )}
         {r.core && <Flag ok label={`core asset · ${r.core}`} />}
         {!r.core && <Flag ok={r.clones <= 2 || !!r.original} label={r.original ? `original · ${r.clones} copycats` : r.clones ? `${r.clones} copycat tickers` : "unique ticker"} />}
         {r.telegram.map((t) => (
@@ -343,9 +377,9 @@ function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefin
             DexScreener <ExternalLink className="size-3" />
           </a>
         )}
-        {r.chain === "solana" && (
-          <a href={`https://solscan.io/token/${r.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-            Solscan <ExternalLink className="size-3" />
+        {explorerToken(r.chain, r.id) && (
+          <a href={explorerToken(r.chain, r.id)!.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+            {explorerToken(r.chain, r.id)!.label} <ExternalLink className="size-3" />
           </a>
         )}
         <button className="ml-auto text-[11px] text-muted hover:text-fg" onClick={() => navigator.clipboard?.writeText(r.id).then(() => toast("Address copied"))}>
@@ -437,23 +471,22 @@ function Flag({ ok, label }: { ok: boolean; label: string }) {
 
 // «Следить постоянно»: спавн on-chain краулера с этим токеном в списке наблюдения (всплески объёма)
 // и поиском по тикеру. Цена — тир Larva.
-const STEP: Record<BurnStep, string> = { prepare: "Preparing…", sign: "Confirm in Phantom…", confirm: "Checking payment…" };
 function WatchButton({ r }: { r: Result }) {
-  const cfg = useConfig();
+  const { cfg, unit, simulated, price: priceOf, fmtPrice, signLabel } = usePay();
+  const STEP: Record<BurnStep, string> = { prepare: "Preparing…", sign: signLabel, confirm: "Checking payment…" };
   const router = useRouter();
   const toast = useToast();
   const { address, signedIn, connect, signIn } = useWallet();
   const [step, setStep] = useState<BurnStep | "busy" | null>(null);
-  if (r.chain !== "solana") return null;
-  const price = cfg?.prices.larva;
-  const unit = cfg?.payment === "sol" ? "SOL" : cfg?.payment === "token" ? cfg.symbol : "credits";
+  if (r.chain !== "solana" && r.chain !== "robinhood") return null;
+  const price = priceOf("larva");
   const watch = async () => {
     if (!address) return connect();
     if (!signedIn) return signIn();
     const payload = {
       name: `Watch $${r.symbol}`.slice(0, 24),
       source: "onchain" as const,
-      chain: "solana" as const,
+      chain: r.chain as "solana" | "robinhood",
       narratives: ["ai" as const],
       targets: [r.id],
       frequencyMin: 30,
@@ -467,7 +500,7 @@ function WatchButton({ r }: { r: Result }) {
     };
     try {
       setStep("busy");
-      const c = cfg?.payment === "simulated" ? await post<PublicCrawler>("/api/crawlers", payload) : await spawnWithBurn(payload, setStep);
+      const c = simulated ? await post<PublicCrawler>("/api/crawlers", payload) : await spawnWithBurn(payload, setStep);
       toast(`A crawler now watches $${r.symbol} for you`);
       router.push(`/crawler/${c.id}`);
     } catch (e) {
@@ -478,7 +511,7 @@ function WatchButton({ r }: { r: Result }) {
   return (
     <Button size="sm" onClick={watch} disabled={!!step || !cfg}>
       <Eye className="size-4" />
-      {step ? (step === "busy" ? "…" : STEP[step]) : `Watch 30 days · ${price ?? "…"} ${unit}`}
+      {step ? (step === "busy" ? "…" : STEP[step]) : `Watch 30 days · ${fmtPrice(price)} ${unit}`}
     </Button>
   );
 }

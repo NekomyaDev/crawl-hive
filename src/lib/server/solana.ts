@@ -29,6 +29,7 @@ import { BUYBACK_TREASURY, SOL_INCINERATOR, TIERS, TIER_PRICE_SOL } from "../eco
 import type { PaymentMode, PublicConfig, Tier } from "../types";
 import { ApiError, demoNetwork, isSigUsed, markSigUsed, termDays, type SpawnInput } from "./store";
 import { telegramBotName } from "./telegram";
+import { ethConfig } from "./robinhood";
 
 export const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const INTENT_TTL_MS = 10 * 60_000;
@@ -99,6 +100,7 @@ export function publicConfig(): PublicConfig {
     termDays: termDays(),
     demoNetwork: demoNetwork(),
     telegramBot: telegramBotName(),
+    eth: ethConfig(),
   };
 }
 

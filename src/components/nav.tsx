@@ -23,7 +23,7 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
   if (!address)
     return (
       <div className="flex w-full flex-col gap-1.5">
-        <Button onClick={connect} size="sm" className="w-full">
+        <Button onClick={() => connect()} size="sm" className="w-full">
           <Wallet className="size-4" /> Connect
         </Button>
         {/* Подсказка у кнопки: что на самом деле происходит при подключении. */}
@@ -45,7 +45,7 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
             Sign in to continue
           </button>
         )}
-        {!compact && <div className="text-[10px] text-muted">{mode === "phantom" ? "Phantom" : "Demo wallet"}</div>}
+        {!compact && <div className="text-[10px] text-muted">{mode === "phantom" ? "Phantom · Solana" : mode === "evm" ? "EVM wallet · Robinhood Chain" : "Demo wallet"}</div>}
       </div>
       <button onClick={disconnect} className="text-muted hover:text-fg" title="Disconnect">
         <LogOut className="size-4" />

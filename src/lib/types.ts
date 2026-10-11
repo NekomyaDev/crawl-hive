@@ -1,7 +1,7 @@
 // Общие типы домена CrawlHive. Используются и сервером (API), и клиентом.
 
 export type Source = "x" | "telegram" | "onchain" | "docs";
-export type Chain = "solana" | "base" | "ethereum";
+export type Chain = "solana" | "robinhood" | "base" | "ethereum";
 export type Tier = "larva" | "worker" | "soldier" | "queen";
 export type CrawlerStatus = "active" | "paused" | "rented";
 
@@ -18,7 +18,7 @@ export const NARRATIVES = [
 export type Narrative = (typeof NARRATIVES)[number];
 
 export const SOURCES: Source[] = ["x", "telegram", "onchain", "docs"];
-export const CHAINS: Chain[] = ["solana", "base", "ethereum"];
+export const CHAINS: Chain[] = ["solana", "robinhood", "base", "ethereum"];
 
 export interface CrawlerStats {
   items: number; // собрано единиц данных (посты, транзакции, страницы)
@@ -189,7 +189,7 @@ export interface WalletInfo {
   burned: number;
   crawlers: number;
   reputation: number; // средняя репутация краулеров кошелька
-  onchain?: { tokens: number; sol: number }; // реальный баланс кошелька, если включён on-chain режим
+  onchain?: { tokens: number; sol: number; eth?: number }; // реальный баланс кошелька (eth — у кошельков EVM на Robinhood Chain)
 }
 
 export type PaymentMode = "simulated" | "sol" | "token";
@@ -208,4 +208,15 @@ export interface PublicConfig {
   termDays: number; // сколько дней работы даёт спавн или продление
   demoNetwork: boolean; // показывается ли симулированная демо-сеть рядом с живыми краулерами
   telegramBot: string | null; // username бота для доставки сигналов, если настроен
+  eth: EthConfig | null; // оплата в ETH на Robinhood Chain кошельком EVM, если включена
+}
+
+// Оплата в ETH на Robinhood Chain: куда и сколько, плюс параметры сети для wallet_addEthereumChain.
+export interface EthConfig {
+  chainId: number;
+  chainName: string;
+  rpc: string;
+  explorer: string;
+  recipient: string;
+  prices: Record<Tier, number>;
 }

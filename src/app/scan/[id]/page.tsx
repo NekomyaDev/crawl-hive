@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { ArrowRight, ExternalLink, Radar } from "lucide-react";
 import { savedScan, type ScanResult } from "@/lib/server/scan";
-import { VERDICT_COLOR, VERDICT_LABEL, shareText } from "@/lib/scan-share";
+import { CHAIN_LABEL, VERDICT_COLOR, VERDICT_LABEL, explorerToken, shareText } from "@/lib/scan-share";
 import { ShareOnX } from "@/components/share-on-x";
 import { XVoices } from "@/components/x-voices";
 import { cn, timeAgo } from "@/lib/utils";
@@ -72,7 +72,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
               <span className="rounded-md border px-2 py-0.5 text-xs font-semibold" style={{ color, borderColor: `${color}66` }}>
                 {VERDICT_LABEL[r.verdict]}
               </span>
-              <span className="rounded-md border border-violet/40 px-1.5 py-0.5 text-[10px] text-violet">{r.chain}</span>
+              <span className="rounded-md border border-violet/40 px-1.5 py-0.5 text-[10px] text-violet">{CHAIN_LABEL[r.chain] ?? r.chain}</span>
             </div>
             {r.name && <div className="truncate text-sm text-muted">{r.name}</div>}
             <p className="mt-1">{r.reason}</p>
@@ -132,9 +132,9 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
               DexScreener <ExternalLink className="size-3" />
             </a>
           )}
-          {r.chain === "solana" && (
-            <a href={`https://solscan.io/token/${r.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-              Solscan <ExternalLink className="size-3" />
+          {explorerToken(r.chain, r.id) && (
+            <a href={explorerToken(r.chain, r.id)!.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+              {explorerToken(r.chain, r.id)!.label} <ExternalLink className="size-3" />
             </a>
           )}
         </div>

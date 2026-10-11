@@ -1,6 +1,6 @@
 // Instant Crawl: бесплатный разовый скан токена без кошелька. Несколько краулеров разбегаются по одному
-// адресу — рынок (DexScreener), права минта и держатели (Solana RPC), клоны тикера, упоминания в
-// Telegram — и сводят всё в оценку 0–100 с одной строкой вывода. Ход работы отдаётся строками лога.
+// адресу — рынок (DexScreener), права минта и держатели (Solana RPC; на Robinhood Chain — GeckoTerminal и
+// владелец контракта), клоны тикера, упоминания в Telegram — и сводят всё в оценку 0–100 с одной строкой вывода.
 import "server-only";
 import { PublicKey } from "@solana/web3.js";
 import { bestPairs, searchPairs, type PairInfo } from "./crawl/dexscreener";
@@ -9,6 +9,7 @@ import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceDev, type DevReport } from "./scan-dev";
+import { traceEvm, type EvmReport } from "./scan-evm";
 import type { XBuzz } from "./scan-x";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
@@ -44,6 +45,7 @@ export interface ScanResult {
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
   bundles?: BundleReport;
   dev?: DevReport;
+  evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
   core?: string; // базовый актив сети (SOL, USDC…): мем-проверки к нему не применяются
   clones: number;
   original?: boolean; // самый крупный из токенов с этим тикером
@@ -69,7 +71,14 @@ const CORE: Record<string, string> = {
   JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "Jupiter",
   J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: "JitoSOL",
   mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: "Marinade SOL",
+  // Robinhood Chain (адреса EVM в нижнем регистре)
+  "0x0bd7d308f8e1639fab988df18a8011f41eacad73": "Wrapped ETH",
+  "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "USDG",
+  "0x80e0e24718dbfcad49ecaa6f1e6c89a190586ca8": "USDC",
 };
+// Сети, которые умеет сканер: Solana и Robinhood Chain. Ключ — chainId DexScreener.
+export const SCAN_CHAINS: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain" };
+const chainName = (c: string) => SCAN_CHAINS[c] ?? c;
 const RECENT_KEY = "recentScans";
 const SAVED_KEY = "scanResults";
 const SAVED_MAX = 200;
@@ -124,27 +133,30 @@ const pct = (n: number) => `${n.toFixed(n < 10 ? 1 : 0)}%`;
 const usd = (n?: number) =>
   n === undefined ? "—" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${Math.round(n)}`;
 
-// Разбор ввода: адрес Solana, адрес EVM или $ТИКЕР (берём самую ликвидную пару на Solana).
-async function resolve(q: string, log: (l: ScanLog) => void): Promise<{ chain: string; address: string; pair?: PairX }> {
+// Разбор ввода: адрес Solana, адрес EVM или $ТИКЕР (самая ликвидную пару в выбранной сети: Solana или Robinhood Chain).
+async function resolve(q: string, log: (l: ScanLog) => void, hint = "solana"): Promise<{ chain: string; address: string; pair?: PairX }> {
+  const net = SCAN_CHAINS[hint] ? hint : "solana";
   let s = q.trim();
   // Ссылка на DexScreener, pump.fun или Solscan: достаём из неё адрес.
   if (/^https?:\/\//i.test(s)) s = s.match(/0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/g)?.pop() ?? s;
   if (isSolanaMint(s)) return { chain: "solana", address: s };
   if (/^0x[a-fA-F0-9]{40}$/.test(s)) {
     const pairs = (await searchPairs(s)) as PairX[];
-    const best = pairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
+    // Один адрес бывает в нескольких EVM-сетях: сначала Robinhood Chain, потом самая ликвидная пара где угодно.
+    pairs.sort((a, b) => Number(b.chainId === "robinhood") - Number(a.chainId === "robinhood") || (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+    const best = pairs.find((p) => p.baseToken.address.toLowerCase() === s.toLowerCase()) ?? pairs[0];
     if (!best) throw new Error("No trading pair found for this address");
     return { chain: best.chainId, address: best.baseToken.address, pair: best };
   }
   const ticker = s.replace(/^\$/, "").toUpperCase();
   if (!/^[A-Z0-9]{2,12}$/.test(ticker)) throw new Error("Paste a token contract address or a $TICKER");
-  log({ crawler: "resolver", text: `looking up $${ticker} on Solana…` });
-  const pairs = (await searchTicker(ticker)).filter((p) => p.chainId === "solana" && sym(p.baseToken.symbol) === ticker);
+  log({ crawler: "resolver", text: `looking up $${ticker} on ${chainName(net)}…` });
+  const pairs = (await searchTicker(ticker)).filter((p) => p.chainId === net && sym(p.baseToken.symbol) === ticker);
   pairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
-  if (!pairs[0]) throw new Error(`No Solana token with ticker $${ticker}`);
+  if (!pairs[0]) throw new Error(`No ${chainName(net)} token with ticker $${ticker}`);
   const others = new Set(pairs.map((p) => p.baseToken.address)).size - 1;
   log({ crawler: "resolver", text: `picked the most liquid $${ticker}${others ? ` (${others} more share this ticker)` : ""}`, tone: others ? "warn" : "info" });
-  return { chain: "solana", address: pairs[0].baseToken.address, pair: pairs[0] };
+  return { chain: net, address: pairs[0].baseToken.address, pair: pairs[0] };
 }
 
 async function holdersOf(mint: string) {
@@ -172,13 +184,13 @@ async function holdersOf(mint: string) {
 const withTimeout = <T,>(p: Promise<T>, ms: number) =>
   Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 
-export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<ScanResult> {
+export async function runScan(q: string, emit: (l: ScanLog) => void, hint?: string): Promise<ScanResult> {
   const logs: ScanLog[] = [];
   const log = (l: ScanLog) => {
     logs.push(l);
     emit(l);
   };
-  const { chain, address, pair: pre } = await resolve(q, log);
+  const { chain, address, pair: pre } = await resolve(q, log, hint);
   const cached = mem().cache.get(address);
   if (cached && Date.now() - cached.result.scannedAt < CACHE_MS) {
     // Свежий скан этого токена уже есть: проигрываем его лог, чтобы было видно, что нашли краулеры.
@@ -191,11 +203,11 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   }
   const factors: ScanFactor[] = [];
   const hit = (label: string, impact: number, note: string) => factors.push({ label, impact, note });
-  const core = CORE[address];
-  if (core) log({ crawler: "resolver", text: `${core} is a core Solana asset: memecoin checks are skipped`, tone: "info" });
+  const core = CORE[address] ?? CORE[address.toLowerCase()];
+  if (core) log({ crawler: "resolver", text: `${core} is a core ${chainName(chain)} asset: memecoin checks are skipped`, tone: "info" });
 
   // Краулеры работают параллельно, каждый пишет в лог по готовности.
-  log({ crawler: "swarm", text: `${core ? 2 : chain === "solana" ? 6 : 4} crawlers dispatched to ${address.slice(0, 4)}…${address.slice(-4)} on ${chain}` });
+  log({ crawler: "swarm", text: `${core ? 2 : chain === "solana" ? 6 : chain === "robinhood" ? 4 : 3} crawlers dispatched to ${address.slice(0, 6)}…${address.slice(-4)} on ${chainName(chain)}` });
 
   const marketP = (async () => {
     const pair = (pre ?? (await bestPairs(chain, [address])).get(address)) as PairX | undefined;
@@ -227,6 +239,24 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
               tone: h.mintAuthority || h.freezeAuthority ? "bad" : h.top2to11 > 40 ? "warn" : "ok",
             });
             return h;
+          })
+          .catch(() => {
+            log({ crawler: "crawler_holders", text: "holder data unavailable right now", tone: "warn" });
+            return undefined;
+          })
+      : Promise.resolve(undefined);
+
+  // Robinhood Chain: держатели и honeypot (GeckoTerminal), владелец контракта (RPC).
+  const evmP: Promise<EvmReport | undefined> =
+    chain === "robinhood" && !core
+      ? withTimeout(traceEvm(address), 15_000)
+          .then((e) => {
+            log({
+              crawler: "crawler_holders",
+              text: `${e.holders !== undefined ? `${e.holders.toLocaleString("en-US")} holders` : "holder count unknown"}${e.top10 !== undefined ? ` · top 10 hold ${pct(e.top10)}` : ""} · owner ${e.owner ? `${e.owner.slice(0, 6)}…${e.owner.slice(-4)} (active)` : "renounced"}${e.honeypot ? " · HONEYPOT" : e.honeypot === false ? " · sellable" : ""}`,
+              tone: e.honeypot ? "bad" : e.owner || (e.top10 ?? 0) > 90 || (e.holders ?? 999) < 50 ? "warn" : "ok",
+            });
+            return e;
           })
           .catch(() => {
             log({ crawler: "crawler_holders", text: "holder data unavailable right now", tone: "warn" });
@@ -293,21 +323,28 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
         .then((pairs) => {
           const same = pairs.filter((p) => p.chainId === chain && sym(p.baseToken.symbol) === sym(symbol));
           // Сравниваем по капитализации: у копии она на порядки меньше, даже если в одном пуле много ликвидности.
-          const others = new Map<string, { fdv: number; liq: number }>();
+          const others = new Map<string, { fdv: number; liq: number; born: number }>();
+          // Когда появилась первая пара нашего токена: копия всегда моложе оригинала.
+          let mineBorn = market?.pair.pairCreatedAt ?? Infinity;
           for (const p of same) {
-            if (p.baseToken.address === address) continue;
-            const prev = others.get(p.baseToken.address) ?? { fdv: 0, liq: 0 };
-            others.set(p.baseToken.address, { fdv: Math.max(prev.fdv, p.fdv ?? 0), liq: Math.max(prev.liq, p.liquidity?.usd ?? 0) });
+            const born = p.pairCreatedAt ?? Infinity;
+            if (p.baseToken.address === address) {
+              mineBorn = Math.min(mineBorn, born);
+              continue;
+            }
+            const prev = others.get(p.baseToken.address) ?? { fdv: 0, liq: 0, born: Infinity };
+            others.set(p.baseToken.address, { fdv: Math.max(prev.fdv, p.fdv ?? 0), liq: Math.max(prev.liq, p.liquidity?.usd ?? 0), born: Math.min(prev.born, born) });
           }
           const n = others.size;
           const mineFdv = market?.pair.fdv ?? 0;
           // Без FDV (так бывает у wrapped-активов) сравниваем по ликвидности пула.
           const mineLiq = market?.pair.liquidity?.usd ?? 0;
           const twin = [...others.values()]
-            .filter((o) => o.liq > 20_000 && (mineFdv ? o.fdv > Math.max(mineFdv * 5, 100_000) : o.liq > mineLiq * 5))
+            // Крупный «двойник», запущенный позже нашего токена, — сам копия с накрученной FDV, а не оригинал.
+            .filter((o) => o.liq > 20_000 && !(o.born > mineBorn) && (mineFdv ? o.fdv > Math.max(mineFdv * 5, 100_000) : o.liq > mineLiq * 5))
             .sort((x, y) => y.fdv - x.fdv)[0];
           const biggerTwin = twin?.fdv;
-          const top = Math.max(0, ...[...others.values()].map((o) => o.fdv));
+          const top = Math.max(0, ...[...others.values()].filter((o) => !(o.born > mineBorn)).map((o) => o.fdv));
           const mine = mineFdv;
           log({
             crawler: "crawler_clones",
@@ -317,7 +354,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
                 ? `the original $${sym(symbol)}: the biggest of ${n + 1} tokens with this ticker`
                 : n > 0
                 ? `${n} other token${n > 1 ? "s use" : " uses"} the ticker $${sym(symbol)}`
-                : `ticker $${sym(symbol)} is unique on ${chain}`,
+                : `ticker $${sym(symbol)} is unique on ${chainName(chain)}`,
             tone: biggerTwin ? "bad" : n > 2 ? "warn" : "ok",
           });
           return { n, biggerTwin, original: n > 0 && mine >= top };
@@ -341,7 +378,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
     return found;
   });
 
-  const [holders, cloneInfo, telegram, bundles, dev] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP]);
+  const [holders, cloneInfo, telegram, bundles, dev, evm] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP]);
   const clones = cloneInfo.n;
 
   // ---------- оценка ----------
@@ -371,6 +408,13 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
     if (dev.walletAgeHours !== undefined && dev.walletAgeHours < 24) hit("Fresh dev wallet", -5, `the creator wallet is ${dev.walletAgeHours.toFixed(1)}h old`);
     if (dev.holdsPct !== undefined && dev.holdsPct > 10) hit("Dev holds a lot", -10, `the creator still holds ${pct(dev.holdsPct)}`);
   }
+  if (evm) {
+    if (evm.honeypot) hit("Honeypot", -60, "GeckoTerminal flags it: you can buy but not sell");
+    if (evm.owner) hit("Owner active", -10, "the deployer still controls the contract (fees, pausing, minting may be possible)");
+    // Топ-10 на EVM включает пул ликвидности, поэтому порог выше, чем у Solana.
+    if ((evm.top10 ?? 0) > 90) hit("Concentrated", -15, `the top 10 wallets (pool included) hold ${pct(evm.top10!)}`);
+    if (evm.holders !== undefined && evm.holders < 50) hit("Few holders", -10, `only ${evm.holders} wallets hold it`);
+  }
   if (cloneInfo.biggerTwin) hit("Possible copy", -45, `a token worth ${usd(cloneInfo.biggerTwin)} already uses this ticker`);
   else if (clones > 2 && !cloneInfo.original) hit("Copycats", -10, `${clones} other tokens share the ticker`);
   const buys = p?.txns?.h1?.buys ?? 0;
@@ -383,7 +427,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   for (const f of factors) score += f.impact;
   score = Math.max(0, Math.min(100, score));
 
-  const tooEarly = !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority;
+  const tooEarly = !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot;
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";
   const worst = [...factors].sort((a, b) => a.impact - b.impact)[0];
   const reason = tooEarly
@@ -391,7 +435,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
     : worst && worst.impact < 0
       ? `${worst.label}: ${worst.note}`
       : core
-        ? `${core}: a core Solana asset, not a memecoin`
+        ? `${core}: a core ${chainName(chain)} asset, not a memecoin`
         : "No red flags found by the crawlers";
 
   const result: ScanResult = {
@@ -421,6 +465,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
     holders: holders && { top1: holders.top1, top10: holders.top10, mintAuthority: holders.mintAuthority, freezeAuthority: holders.freezeAuthority },
     bundles,
     dev,
+    evm,
     core,
     clones,
     original: !!cloneInfo.original,

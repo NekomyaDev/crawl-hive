@@ -15,6 +15,7 @@ import { SignalFeed } from "@/components/signal-feed";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
+import { usePay } from "@/lib/client/use-pay";
 import { useConfig, explorerTx } from "@/lib/client/use-config";
 import { patch, post } from "@/lib/client/api";
 import { renewWithPayment, type BurnStep } from "@/lib/client/burn";
@@ -84,10 +85,10 @@ export function CrawlerView() {
             {isOwner && " (you)"} · spawned {timeAgo(c.createdAt)} ·{" "}
             {c.payment ? (
               <>
-                {c.payment.unit === "SOL" ? "paid" : "burned"}{" "}
-                <span className="num text-honey">{c.payment.unit === "SOL" ? c.payment.amount : fmt(c.payment.amount)}</span> {c.payment.unit}{" "}
+                {c.payment.unit === "SOL" || c.payment.unit === "ETH" ? "paid" : "burned"}{" "}
+                <span className="num text-honey">{c.payment.unit === "SOL" || c.payment.unit === "ETH" ? c.payment.amount : fmt(c.payment.amount)}</span> {c.payment.unit}{" "}
                 on-chain (
-                <a href={explorerTx(c.payment.tx, cfg?.cluster ?? "devnet")} target="_blank" rel="noreferrer" className="num text-fg hover:text-honey">
+                <a href={c.payment.unit === "ETH" ? `https://robin.etherscan.io/tx/${c.payment.tx}` : explorerTx(c.payment.tx, cfg?.cluster ?? "devnet")} target="_blank" rel="noreferrer" className="num text-fg hover:text-honey">
                   tx {c.payment.tx.slice(0, 6)}…
                 </a>
                 )
@@ -167,25 +168,20 @@ export function CrawlerView() {
   );
 }
 
-const STEP_LABEL: Record<BurnStep, string> = {
-  prepare: "Preparing transaction…",
-  sign: "Confirm in Phantom…",
-  confirm: "Checking payment on-chain…",
-};
 
 // Оплаченный срок: сколько осталось и продление ещё на один срок по цене спавна тира.
 function TermCard({ c, isOwner, onRenewed }: { c: Detail; isOwner: boolean; onRenewed: () => void }) {
-  const cfg = useConfig();
+  const { cfg, unit, simulated, price: priceOf, fmtPrice, signLabel } = usePay();
   const toast = useToast();
   const [step, setStep] = useState<BurnStep | null>(null);
+  const STEP_LABEL: Record<BurnStep, string> = { prepare: "Preparing transaction…", sign: signLabel, confirm: "Checking payment on-chain…" };
   const expired = c.expiresAt! <= Date.now();
   const soon = !expired && c.expiresAt! - Date.now() < 3 * 86400_000;
-  const price = cfg ? cfg.prices[c.tier] : null;
-  const unit = cfg?.payment === "sol" ? "SOL" : cfg?.payment === "token" ? cfg.symbol : CREDITS;
+  const price = priceOf(c.tier);
 
   const renew = async () => {
     try {
-      if (cfg?.payment === "simulated") await post(`/api/crawlers/${c.id}/renew`, {});
+      if (simulated) await post(`/api/crawlers/${c.id}/renew`, {});
       else await renewWithPayment(c.id, setStep);
       toast(`Renewed for ${cfg?.termDays ?? 30} more days`);
       onRenewed();
@@ -214,7 +210,7 @@ function TermCard({ c, isOwner, onRenewed }: { c: Detail; isOwner: boolean; onRe
         {isOwner && (
           <Button className="w-full" variant={expired || soon ? "primary" : "outline"} onClick={renew} disabled={!!step || !cfg}>
             <RefreshCw className={cn("size-4", step && "animate-spin")} />
-            {step ? STEP_LABEL[step] : `Renew ${cfg?.termDays ?? 30} days${price !== null ? ` · ${unit === "SOL" ? price : fmt(price)} ${unit}` : ""}`}
+            {step ? STEP_LABEL[step] : `Renew ${cfg?.termDays ?? 30} days${price !== undefined ? ` · ${fmtPrice(price)} ${unit}` : ""}`}
           </Button>
         )}
         {!!c.renewals?.length && <div className="text-xs text-muted">Renewed {c.renewals.length}×</div>}

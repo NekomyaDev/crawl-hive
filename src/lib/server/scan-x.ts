@@ -107,7 +107,7 @@ const cited = (real: Set<string>, url: string) => {
   return !!id && [...real].some((c) => c.includes(id));
 };
 
-export async function scanX(t: { id: string; symbol: string; name: string }, ip: string): Promise<XBuzz> {
+export async function scanX(t: { id: string; symbol: string; name: string; chain?: string }, ip: string): Promise<XBuzz> {
   const m = mem();
   const hit = cachedBuzz(t.id);
   if (hit) return hit;
@@ -124,7 +124,7 @@ export async function scanX(t: { id: string; symbol: string; name: string }, ip:
         '{"sentiment":"bullish|mixed|bearish|quiet","summary":"one plain sentence, max 30 words","warnings":["short phrase"],"posts":[{"handle":"name without @","name":"display name","text":"under 140 chars","url":"https://x.com/...","stance":"bullish|bearish|neutral"}]}. ' +
         "sentiment is quiet when there are fewer than 5 relevant posts. warnings: only concrete accusations people make (rug, scam, hacked, dev sold, bundled supply, fake volume); empty if none. " +
         "posts: up to 30 posts by different authors, most informative first, real URLs from your search only; text is a short faithful excerpt of the post. Skip pure bots and spam reposts. Ignore posts about other tokens that share the ticker.",
-      user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, Solana contract ${t.id}. Search X for the contract address and for $${t.symbol} since ${since}.`,
+      user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, ${t.chain === "robinhood" ? "Robinhood Chain" : "Solana"} contract ${t.id}. Search X for the contract address and for $${t.symbol} since ${since}.`,
       xSearch: { fromDate: since },
       // Третий шаг поиска нужен, чтобы набрать авторов на карту, а не только пару постов.
       maxTurns: 3,

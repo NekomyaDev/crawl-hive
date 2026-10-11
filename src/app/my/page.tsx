@@ -27,7 +27,7 @@ export default function MyCrawlers() {
           <Wallet className="size-8 text-honey" />
           <div className="font-semibold">Connect a wallet to see your crawlers</div>
           <p className="max-w-sm text-sm text-muted">No Phantom? You get a demo wallet with 250k {CREDITS} to play with.</p>
-          <Button onClick={connect}>Connect</Button>
+          <Button onClick={() => connect()}>Connect</Button>
         </Card>
       </>
     );

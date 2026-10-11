@@ -1,5 +1,5 @@
 // Instant Crawl: GET /api/scan?q=<адрес или $тикер> — поток Server-Sent Events: строки лога краулеров,
-// затем результат, затем (для Solana) догружается поиск по X и приходит событие done. Без кошелька, с лимитом по IP.
+// затем результат, затем (для Solana и Robinhood Chain) догружается поиск по X и приходит событие done. Без кошелька, с лимитом по IP.
 import type { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { allowScan, attachBuzz, runScan } from "@/lib/server/scan";
@@ -8,6 +8,7 @@ import { cachedBuzz, scanX, scanXEnabled } from "@/lib/server/scan-x";
 export async function GET(req: NextRequest) {
   await connection();
   const q = (req.nextUrl.searchParams.get("q") ?? "").slice(0, 200);
+  const chain = req.nextUrl.searchParams.get("chain") ?? undefined; // где искать $ТИКЕР: solana | robinhood
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "local";
   const enc = new TextEncoder();
 
@@ -22,9 +23,9 @@ export async function GET(req: NextRequest) {
         if (!q.trim()) throw new Error("Paste a token contract address or a $TICKER");
         if (!allowScan(ip)) throw new Error("Too many scans from your network. Try again in a few minutes.");
         const log = (l: object) => send({ type: "log", ts: Date.now(), ...l });
-        const result = await runScan(q, log);
+        const result = await runScan(q, log, chain);
         send({ type: "result", result });
-        if (result.chain === "solana" && scanXEnabled()) {
+        if ((result.chain === "solana" || result.chain === "robinhood") && scanXEnabled()) {
           const cached = cachedBuzz(result.id);
           if (!cached) log({ crawler: "crawler_x", text: `Grok is reading X for $${result.symbol}: who is talking about it, about a minute…`, tone: "info" });
           // Пустые комментарии раз в 15 с, чтобы прокси не закрыли тихое соединение.

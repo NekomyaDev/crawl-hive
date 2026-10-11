@@ -10,7 +10,7 @@ const STEPS = [
     icon: Eye,
     tone: "text-sky",
     title: "Connect = your public address",
-    text: "Phantom shares only the address anyone can already see on Solscan. No balances move, nothing is signed.",
+    text: "Phantom, MetaMask or Rabby shares only the address anyone can already see in a block explorer. No balances move, nothing is signed.",
   },
   {
     icon: FileSignature,
@@ -23,8 +23,8 @@ const STEPS = [
     icon: Wallet,
     tone: "text-honey",
     title: "Pay = one transfer you approve",
-    text: "Only when you spawn or renew a crawler: one transaction with a SOL transfer of the price shown and a memo. Phantom shows the exact amount before you confirm.",
-    link: { href: `${CODE}/solana.ts`, label: "solana.ts" },
+    text: "Only when you spawn or renew a crawler: one transfer of the price shown, in SOL on Solana or in ETH on Robinhood Chain, tagged with the payment id. Your wallet shows the exact amount before you confirm.",
+    link: { href: `${CODE}/solana.ts`, label: "solana.ts · robinhood.ts" },
   },
   {
     icon: ShieldCheck,

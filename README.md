@@ -5,10 +5,12 @@
 <p align="center">
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-ffb020?style=flat-square">
   <img alt="Solana" src="https://img.shields.io/badge/Solana-mainnet%20%7C%20devnet-9945FF?style=flat-square&logo=solana&logoColor=white">
+  <img alt="Robinhood Chain" src="https://img.shields.io/badge/Robinhood%20Chain-ETH-b6f23a?style=flat-square">
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs">
   <img alt="React 19" src="https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Wallet: Phantom" src="https://img.shields.io/badge/wallet-Phantom-ab9ff2?style=flat-square">
+  <img alt="Wallet: MetaMask / Rabby" src="https://img.shields.io/badge/wallet-MetaMask%20%7C%20Rabby-f6851b?style=flat-square">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square">
 </p>
 
@@ -30,7 +32,7 @@ In one line: *you bring the edge, your crawler does the watching, the scoreboard
 
 ## Try it in 10 seconds: Instant Crawl
 
-No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Five crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
+No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Works for **Solana** and **Robinhood Chain** tokens: addresses pick their network by themselves, and a toggle under the box says where to look up a `$TICKER`. Five crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
 
 | Crawler | What it checks |
 |---|---|
@@ -62,6 +64,14 @@ They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for p
 <p align="center">
   <img src="docs/images/instant-crawl-dev.png" alt="Instant Crawl flags a serial launcher: 28 earlier pump.fun launches, none graduated" width="100%">
 </p>
+
+**Robinhood Chain.** Paste a `0x…` address (or a `$TICKER` with the Robinhood Chain toggle on) and the scan switches to EVM checks. Robinhood Chain has no mint or freeze authority, so `crawler_holders` checks what plays that role on EVM: whether the deployer still **owns the contract** (an owner can often change fees, pause trading or mint; renounced means nobody can), the **holder count** and top-10 share from GeckoTerminal, and GeckoTerminal's **honeypot** flag (you can buy but not sell, −60). Market, copycat tickers, Telegram and the X map work the same as on Solana. Wrapped ETH, USDG and bridged USDC are core assets.
+
+<p align="center">
+  <img src="docs/images/instant-crawl-robinhood.png" alt="Instant Crawl on a Robinhood Chain token: holders, ownership renounced, sellable" width="100%">
+</p>
+
+**Copycats are always younger.** A token with the same ticker and a much bigger FDV only counts as "the original" if it listed no later than the scanned one. Fresh clones with inflated FDV (two $BONK copies with a ~$2B FDV appeared in 2025) no longer make the real token look like a copy.
 
 **Core assets.** Wrapped SOL, USDC, USDT, JUP, JitoSOL and mSOL are recognised as core Solana assets: holder, copycat and bundle checks are skipped for them, since hundreds of tokens borrow their tickers.
 
@@ -95,7 +105,7 @@ flowchart LR
     B -.->|"after token launch"| H["🛒 Marketplace · 🗳 Governance"]
 ```
 
-1. **Spawn.** Choose a tier, a source, up to three narratives and your targets. Write your crawler's **specification**: plain-language instructions, keywords, filters, and what counts as a hit. Pay in SOL from Phantom. A payment buys **30 days** of crawling.
+1. **Spawn.** Choose a tier, a source, a chain (Solana, Robinhood Chain, Base, Ethereum), up to three narratives and your targets. Write your crawler's **specification**: plain-language instructions, keywords, filters, and what counts as a hit. Pay in SOL from Phantom, or in ETH on Robinhood Chain from MetaMask or Rabby. A payment buys **30 days** of crawling.
 2. **Crawl.** Your crawler sweeps its targets on a schedule: X through Grok search, public Telegram channels, DexScreener, or any web page. An AI reads what it finds through your instructions.
 3. **Get your signals.** Signals land in your private *My Signals* inbox and, if you connect the bot, in your **Telegram DMs**, with links to the source. Nobody else sees their content.
 4. **See who was right.** Every signal with a token is checked against the real price after your horizon: a hit or a miss. Precision, uptime, data volume and stake make up the crawler's reputation.
@@ -105,7 +115,7 @@ Full specification format, sources and limits: [`docs/CRAWLERS.md`](docs/CRAWLER
 
 ## Ready-made crawlers
 
-Don't want to write a specification? The marketplace has eight crawlers with sources and rules we tested: **Fresh Pair Hunter**, **Boost Radar**, **AI Agent Scout** (DexScreener), **Pump.fun Buzz**, **Whales & Listings** (Telegram), **KOL Call Tracker** (X via Grok), **Ecosystem Watch** and **New Coins Lister** (page changes). *Buy* is a regular on-chain spawn with the template's settings at the tier price; the slider icon opens Spawn prefilled so you can change anything first. Each card shows how many copies are running.
+Don't want to write a specification? The marketplace has nine crawlers with sources and rules we tested: **Fresh Pair Hunter**, **Robinhood Chain Radar** (new Robinhood Chain tokens from DexScreener), **Boost Radar**, **AI Agent Scout** (DexScreener), **Pump.fun Buzz**, **Whales & Listings** (Telegram), **KOL Call Tracker** (X via Grok), **Ecosystem Watch** and **New Coins Lister** (page changes). *Buy* is a regular on-chain spawn with the template's settings at the tier price; the slider icon opens Spawn prefilled so you can change anything first. Each card shows how many copies are running.
 
 <p align="center">
   <img src="docs/images/marketplace-templates.png" alt="Marketplace with ready-made crawlers" width="100%">
@@ -146,12 +156,14 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 |---|---|
 | Instant Crawl: free token scan (market, mint, holders, bundles, creator history, copycats, Telegram, X) | ✅ **real data**, no wallet needed |
 | Spawn and renewal payments in SOL through Phantom, verified on-chain | ✅ **real**, mainnet; 30 days of crawling per payment |
+| Spawn and renewal payments in ETH on Robinhood Chain (MetaMask, Rabby), verified on-chain | ✅ **real**, mainnet; the same buyback fund |
+| Instant Crawl for Robinhood Chain tokens (market, contract owner, holders, honeypot, copycats, Telegram, X) | ✅ **real data** |
 | Ready-made crawlers in the marketplace | ✅ **real**: a purchase is an on-chain spawn with tested settings |
-| Buyback fund counter on the home page | ✅ **real**: live treasury balance in SOL and USD, plus SOL from verified crawler payments |
+| Buyback fund counter on the home page | ✅ **real**: live treasury balances in SOL and ETH (Robinhood Chain), total in USD, plus what came from verified crawler payments |
 | Crawlers you spawn: X (via Grok), Telegram channels, on-chain (DexScreener), page changes | ✅ **real data**, read through your own specification |
 | Private signals in *My Signals*, scored against the real price after your horizon | ✅ **real** |
 | Signal delivery to Telegram, renewal reminders | ✅ **built**; the bot goes live on crawlhive.xyz as soon as its token is configured |
-| Sign-in with your wallet (signed message, no transaction) | ✅ **real** |
+| Sign-in with your wallet (signed message, no transaction): Phantom, or any EVM wallet via `personal_sign` | ✅ **real** |
 | Swarm map and leaderboard on crawlhive.xyz | ✅ **real crawlers only**. A simulated demo network exists for local runs (`DEMO_NETWORK`), never on the live site |
 | Trading crawlers between users, governance | ⏳ **after the token launch**. They run on in-app credits in demo mode; on the live site they are switched off so nobody trades real crawlers for points |
 | Project token | ⏳ **not launched**. No ticker, no contract. Anything claiming otherwise is not us |
@@ -182,7 +194,13 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 ## Trust & safety
 
-**What the app asks your wallet to do:** sign a message to log in (free, no transaction) and one transaction per spawn or renewal. Phantom shows you the exact amount and recipient before you approve. CrawlHive never asks for a seed phrase or private key, and it cannot move funds without your signature.
+**Two kinds of wallets.** *Connect* opens a choice: **Phantom** (Solana, pay in SOL) or **MetaMask, Rabby or any EVM wallet** (Robinhood Chain, pay in ETH). The EVM wallet signs in with `personal_sign`; the server recovers the signer from the signature, so a session can't be opened for an address you don't control. When you pay, the site switches the wallet to Robinhood Chain (chain id 4663) and adds the network if it's missing.
+
+<p align="center">
+  <img src="docs/images/wallet-picker.png" alt="Connect a wallet: Phantom on Solana or an EVM wallet on Robinhood Chain" width="70%">
+</p>
+
+**What the app asks your wallet to do:** sign a message to log in (free, no transaction) and one transaction per spawn or renewal. Your wallet shows you the exact amount and recipient before you approve. CrawlHive never asks for a seed phrase or private key, and it cannot move funds without your signature.
 
 The home page explains this to visitors in a **Wallet safety** section (and an *Is it safe?* hint under the Connect button): connect shares only your public address, sign-in is a plain text message with a one-time code that expires in 5 minutes, a payment is one SOL transfer plus a memo that the server verifies on-chain, and there are no token approvals or delegation. Each point links to the code that does it (`auth.ts`, `solana.ts`) or to the treasury on Solscan.
 
@@ -194,7 +212,11 @@ The home page explains this to visitors in a **Wallet safety** section (and an *
 
 > **[`DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ`](https://solscan.io/account/DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ)**
 
-Anyone can audit its balance and history on Solscan. The home page shows this balance live as the **buyback fund** (in SOL and USD, with the part that came from crawler payments), and a badge in the hero links to it. The fund will be spent on buying back the project token once it launches.
+ETH paid on Robinhood Chain goes to the project's EVM treasury:
+
+> **[`0x2FAea62a86Ef02A9B7e61c644FDD8E5358FD0c42`](https://robin.etherscan.io/address/0x2FAea62a86Ef02A9B7e61c644FDD8E5358FD0c42)**
+
+Anyone can audit both balances and their history on Solscan and the Robinhood Chain explorer. The home page shows them live as one **buyback fund** (SOL + ETH, total in USD) (in SOL and USD, with the part that came from crawler payments), and a badge in the hero links to it. The fund will be spent on buying back the project token once it launches.
 
 **How a payment is verified** (`src/lib/server/solana.ts`):
 
@@ -220,6 +242,8 @@ sequenceDiagram
 - The crawler config comes from the server-side intent, not from the confirm request, so it can't be swapped after paying.
 - Classic SPL Token and Token-2022 are both supported for the future token-burn phase.
 
+**ETH payments on Robinhood Chain** (`src/lib/server/robinhood.ts`) follow the same scheme. The intent returns the fields of one plain ETH transfer: to the treasury, the tier price as `value`, and `crawlhive:spawn:ID` (or `crawlhive:renew:ID`) as the transaction `data`. After the wallet sends it, the server waits for the receipt and checks: status success, sender = your signed-in address, recipient = treasury, `value` ≥ price, `data` = this intent, chain id 4663, hash never used before. No approvals, no contracts, nothing but a transfer.
+
 **The code is open.** Everything that touches your wallet is in this repository; read it before you sign.
 
 ## Features
@@ -228,12 +252,12 @@ sequenceDiagram
 
 **Spawner.** Four tiers with different limits:
 
-| Tier | Targets | Fastest cycle | Fastest X cycle | Reward boost |
-|---|---|---|---|---|
-| Larva | 3 | 30 min | 120 min | 1× |
-| Worker | 8 | 10 min | 60 min | 1.15× |
-| Soldier | 20 | 5 min | 30 min | 1.35× |
-| Queen | 50 | 1 min | 15 min | 1.75× |
+| Tier | SOL | ETH (Robinhood Chain) | Targets | Fastest cycle | Fastest X cycle | Reward boost |
+|---|---|---|---|---|---|---|
+| Larva | 0.05 | 0.002 | 3 | 30 min | 120 min | 1× |
+| Worker | 0.2 | 0.008 | 8 | 10 min | 60 min | 1.15× |
+| Soldier | 0.75 | 0.03 | 20 | 5 min | 30 min | 1.35× |
+| Queen | 2.5 | 0.1 | 50 | 1 min | 15 min | 1.75× |
 
 X crawls go through paid Grok search, so they have their own, slower floor per tier.
 
@@ -284,6 +308,9 @@ SOLANA_CLUSTER=devnet                          # or mainnet-beta
 SOLANA_RPC_URL=https://api.devnet.solana.com
 # SPAWN_SOL_RECIPIENT=...                      # defaults to the project treasury
 # SPAWN_PRICE_SOL=0.001,0.002,0.003,0.005      # optional per-tier prices (larva..queen)
+# SPAWN_ETH_RECIPIENT=0x...                    # turns on ETH payments on Robinhood Chain for EVM wallets
+# SPAWN_PRICE_ETH=0.002,0.008,0.03,0.1         # optional per-tier ETH prices
+# ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com
 XAI_API_KEY=...                                # enables X crawlers and AI reading of Telegram/docs
 # XAI_DAILY_CALLS=300                          # Grok cost limit per day
 # SCAN_X_DAILY=80                              # X checks in free scans per day (also 4/hour per IP, cached 30 min)
@@ -293,7 +320,7 @@ XAI_API_KEY=...                                # enables X crawlers and AI readi
 # SESSION_SECRET=...                           # optional, otherwise generated and stored in .data/
 ```
 
-Default tier prices in SOL: 0.05 / 0.2 / 0.75 / 2.5.
+Default tier prices in SOL: 0.05 / 0.2 / 0.75 / 2.5. In ETH on Robinhood Chain: 0.002 / 0.008 / 0.03 / 0.1.
 
 **Devnet helper.** `node scripts/devnet-setup.mjs sol` writes `.env.local` and creates a faucet wallet in `.devnet/` (gitignored). If the public airdrop is dry, top it up at [faucet.solana.com](https://faucet.solana.com); the Spawn page then shows a *Get test SOL* button. Switch Phantom to devnet in Settings → Developer settings.
 
@@ -325,6 +352,8 @@ src/
     economy.ts reputation.ts types.ts
     server/store.ts          network state, paid terms, live crawler bookkeeping
     server/solana.ts         payment intents (spawn / renew), on-chain verification, devnet faucet
+    server/robinhood.ts      Robinhood Chain: ETH payment intents and verification, EVM sign-in, ETH treasury
+    server/scan-evm.ts       Instant Crawl on Robinhood Chain: contract owner, holders, honeypot
     server/telegram.ts       bot: wallet linking, signal DMs, renewal reminders
     server/scan.ts           Instant Crawl: parallel checks and the 0–100 score
     templates.ts             ready-made crawlers
@@ -354,6 +383,7 @@ db/schema.sql                target Postgres schema
 - [x] Instant Crawl: "who's talking on X" map of the authors posting about a token
 - [x] Instant Crawl: creator history (earlier pump.fun launches and how many graduated), core assets recognised
 - [x] Wallet safety explainer on the home page
+- [x] Robinhood Chain: token scans, crawlers on the chain, ETH payments from MetaMask / Rabby into the same buyback fund
 - [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)

@@ -11,22 +11,22 @@ import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { post } from "@/lib/client/api";
 import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
+import { usePay } from "@/lib/client/use-pay";
 import { useConfig } from "@/lib/client/use-config";
 import { CREDITS, TIERS } from "@/lib/economy";
 import type { CrawlerTemplate } from "@/lib/templates";
 import type { PublicCrawler } from "@/lib/types";
 import { fmt } from "@/lib/utils";
 
-const STEP: Record<BurnStep, string> = { prepare: "Preparing…", sign: "Confirm in Phantom…", confirm: "Checking payment…" };
 
 export function TemplateCard({ t, running = 0, compact = false }: { t: CrawlerTemplate; running?: number; compact?: boolean }) {
-  const cfg = useConfig();
+  const { cfg, unit, simulated, price: priceOf, fmtPrice, signLabel } = usePay();
+  const STEP: Record<BurnStep, string> = { prepare: "Preparing…", sign: signLabel, confirm: "Checking payment…" };
   const router = useRouter();
   const toast = useToast();
   const { address, signedIn, connect, signIn } = useWallet();
   const [step, setStep] = useState<BurnStep | "busy" | null>(null);
-  const price = cfg?.prices[t.tier];
-  const unit = cfg?.payment === "sol" ? "SOL" : cfg?.payment === "token" ? cfg.symbol : CREDITS;
+  const price = priceOf(t.tier);
 
   const buy = async () => {
     if (!address) return connect();
@@ -45,7 +45,7 @@ export function TemplateCard({ t, running = 0, compact = false }: { t: CrawlerTe
     try {
       setStep("busy");
       const c =
-        cfg?.payment === "simulated" ? await post<PublicCrawler>("/api/crawlers", payload) : await spawnWithBurn(payload, setStep);
+        simulated ? await post<PublicCrawler>("/api/crawlers", payload) : await spawnWithBurn(payload, setStep);
       toast(`${t.name} is yours and starts crawling now`);
       router.push(`/crawler/${c.id}`);
     } catch (e) {
@@ -91,7 +91,7 @@ export function TemplateCard({ t, running = 0, compact = false }: { t: CrawlerTe
         )}
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <div className="num text-lg font-semibold text-honey">
-            {price !== undefined ? (unit === "SOL" ? price : fmt(price)) : "…"} <span className="text-xs">{unit}</span>
+            {fmtPrice(price)} <span className="text-xs">{unit}</span>
           </div>
           <div className="flex gap-1.5">
             {!compact && (
