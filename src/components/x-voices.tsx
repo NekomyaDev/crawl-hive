@@ -1,6 +1,6 @@
 "use client";
 // Карта «who's talking on X»: в центре краулер, вокруг на орбитах — люди, которые писали о токене.
-// Пузырь = автор (аватар с unavatar, если его нет — буква), обводка = настрой поста. Клик открывает пост.
+// Пузырь = автор (аватар из профиля X, если его нет — буква), обводка = настрой поста, размер — подписчики. Клик открывает пост.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, X as Close } from "lucide-react";
 import type { XVoice } from "@/lib/server/scan-x";
@@ -13,6 +13,7 @@ const STANCE: Record<XVoice["stance"], { color: string; label: string; text: str
   bearish: { color: "#f87171", label: "bearish", text: "text-danger" },
   neutral: { color: "#8a9099", label: "neutral", text: "text-muted" },
 };
+const fmtFollowers = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k` : String(n));
 const LETTER_BG = ["#ffb020", "#c084fc", "#5eead4", "#60a5fa", "#f472b6", "#ff6a3d", "#b6f23a"];
 
 // Орбиты в процентах от ширины и высоты блока (он шире, чем выше, поэтому эллипсы): ёмкость, радиусы, размер пузыря.
@@ -41,7 +42,8 @@ function layout(voices: XVoice[], W: number, H: number): Placed[] {
     chunk.forEach((v, k) => {
       // Сдвиг на полшага на каждой орбите, чтобы пузыри соседних колец не вставали на одну линию.
       const a = ((k + (r % 2) * 0.5) / chunk.length) * Math.PI * 2 + r * 0.3 - Math.PI / 2;
-      const boost = Math.min(v.posts - 1, 3) * 4;
+      // Крупнее тот, у кого больше подписчиков и постов о токене.
+      const boost = Math.min(Math.max(0, Math.log10(v.followers ?? 1) - 3), 3) * 4 + Math.min(v.posts - 1, 2) * 3;
       out.push({ ...v, x: 50 + ring.rx * Math.cos(a), y: 50 + ring.ry * Math.sin(a), size: Math.round((ring.size + boost) * k0), i: i + k });
     });
     i += chunk.length;
@@ -78,8 +80,8 @@ function layout(voices: XVoice[], W: number, H: number): Placed[] {
   return out.map((p, k) => ({ ...p, x: (pts[k].x / W) * 100, y: (pts[k].y / H) * 100 }));
 }
 
-export function Avatar({ handle, size, className }: { handle: string; size: number; className?: string }) {
-  const [failed, setFailed] = useState(false);
+export function Avatar({ handle, src, size, className }: { handle: string; src?: string; size: number; className?: string }) {
+  const [failed, setFailed] = useState(!src);
   const bg = LETTER_BG[[...handle].reduce((s, c) => s + c.charCodeAt(0), 0) % LETTER_BG.length];
   if (failed)
     return (
@@ -93,7 +95,7 @@ export function Avatar({ handle, size, className }: { handle: string; size: numb
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://unavatar.io/x/${handle}?fallback=false`}
+      src={src}
       alt=""
       width={size}
       height={size}
@@ -205,7 +207,7 @@ export function XVoices({ voices, loading, symbol }: { voices?: XVoice[]; loadin
             }}
           >
             <span className="block rounded-full bg-[#05060a] p-[2px] transition group-hover:scale-110">
-              <Avatar handle={p.handle} size={p.size} />
+              <Avatar handle={p.handle} src={p.avatar} size={p.size} />
             </span>
           </button>
         ))}
@@ -213,7 +215,7 @@ export function XVoices({ voices, loading, symbol }: { voices?: XVoice[]; loadin
         {open && (
           <div className="absolute inset-x-3 bottom-3 z-20 mx-auto max-w-md rounded-xl border border-line bg-panel/95 p-3 shadow-2xl backdrop-blur sm:inset-x-auto sm:right-3 sm:left-auto">
             <div className="flex items-start gap-3">
-              <Avatar handle={open.handle} size={40} />
+              <Avatar handle={open.handle} src={open.avatar} size={40} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2">
                   <span className="truncate font-semibold">{open.name}</span>
@@ -225,6 +227,7 @@ export function XVoices({ voices, loading, symbol }: { voices?: XVoice[]; loadin
                   <a href={open.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-honey hover:underline">
                     open post <ExternalLink className="size-3" />
                   </a>
+                  {open.followers !== undefined && <span className="text-muted">{fmtFollowers(open.followers)} followers</span>}
                   {open.posts > 1 && <span className="text-muted">{open.posts} posts about ${symbol}</span>}
                 </div>
               </div>

@@ -21,6 +21,42 @@ export interface XVoice {
   url: string;
   stance: "bullish" | "bearish" | "neutral";
   posts: number; // сколько постов этого автора нашлось
+  avatar?: string; // pbs.twimg.com, из профиля через fxtwitter
+  followers?: number;
+}
+
+// Аватар и подписчики автора: публичный API fxtwitter, без ключа. Кэш на сутки, на ошибку — без аватара.
+const profiles = globalThis as unknown as { __crawlhiveXProfiles?: Map<string, { at: number; avatar?: string; followers?: number }> };
+async function profile(handle: string) {
+  const cache = (profiles.__crawlhiveXProfiles ??= new Map());
+  const key = handle.toLowerCase();
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < 86400_000) return hit;
+  try {
+    const r = await fetch(`https://api.fxtwitter.com/${encodeURIComponent(handle)}`, { signal: AbortSignal.timeout(6000) });
+    const u = ((await r.json()) as { user?: { avatar_url?: string; followers?: number } }).user;
+    const url = typeof u?.avatar_url === "string" && /^https:\/\/pbs\.twimg\.com\//.test(u.avatar_url) ? u.avatar_url.replace("_normal.", "_200x200.") : undefined;
+    const v = { at: Date.now(), avatar: url, followers: typeof u?.followers === "number" ? u.followers : undefined };
+    cache.set(key, v);
+    return v;
+  } catch {
+    return { at: Date.now() };
+  }
+}
+
+async function withProfiles(voices: XVoice[]): Promise<XVoice[]> {
+  const out = [...voices];
+  // По 6 запросов разом, чтобы не долбить fxtwitter тридцатью сразу.
+  for (let i = 0; i < out.length; i += 6) {
+    await Promise.all(
+      out.slice(i, i + 6).map(async (v, k) => {
+        const p = await profile(v.handle);
+        out[i + k] = { ...v, avatar: p.avatar, followers: p.followers };
+      }),
+    );
+  }
+  // Крупные аккаунты — ближе к центру карты.
+  return out.sort((a, b) => (b.followers ?? 0) - (a.followers ?? 0));
 }
 
 const CACHE_MS = 30 * 60_000;
@@ -108,13 +144,13 @@ export async function scanX(t: { id: string; symbol: string; name: string }, ip:
         posts: 1,
       });
     }
-    const voices = [...byHandle.values()].slice(0, 30);
+    const voices = await withProfiles([...byHandle.values()].slice(0, 30));
     const buzz: XBuzz = {
       sentiment: (["bullish", "mixed", "bearish", "quiet"] as const).includes(j.sentiment as XBuzz["sentiment"]) ? (j.sentiment as XBuzz["sentiment"]) : "quiet",
       summary: String(j.summary ?? "").slice(0, 240) || "Nothing notable on X in the last two days.",
       warnings: (Array.isArray(j.warnings) ? j.warnings : []).map((w) => String(w).slice(0, 60)).slice(0, 4),
       // Ссылки берём только те, что Grok реально нашёл, — выдуманные URL не показываем.
-      posts: voices.slice(0, 4).map(({ handle, text, url }) => ({ handle, text, url })),
+      posts: [...byHandle.values()].slice(0, 4).map(({ handle, text, url }) => ({ handle, text, url })),
       voices,
       at: Date.now(),
     };
