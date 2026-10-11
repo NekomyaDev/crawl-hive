@@ -48,6 +48,8 @@ They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for p
   <br><sub>Instant Crawl on dogwifhat: the original $WIF among 10 tokens with that ticker, mint renounced, no freeze, scored CLEAN.</sub>
 </p>
 
+**Share a result.** Every scan gets its own page, `crawlhive.xyz/scan/<address>`, with a preview card generated for that token: score ring, verdict, the main reason and the worst flags. *Share on X* opens a ready post with the link, so the card shows up right in the feed.
+
 **Bundle detection.** Pools and pump.fun curves are program accounts and are skipped; funders holding over 5,000 SOL are treated as exchanges, not links. Five or more linked top wallets (or 10%+ of supply) score as *Bundled*. Example: a 1-hour-old pump.fun token whose 12 top wallets were all created by one signer.
 
 <p align="center">
@@ -313,6 +315,10 @@ db/schema.sql                target Postgres schema
 
 ## Roadmap
 
+<p align="center">
+  <img src="docs/images/roadmap.png" alt="CrawlHive roadmap: two shipped phases, real users and calls in progress, the hive economy next" width="100%">
+</p>
+
 - [x] Swarm map, reputation, marketplace, leaderboard, governance
 - [x] Real on-chain spawn payments through Phantom, server-side verification
 - [x] Real crawlers (X via Grok, Telegram, DexScreener, page changes) with per-crawler specifications
@@ -324,6 +330,7 @@ db/schema.sql                target Postgres schema
 - [x] Instant Crawl: free token scan without a wallet
 - [x] Ready-made crawlers, buyback treasury counter
 - [x] Instant Crawl: X mentions through Grok, bundle detection (wallets run by one person)
+- [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks

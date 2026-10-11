@@ -5,8 +5,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Copy, ExternalLink, Eye, Radar, ShieldCheck } from "lucide-react";
+import { ArrowRight, ExternalLink, Eye, Radar, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ShareOnX } from "@/components/share-on-x";
+import { shareText } from "@/lib/scan-share";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
@@ -265,14 +267,7 @@ function ResultSkeleton({ running }: { running: boolean }) {
 function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefined }) {
   const st = VERDICT_STYLE[r.verdict];
   const toast = useToast();
-  const [copied, setCopied] = useState(false);
   const m = r.market;
-  const share = () => {
-    navigator.clipboard?.writeText(`${window.location.origin}/?scan=${r.id}`).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
   const age = m?.ageHours === undefined ? "—" : m.ageHours < 48 ? `${m.ageHours.toFixed(1)}h` : `${Math.round(m.ageHours / 24)}d`;
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-line bg-panel p-4">
@@ -321,9 +316,7 @@ function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefin
       {x !== undefined && <XPanel x={x} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <WatchButton r={r} />
-        <Button size="sm" variant="ghost" onClick={share}>
-          {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? "copied" : "share"}
-        </Button>
+        <ShareOnX id={r.id} text={shareText(r)} />
         {m?.url && (
           <a href={m.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
             DexScreener <ExternalLink className="size-3" />

@@ -2,7 +2,7 @@
 // затем результат, затем (для Solana) догружается поиск по X и приходит событие done. Без кошелька, с лимитом по IP.
 import type { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { allowScan, runScan } from "@/lib/server/scan";
+import { allowScan, attachBuzz, runScan } from "@/lib/server/scan";
 import { cachedBuzz, scanX, scanXEnabled } from "@/lib/server/scan-x";
 
 export async function GET(req: NextRequest) {
@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
               text: `${x.sentiment}${x.warnings.length ? ` · warnings: ${x.warnings.join(", ")}` : ""} · ${x.summary}`,
               tone: x.warnings.length || x.sentiment === "bearish" ? "bad" : x.sentiment === "bullish" ? "ok" : "info",
             });
+            attachBuzz(result.id, x);
             send({ type: "x", x });
           } catch (e) {
             log({ crawler: "crawler_x", text: `skipped: ${(e as Error).message.replace(/^(Grok API|.*(timeout|abort)).*/i, "X search is unavailable right now")}`, tone: "warn" });

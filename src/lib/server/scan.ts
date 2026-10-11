@@ -8,6 +8,7 @@ import { fetchChannel } from "./crawl/sources/telegram";
 import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
+import type { XBuzz } from "./scan-x";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
 
@@ -44,6 +45,7 @@ export interface ScanResult {
   clones: number;
   original?: boolean; // самый крупный из токенов с этим тикером
   telegram: { channel: string; url: string }[];
+  x?: XBuzz; // догружается после вердикта, есть только в сохранённом скане
   scannedAt: number;
 }
 
@@ -55,6 +57,8 @@ export interface ScanLog {
 
 const TG_CHANNELS = ["pumpfun", "DexScreenerTrending"];
 const RECENT_KEY = "recentScans";
+const SAVED_KEY = "scanResults";
+const SAVED_MAX = 200;
 const CACHE_MS = 2 * 60_000;
 
 // Символы бывают записаны как «$WIF»: сравниваем без знака доллара и регистра.
@@ -382,6 +386,32 @@ function remember(r: ScanResult) {
   const list = recentScans().filter((x) => x.id !== r.id);
   list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, score: r.score, verdict: r.verdict, at: r.scannedAt });
   setMeta(RECENT_KEY, JSON.stringify(list.slice(0, 30)));
+  save(r);
+}
+
+// Полные результаты последних сканов: по ним строится страница /scan/<адрес> и картинка для X.
+function savedScans(): ScanResult[] {
+  try {
+    return JSON.parse(getMeta(SAVED_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function save(r: ScanResult) {
+  const list = savedScans().filter((x) => x.id !== r.id);
+  list.unshift(r);
+  setMeta(SAVED_KEY, JSON.stringify(list.slice(0, SAVED_MAX)));
+}
+
+export function savedScan(id: string): ScanResult | undefined {
+  return savedScans().find((x) => x.id === id);
+}
+
+// Сводка из X пришла позже вердикта — дописываем её в сохранённый скан.
+export function attachBuzz(id: string, x: XBuzz) {
+  const r = savedScan(id);
+  if (r) save({ ...r, x });
 }
 
 export function recentScans(): RecentScan[] {
