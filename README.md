@@ -36,12 +36,13 @@ No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a
 |---|---|
 | `crawler_market` | DexScreener: liquidity (or still on the pump.fun curve), FDV, pair age, 1h volume, buys vs sells |
 | `crawler_holders` | Solana RPC: mint authority, freeze authority, top holder and how much the next 10 wallets hold |
-| `crawler_clones` | Other tokens with the same ticker, compared by FDV: is this the original or a copy? |
+| `crawler_clones` | Other tokens with the same ticker, compared by FDV (by pool liquidity when FDV is unknown): is this the original or a copy? |
 | `crawler_bundles` | Who funded the top wallets: wallets that got their first SOL from one address, or whose first transaction was paid by the same signer, are grouped as one owner |
+| `crawler_dev` | Who created the token and how their earlier pump.fun launches ended: how many, how many graduated to a pool, how old the creator wallet is and how much of this token it still holds |
 | `crawler_telegram` | Mentions in tracked Telegram channels |
 | `crawler_x` | Grok reads X for the contract and `$TICKER` over the last two days: sentiment, a one-line summary, concrete warnings (rug, dev sold, bundled) and up to 30 authors who posted about it. Arrives about a minute after the verdict, does not change the score |
 
-They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for pairs under 30 minutes) with a one-line reason, a shareable link (`/?scan=<address>`), and a **Watch 30 days** button that turns the one-off scan into a crawler watching that token for you.
+They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for pairs under 30 minutes) with a one-line reason, a shareable page (`/scan/<address>`), and a **Watch 30 days** button that turns the one-off scan into a crawler watching that token for you.
 
 <p align="center">
   <img src="docs/images/instant-crawl.png" alt="Instant Crawl: live crawler log and verdict for a token" width="100%">
@@ -55,6 +56,14 @@ They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for p
 </p>
 
 **Share a result.** Every scan gets its own page, `crawlhive.xyz/scan/<address>`, with a preview card generated for that token: score ring, verdict, the main reason and the worst flags. *Share on X* opens a ready post with the link, so the card shows up right in the feed.
+
+**Creator history.** For pump.fun tokens the bonding curve account stores the creator's address. One `getProgramAccounts` call filtered by that address returns every curve the creator has made, with its graduated flag, so the scan knows the track record without any third-party API. Ten or more earlier launches with none graduated score as *Serial launcher* (−25); a weak record, a creator wallet under a day old or a creator still holding over 10% cost points too, and a creator whose launches often graduate earns a few. Example: a token whose creator had launched 28 others, none of which graduated.
+
+<p align="center">
+  <img src="docs/images/instant-crawl-dev.png" alt="Instant Crawl flags a serial launcher: 28 earlier pump.fun launches, none graduated" width="100%">
+</p>
+
+**Core assets.** Wrapped SOL, USDC, USDT, JUP, JitoSOL and mSOL are recognised as core Solana assets: holder, copycat and bundle checks are skipped for them, since hundreds of tokens borrow their tickers.
 
 **Bundle detection.** Pools and pump.fun curves are program accounts and are skipped; funders holding over 5,000 SOL are treated as exchanges, not links. Five or more linked top wallets (or 10%+ of supply) score as *Bundled*. Example: a 1-hour-old pump.fun token whose 12 top wallets were all created by one signer.
 
@@ -135,7 +144,7 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 | Part | State |
 |---|---|
-| Instant Crawl: free token scan (market, mint, holders, bundles, copycats, Telegram, X) | ✅ **real data**, no wallet needed |
+| Instant Crawl: free token scan (market, mint, holders, bundles, creator history, copycats, Telegram, X) | ✅ **real data**, no wallet needed |
 | Spawn and renewal payments in SOL through Phantom, verified on-chain | ✅ **real**, mainnet; 30 days of crawling per payment |
 | Ready-made crawlers in the marketplace | ✅ **real**: a purchase is an on-chain spawn with tested settings |
 | Buyback fund counter on the home page | ✅ **real**: live treasury balance in SOL and USD, plus SOL from verified crawler payments |
@@ -337,6 +346,7 @@ db/schema.sql                target Postgres schema
 - [x] Ready-made crawlers, buyback treasury counter
 - [x] Instant Crawl: X mentions through Grok, bundle detection (wallets run by one person)
 - [x] Instant Crawl: "who's talking on X" map of the authors posting about a token
+- [x] Instant Crawl: creator history (earlier pump.fun launches and how many graduated), core assets recognised
 - [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)

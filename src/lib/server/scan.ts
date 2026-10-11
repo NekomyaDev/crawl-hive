@@ -8,6 +8,7 @@ import { fetchChannel } from "./crawl/sources/telegram";
 import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
+import { traceDev, type DevReport } from "./scan-dev";
 import type { XBuzz } from "./scan-x";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
@@ -42,6 +43,8 @@ export interface ScanResult {
   };
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
   bundles?: BundleReport;
+  dev?: DevReport;
+  core?: string; // базовый актив сети (SOL, USDC…): мем-проверки к нему не применяются
   clones: number;
   original?: boolean; // самый крупный из токенов с этим тикером
   telegram: { channel: string; url: string }[];
@@ -56,6 +59,17 @@ export interface ScanLog {
 }
 
 const TG_CHANNELS = ["pumpfun", "DexScreenerTrending"];
+
+// Базовые активы Solana: у них нет «создателя-разработчика», а тикер SOL/USDC носят сотни копий,
+// поэтому проверки держателей, клонов и связанных кошельков для них дают ложную тревогу.
+const CORE: Record<string, string> = {
+  So11111111111111111111111111111111111111112: "Wrapped SOL",
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: "USDC",
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: "USDT",
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "Jupiter",
+  J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: "JitoSOL",
+  mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: "Marinade SOL",
+};
 const RECENT_KEY = "recentScans";
 const SAVED_KEY = "scanResults";
 const SAVED_MAX = 200;
@@ -145,6 +159,7 @@ async function holdersOf(mint: string) {
   const total = Number(supply.value.amount) || 1;
   const amounts = largest.value.map((a) => Number(a.amount));
   return {
+    supplyRaw: Number(supply.value.amount) || 0,
     top1: (amounts[0] ?? 0) / total * 100,
     top2to11: amounts.slice(1, 11).reduce((s, x) => s + x, 0) / total * 100,
     top10: amounts.slice(0, 10).reduce((s, x) => s + x, 0) / total * 100,
@@ -176,9 +191,11 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   }
   const factors: ScanFactor[] = [];
   const hit = (label: string, impact: number, note: string) => factors.push({ label, impact, note });
+  const core = CORE[address];
+  if (core) log({ crawler: "resolver", text: `${core} is a core Solana asset: memecoin checks are skipped`, tone: "info" });
 
   // Краулеры работают параллельно, каждый пишет в лог по готовности.
-  log({ crawler: "swarm", text: `${chain === "solana" ? 5 : 4} crawlers dispatched to ${address.slice(0, 4)}…${address.slice(-4)} on ${chain}` });
+  log({ crawler: "swarm", text: `${core ? 2 : chain === "solana" ? 6 : 4} crawlers dispatched to ${address.slice(0, 4)}…${address.slice(-4)} on ${chain}` });
 
   const marketP = (async () => {
     const pair = (pre ?? (await bestPairs(chain, [address])).get(address)) as PairX | undefined;
@@ -196,9 +213,14 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   })();
 
   const holdersP =
-    chain === "solana"
+    chain === "solana" && !core
       ? holdersOf(address)
           .then((h) => {
+            // У некоторых минтов supply в аккаунте не отражает реальную эмиссию — доли выходят за 100%.
+            if (h.top1 > 100 || h.top10 > 100) {
+              log({ crawler: "crawler_holders", text: "supply data is inconsistent, holder shares skipped", tone: "warn" });
+              return undefined;
+            }
             log({
               crawler: "crawler_holders",
               text: `top holder ${pct(h.top1)} · next 10 hold ${pct(h.top2to11)} · mint ${h.mintAuthority ? "OPEN" : "renounced"} · freeze ${h.freezeAuthority ? "ON" : "off"}`,
@@ -235,11 +257,38 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
       : undefined,
   );
 
+  // История разработчика: создатель, его прошлые запуски на pump.fun, возраст кошелька, сколько держит.
+  const devP: Promise<DevReport | undefined> =
+    chain === "solana" && !core
+      ? holdersP.then((h) =>
+          withTimeout(traceDev(rpcConnection(), address, h?.supplyRaw), 15_000)
+            .then((d) => {
+              if (!d) {
+                log({ crawler: "crawler_dev", text: "not a pump.fun launch: creator history not traced", tone: "info" });
+                return undefined;
+              }
+              const age = d.walletAgeHours === undefined ? `${d.walletTxs}+ txs` : d.walletAgeHours < 48 ? `wallet ${d.walletAgeHours.toFixed(1)}h old` : `wallet ${Math.round(d.walletAgeHours / 24)}d old`;
+              const others = d.launched - 1;
+              log({
+                crawler: "crawler_dev",
+                text: `creator ${d.creator.slice(0, 4)}…${d.creator.slice(-4)} · ${others ? `${others} earlier pump.fun launch${others > 1 ? "es" : ""}, ${d.graduated} graduated` : "first launch"} · ${age}${d.holdsPct !== undefined ? ` · holds ${pct(d.holdsPct)}` : ""}`,
+                tone: devTone(d),
+              });
+              return d;
+            })
+            .catch((e) => {
+              console.error("[scan] dev:", (e as Error).message);
+              log({ crawler: "crawler_dev", text: "could not trace the creator right now", tone: "warn" });
+              return undefined;
+            }),
+        )
+      : Promise.resolve(undefined);
+
   const market = await marketP;
   const symbol = sym(market?.pair.baseToken.symbol);
 
   // Клоны: другие токены с тем же тикером. Если у кого-то из них ликвидность больше, этот, скорее всего, копия.
-  const clonesP: Promise<{ n: number; biggerTwin?: number; original?: boolean }> = symbol
+  const clonesP: Promise<{ n: number; biggerTwin?: number; original?: boolean }> = symbol && !core
     ? searchTicker(sym(symbol))
         .then((pairs) => {
           const same = pairs.filter((p) => p.chainId === chain && sym(p.baseToken.symbol) === sym(symbol));
@@ -252,7 +301,11 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
           }
           const n = others.size;
           const mineFdv = market?.pair.fdv ?? 0;
-          const twin = [...others.values()].filter((o) => o.liq > 20_000 && o.fdv > Math.max(mineFdv * 5, 100_000)).sort((x, y) => y.fdv - x.fdv)[0];
+          // Без FDV (так бывает у wrapped-активов) сравниваем по ликвидности пула.
+          const mineLiq = market?.pair.liquidity?.usd ?? 0;
+          const twin = [...others.values()]
+            .filter((o) => o.liq > 20_000 && (mineFdv ? o.fdv > Math.max(mineFdv * 5, 100_000) : o.liq > mineLiq * 5))
+            .sort((x, y) => y.fdv - x.fdv)[0];
           const biggerTwin = twin?.fdv;
           const top = Math.max(0, ...[...others.values()].map((o) => o.fdv));
           const mine = mineFdv;
@@ -288,7 +341,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
     return found;
   });
 
-  const [holders, cloneInfo, telegram, bundles] = await Promise.all([holdersP, clonesP, tgP, bundlesP]);
+  const [holders, cloneInfo, telegram, bundles, dev] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP]);
   const clones = cloneInfo.n;
 
   // ---------- оценка ----------
@@ -310,13 +363,21 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   if (cluster && (cluster.pct >= 10 || cluster.wallets >= 5)) hit("Bundled", -25, `${cluster.wallets} linked wallets hold ${pct(cluster.pct)}`);
   else if (cluster && (cluster.pct >= 4 || cluster.wallets >= 3)) hit("Linked wallets", -10, `${cluster.wallets} top wallets share a funder (${pct(cluster.pct)})`);
   if (bundles && bundles.fresh.pct >= 15) hit("Fresh wallets", -10, `${bundles.fresh.wallets} wallets under 3 days old hold ${pct(bundles.fresh.pct)}`);
+  if (dev) {
+    const prior = dev.launched - 1;
+    if (prior >= 10 && dev.graduated === 0) hit("Serial launcher", -25, `the creator launched ${prior} other tokens on pump.fun, none graduated`);
+    else if (prior >= 3 && dev.graduated / prior < 0.1) hit("Weak dev record", -10, `${dev.graduated} of ${prior} earlier launches by this creator graduated`);
+    else if (dev.graduated >= 2 && dev.graduated / prior >= 0.3) hit("Dev track record", 5, `${dev.graduated} of ${prior} earlier launches by this creator graduated`);
+    if (dev.walletAgeHours !== undefined && dev.walletAgeHours < 24) hit("Fresh dev wallet", -5, `the creator wallet is ${dev.walletAgeHours.toFixed(1)}h old`);
+    if (dev.holdsPct !== undefined && dev.holdsPct > 10) hit("Dev holds a lot", -10, `the creator still holds ${pct(dev.holdsPct)}`);
+  }
   if (cloneInfo.biggerTwin) hit("Possible copy", -45, `a token worth ${usd(cloneInfo.biggerTwin)} already uses this ticker`);
   else if (clones > 2 && !cloneInfo.original) hit("Copycats", -10, `${clones} other tokens share the ticker`);
   const buys = p?.txns?.h1?.buys ?? 0;
   const sells = p?.txns?.h1?.sells ?? 0;
   if (sells > 20 && sells > buys * 2) hit("Sell pressure", -10, `${sells} sells vs ${buys} buys in the last hour`);
   const socials = (p?.info?.websites?.length ?? 0) + (p?.info?.socials?.length ?? 0);
-  if (p && !socials) hit("No socials", -5, "no website or socials listed");
+  if (p && !socials && !core) hit("No socials", -5, "no website or socials listed");
   if (p && (p.priceChange?.h1 ?? 0) < -40) hit("Dumping", -10, `${Math.round(p.priceChange?.h1 ?? 0)}% in the last hour`);
   if (telegram.length) hit("On the radar", 5, `mentioned in ${telegram.map((t) => t.channel).join(", ")}`);
   for (const f of factors) score += f.impact;
@@ -329,7 +390,9 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
     ? "Pair is under 30 minutes old: too early to judge"
     : worst && worst.impact < 0
       ? `${worst.label}: ${worst.note}`
-      : "No red flags found by the crawlers";
+      : core
+        ? `${core}: a core Solana asset, not a memecoin`
+        : "No red flags found by the crawlers";
 
   const result: ScanResult = {
     id: address,
@@ -357,6 +420,8 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
       : undefined,
     holders: holders && { top1: holders.top1, top10: holders.top10, mintAuthority: holders.mintAuthority, freezeAuthority: holders.freezeAuthority },
     bundles,
+    dev,
+    core,
     clones,
     original: !!cloneInfo.original,
     telegram,
@@ -370,6 +435,13 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   mem().cache.set(address, { result, logs: logs.filter((l) => l.crawler !== "resolver") });
   remember(result);
   return result;
+}
+
+function devTone(d: DevReport): ScanLog["tone"] {
+  const prior = d.launched - 1;
+  if ((prior >= 10 && d.graduated === 0) || (d.holdsPct ?? 0) > 10) return "bad";
+  if ((prior >= 3 && d.graduated / prior < 0.1) || (d.walletAgeHours ?? 99) < 24) return "warn";
+  return "ok";
 }
 
 // Лента «recently scanned»: последние 30 сканов, переживают перезапуск.

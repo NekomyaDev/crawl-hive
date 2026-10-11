@@ -50,6 +50,8 @@ interface Result {
   };
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
   bundles?: { checked: number; clusters: { wallets: number; pct: number; funder: string }[]; fresh: { wallets: number; pct: number } };
+  dev?: { creator: string; launched: number; graduated: number; walletAgeHours?: number; walletTxs: number; holdsPct?: number };
+  core?: string;
   clones: number;
   original?: boolean;
   telegram: { channel: string; url: string }[];
@@ -323,7 +325,9 @@ function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefin
           </>
         )}
         {r.bundles && <BundleFlag b={r.bundles} />}
-        <Flag ok={r.clones <= 2 || !!r.original} label={r.original ? `original · ${r.clones} copycats` : r.clones ? `${r.clones} copycat tickers` : "unique ticker"} />
+        {r.dev && <DevFlag d={r.dev} />}
+        {r.core && <Flag ok label={`core asset · ${r.core}`} />}
+        {!r.core && <Flag ok={r.clones <= 2 || !!r.original} label={r.original ? `original · ${r.clones} copycats` : r.clones ? `${r.clones} copycat tickers` : "unique ticker"} />}
         {r.telegram.map((t) => (
           <a key={t.channel} href={t.url} target="_blank" rel="noreferrer" className="rounded-md border border-sky/40 px-1.5 py-0.5 text-sky hover:bg-sky/10">
             seen in {t.channel}
@@ -358,6 +362,24 @@ function BundleFlag({ b }: { b: NonNullable<Result["bundles"]> }) {
   if (c) return <Flag ok={c.pct < 4 && c.wallets < 3} label={`${c.wallets} linked wallets · ${c.pct.toFixed(1)}%`} />;
   if (b.fresh.pct >= 15) return <Flag ok={false} label={`fresh wallets hold ${b.fresh.pct.toFixed(0)}%`} />;
   return b.checked ? <Flag ok label="no linked wallets" /> : null;
+}
+
+// Создатель токена: прошлые запуски на pump.fun и сколько из них дошли до пула; ссылка на кошелёк в Solscan.
+function DevFlag({ d }: { d: NonNullable<Result["dev"]> }) {
+  const prior = d.launched - 1;
+  const bad = (prior >= 10 && d.graduated === 0) || (prior >= 3 && d.graduated / prior < 0.1) || (d.holdsPct ?? 0) > 10;
+  const label = prior ? `dev: ${prior} earlier launch${prior > 1 ? "es" : ""} · ${d.graduated} graduated` : "dev: first launch";
+  return (
+    <a
+      href={`https://solscan.io/account/${d.creator}`}
+      target="_blank"
+      rel="noreferrer"
+      className={cn("rounded-md border px-1.5 py-0.5 hover:bg-panel-2", bad ? "border-danger/40 text-danger" : "border-lime/40 text-lime")}
+    >
+      {label}
+      {d.holdsPct !== undefined ? ` · holds ${d.holdsPct.toFixed(1)}%` : ""}
+    </a>
+  );
 }
 
 const MOOD: Record<XBuzz["sentiment"], string> = { bullish: "text-lime", mixed: "text-honey", bearish: "text-danger", quiet: "text-muted" };
