@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio } from "lucide-react";
+import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { useWallet } from "./wallet-provider";
@@ -22,9 +22,17 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
   const { address, info, mode, signedIn, connect, signIn, disconnect } = useWallet();
   if (!address)
     return (
-      <Button onClick={connect} size="sm" className="w-full">
-        <Wallet className="size-4" /> Connect
-      </Button>
+      <div className="flex w-full flex-col gap-1.5">
+        <Button onClick={connect} size="sm" className="w-full">
+          <Wallet className="size-4" /> Connect
+        </Button>
+        {/* Подсказка у кнопки: что на самом деле происходит при подключении. */}
+        {!compact && (
+          <Link href="/#wallet-safety" className="flex items-center justify-center gap-1 text-[11px] text-muted hover:text-lime">
+            <ShieldCheck className="size-3" /> Is it safe? Read-only until you pay
+          </Link>
+        )}
+      </div>
     );
   return (
     <div className={cn("flex items-center gap-2", !compact && "rounded-lg border border-line bg-panel-2 p-2.5")}>

@@ -12,6 +12,7 @@ import { SignalFeed } from "@/components/signal-feed";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InstantCrawl } from "@/components/instant-crawl";
+import { WalletSafety } from "@/components/wallet-safety";
 import { Shipped } from "@/components/shipped";
 import { useStream } from "@/lib/client/use-stream";
 import { fmt, timeLeft } from "@/lib/utils";
@@ -58,6 +59,8 @@ export default function Dashboard() {
       <InstantCrawl />
 
       <TreasuryCard className="mb-5" />
+
+      <WalletSafety className="mb-5" />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat tone="honey" icon={<Bug className="size-3.5" />} label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "—"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />

@@ -184,6 +184,12 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 **What the app asks your wallet to do:** sign a message to log in (free, no transaction) and one transaction per spawn or renewal. Phantom shows you the exact amount and recipient before you approve. CrawlHive never asks for a seed phrase or private key, and it cannot move funds without your signature.
 
+The home page explains this to visitors in a **Wallet safety** section (and an *Is it safe?* hint under the Connect button): connect shares only your public address, sign-in is a plain text message with a one-time code that expires in 5 minutes, a payment is one SOL transfer plus a memo that the server verifies on-chain, and there are no token approvals or delegation. Each point links to the code that does it (`auth.ts`, `solana.ts`) or to the treasury on Solscan.
+
+<p align="center">
+  <img src="docs/images/wallet-safety.png" alt="Wallet safety section on the home page" width="100%">
+</p>
+
 **Where spawn payments go.** Until the project token exists, spawns are paid in SOL to the public project treasury:
 
 > **[`DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ`](https://solscan.io/account/DgCogtUuki6MZzypK1dKHYWfHLMUnKkNUBQwo6rWTGUJ)**
@@ -347,6 +353,7 @@ db/schema.sql                target Postgres schema
 - [x] Instant Crawl: X mentions through Grok, bundle detection (wallets run by one person)
 - [x] Instant Crawl: "who's talking on X" map of the authors posting about a token
 - [x] Instant Crawl: creator history (earlier pump.fun launches and how many graduated), core assets recognised
+- [x] Wallet safety explainer on the home page
 - [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
