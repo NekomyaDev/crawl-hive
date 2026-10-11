@@ -2,7 +2,7 @@
 // затем результат, затем сводка из X, если она уже есть в кэше (иначе xoffer — кнопка для /api/scan/x), и событие done. Без кошелька, с лимитом по IP.
 import type { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { allowScan, attachBuzz, runScan } from "@/lib/server/scan";
+import { allowScan, runScan, savedBuzz } from "@/lib/server/scan";
 import { buzzLine, cachedBuzz, scanXEnabled } from "@/lib/server/scan-x";
 
 export async function GET(req: NextRequest) {
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         // Поиск по X платный (Grok), поэтому сам он не запускается: готовая сводка из кэша отдаётся сразу,
         // иначе клиент показывает кнопку и зовёт /api/scan/x по нажатию.
         if (result.chain === "solana" || result.chain === "robinhood") {
-          const cached = cachedBuzz(result.id);
+          const cached = cachedBuzz(result.id) ?? savedBuzz(result.id);
           if (cached) {
             log(buzzLine(cached));
             send({ type: "x", x: cached });

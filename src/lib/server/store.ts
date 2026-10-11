@@ -89,7 +89,8 @@ function init(): State {
   const crawlers = new Map(seed.crawlers.map((c) => [c.id, c]));
   // Живые краулеры с прошлого запуска. Время простоя сервера не считаем аптаймом.
   for (const c of saved.crawlers) {
-    if (c.run) c.run.nextRunAt = now + 5_000;
+    // Очередь краулера сохраняется: перезапуск сервера не повод для внеочередного (а у X — платного) прогона.
+    if (c.run) c.run.nextRunAt = Math.max(now + 5_000, c.run.nextRunAt ?? 0);
     // Краулеры, созданные до введения срока, получают полный срок с момента обновления.
     if (c.live && !c.expiresAt) c.expiresAt = now + termMs();
     crawlers.set(c.id, c);

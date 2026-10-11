@@ -2,7 +2,7 @@
 // Поток Server-Sent Events в том же формате, что /api/scan: строки лога, событие x, затем done.
 import type { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { attachBuzz, savedScan } from "@/lib/server/scan";
+import { attachBuzz, savedBuzz, savedScan } from "@/lib/server/scan";
 import { buzzLine, scanX, scanXEnabled } from "@/lib/server/scan-x";
 
 export async function GET(req: NextRequest) {
@@ -29,8 +29,8 @@ export async function GET(req: NextRequest) {
         const r = savedScan(id);
         if (!r || (r.chain !== "solana" && r.chain !== "robinhood")) throw new Error("Scan the token first");
         if (!scanXEnabled()) throw new Error("X check is off right now");
-        log({ crawler: "crawler_x", text: `Grok is reading X for $${r.symbol}: who is talking about it, about half a minute…`, tone: "info" });
-        const x = await scanX(r, ip);
+        if (!savedBuzz(r.id)) log({ crawler: "crawler_x", text: `Grok is reading X for $${r.symbol}: who is talking about it, about half a minute…`, tone: "info" });
+        const x = savedBuzz(r.id) ?? (await scanX(r, ip));
         log(buzzLine(x));
         attachBuzz(r.id, x);
         send({ type: "x", x });

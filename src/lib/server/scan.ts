@@ -10,7 +10,7 @@ import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceDev, type DevReport } from "./scan-dev";
 import { traceEvm, type EvmReport } from "./scan-evm";
-import type { XBuzz } from "./scan-x";
+import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
 
@@ -503,7 +503,9 @@ function remember(r: ScanResult) {
   const list = recentScans().filter((x) => x.id !== r.id);
   list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, score: r.score, verdict: r.verdict, at: r.scannedAt });
   setMeta(RECENT_KEY, JSON.stringify(list.slice(0, 30)));
-  save(r);
+  // Новый скан не затирает свежую сводку из X: за неё уже заплачено.
+  const x = savedBuzz(r.id);
+  save(x ? { ...r, x } : r);
 }
 
 // Полные результаты последних сканов: по ним строится страница /scan/<адрес> и картинка для X.
@@ -523,6 +525,12 @@ function save(r: ScanResult) {
 
 export function savedScan(id: string): ScanResult | undefined {
   return savedScans().find((x) => x.id === id);
+}
+
+// Сводка из X, сохранённая с прошлого скана, если она ещё свежая: переживает перезапуск, повторно не платим.
+export function savedBuzz(id: string): XBuzz | null {
+  const x = savedScan(id)?.x;
+  return x && Date.now() - x.at < BUZZ_TTL_MS ? x : null;
 }
 
 // Сводка из X пришла позже вердикта — дописываем её в сохранённый скан.

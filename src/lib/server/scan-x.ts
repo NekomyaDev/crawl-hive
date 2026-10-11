@@ -69,7 +69,7 @@ async function withProfiles(voices: XVoice[]): Promise<XVoice[]> {
 }
 
 // Поиск платный (xAI берёт и за каждый вытянутый пост), поэтому сводку держим долго, а лимиты — маленькие.
-const CACHE_MS = 6 * 3600_000;
+export const BUZZ_TTL_MS = 6 * 3600_000;
 const DAILY = () => Number(process.env.SCAN_X_DAILY ?? 20);
 const PER_IP_HOUR = 2;
 
@@ -85,7 +85,7 @@ export const scanXEnabled = () => grokEnabled() && DAILY() > 0;
 
 export function cachedBuzz(id: string) {
   const c = mem().cache.get(id);
-  return c && Date.now() - c.at < CACHE_MS ? c : null;
+  return c && Date.now() - c.at < BUZZ_TTL_MS ? c : null;
 }
 
 // null — можно; строка — почему нельзя.
@@ -132,7 +132,8 @@ export async function scanX(t: { id: string; symbol: string; name: string; chain
         '{"sentiment":"bullish|mixed|bearish|quiet","summary":"one plain sentence, max 30 words","warnings":["short phrase"],"posts":[{"handle":"name without @","name":"display name","text":"under 140 chars","url":"https://x.com/...","stance":"bullish|bearish|neutral"}]}. ' +
         "sentiment is quiet when there are fewer than 5 relevant posts. warnings: only concrete accusations people make (rug, scam, hacked, dev sold, bundled supply, fake volume); empty if none. " +
         "posts: up to 8 posts by different authors, most informative first, real URLs from your search only; text is a short faithful excerpt of the post. Work from the search results; do not open posts one by one. Skip pure bots and spam reposts. Ignore posts about other tokens that share the ticker.",
-      user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, ${t.chain === "robinhood" ? "Robinhood Chain" : "Solana"} contract ${t.id}. Search X for the contract address and for $${t.symbol} since ${since}.`,
+      // Один поисковый запрос вместо трёх: xAI берёт за каждый пост в выдаче, а три запроса приносят одни и те же посты.
+      user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, ${t.chain === "robinhood" ? "Robinhood Chain" : "Solana"} contract ${t.id}. Make exactly one X search, for the query "${t.id} OR $${t.symbol}", since ${since}.`,
       xSearch: { fromDate: since },
       // Один круг поиска: каждый следующий заново скармливает модели все найденные посты и умножает счёт.
       maxTurns: 1,
