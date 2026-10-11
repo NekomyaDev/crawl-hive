@@ -34,13 +34,15 @@ async function profile(handle: string) {
   if (hit && Date.now() - hit.at < 86400_000) return hit;
   try {
     const r = await fetch(`https://api.fxtwitter.com/${encodeURIComponent(handle)}`, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok && r.status !== 404) throw new Error(`fxtwitter ${r.status}`);
     const u = ((await r.json()) as { user?: { avatar_url?: string; followers?: number } }).user;
     const url = typeof u?.avatar_url === "string" && /^https:\/\/pbs\.twimg\.com\//.test(u.avatar_url) ? u.avatar_url.replace("_normal.", "_200x200.") : undefined;
     const v = { at: Date.now(), avatar: url, followers: typeof u?.followers === "number" ? u.followers : undefined };
     cache.set(key, v);
     return v;
   } catch {
-    return { at: Date.now() };
+    // Сбой не кэшируем: следующий скан попробует снова.
+    return { at: 0 } as { at: number; avatar?: string; followers?: number };
   }
 }
 
@@ -54,6 +56,13 @@ async function withProfiles(voices: XVoice[]): Promise<XVoice[]> {
         out[i + k] = { ...v, avatar: p.avatar, followers: p.followers };
       }),
     );
+  }
+  // Кому не ответили с первого раза (лимит, таймаут) — ещё раз по одному.
+  for (let i = 0; i < out.length; i++) {
+    if (out[i].followers !== undefined) continue;
+    await new Promise((r) => setTimeout(r, 300));
+    const p = await profile(out[i].handle);
+    out[i] = { ...out[i], avatar: p.avatar, followers: p.followers };
   }
   // Крупные аккаунты — ближе к центру карты.
   return out.sort((a, b) => (b.followers ?? 0) - (a.followers ?? 0));
