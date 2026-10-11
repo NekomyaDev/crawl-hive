@@ -58,7 +58,7 @@ function parse(json: Record<string, unknown>): GrokResult {
   return { text, citations: [...citations] };
 }
 
-export async function grok(opts: { system: string; user: string; xSearch?: XSearchOptions; timeoutMs?: number }): Promise<GrokResult> {
+export async function grok(opts: { system: string; user: string; xSearch?: XSearchOptions; timeoutMs?: number; maxTurns?: number }): Promise<GrokResult> {
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) throw new Error("XAI_API_KEY is not set");
   takeBudget();
@@ -81,7 +81,7 @@ export async function grok(opts: { system: string; user: string; xSearch?: XSear
         { role: "system", content: opts.system },
         { role: "user", content: opts.user },
       ],
-      ...(tools ? { tools, max_turns: 3 } : {}),
+      ...(tools ? { tools, max_turns: opts.maxTurns ?? 3 } : {}),
     }),
     // x_search делает десятки обращений к X внутри одного запроса: 50–60 с — обычное время.
     signal: AbortSignal.timeout(opts.timeoutMs ?? 170_000),

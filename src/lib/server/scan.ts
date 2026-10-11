@@ -7,6 +7,7 @@ import { bestPairs, searchPairs, type PairInfo } from "./crawl/dexscreener";
 import { fetchChannel } from "./crawl/sources/telegram";
 import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
+import { traceBundles, type BundleReport } from "./scan-bundles";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
 
@@ -39,6 +40,7 @@ export interface ScanResult {
     socials: number;
   };
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
+  bundles?: BundleReport;
   clones: number;
   original?: boolean; // самый крупный из токенов с этим тикером
   telegram: { channel: string; url: string }[];
@@ -144,8 +146,12 @@ async function holdersOf(mint: string) {
     top10: amounts.slice(0, 10).reduce((s, x) => s + x, 0) / total * 100,
     mintAuthority: !!parsed?.mintAuthority,
     freezeAuthority: !!parsed?.freezeAuthority,
+    accounts: largest.value.map((a) => ({ account: a.address.toBase58(), pct: Number(a.amount) / total * 100 })),
   };
 }
+
+const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+  Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 
 export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<ScanResult> {
   const logs: ScanLog[] = [];
@@ -168,7 +174,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   const hit = (label: string, impact: number, note: string) => factors.push({ label, impact, note });
 
   // Краулеры работают параллельно, каждый пишет в лог по готовности.
-  log({ crawler: "swarm", text: `4 crawlers dispatched to ${address.slice(0, 4)}…${address.slice(-4)} on ${chain}` });
+  log({ crawler: "swarm", text: `${chain === "solana" ? 5 : 4} crawlers dispatched to ${address.slice(0, 4)}…${address.slice(-4)} on ${chain}` });
 
   const marketP = (async () => {
     const pair = (pre ?? (await bestPairs(chain, [address])).get(address)) as PairX | undefined;
@@ -201,6 +207,29 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
             return undefined;
           })
       : Promise.resolve(undefined);
+
+  // Связанные кошельки: кто профинансировал топ-держателей. Идёт после держателей, ему нужен их список.
+  const bundlesP: Promise<BundleReport | undefined> = holdersP.then((h) =>
+    h
+      ? withTimeout(traceBundles(rpcConnection(), h.accounts), 15_000)
+          .then((b) => {
+            const big = b.clusters[0];
+            log({
+              crawler: "crawler_bundles",
+              text: big
+                ? `${big.wallets} top wallets share one funder and hold ${pct(big.pct)}${b.clusters.length > 1 ? ` · ${b.clusters.length - 1} more linked group${b.clusters.length > 2 ? "s" : ""}` : ""}`
+                : `traced funding of ${b.checked} top wallets: no linked groups${b.fresh.wallets ? ` · ${b.fresh.wallets} fresh wallet${b.fresh.wallets > 1 ? "s" : ""} hold ${pct(b.fresh.pct)}` : ""}`,
+              tone: big && (big.pct >= 4 || big.wallets >= 3) ? "bad" : b.fresh.pct >= 15 || big ? "warn" : "ok",
+            });
+            return b;
+          })
+          .catch((e) => {
+            console.error("[scan] bundles:", (e as Error).message);
+            log({ crawler: "crawler_bundles", text: "could not trace wallet funding right now", tone: "warn" });
+            return undefined;
+          })
+      : undefined,
+  );
 
   const market = await marketP;
   const symbol = sym(market?.pair.baseToken.symbol);
@@ -255,7 +284,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
     return found;
   });
 
-  const [holders, cloneInfo, telegram] = await Promise.all([holdersP, clonesP, tgP]);
+  const [holders, cloneInfo, telegram, bundles] = await Promise.all([holdersP, clonesP, tgP, bundlesP]);
   const clones = cloneInfo.n;
 
   // ---------- оценка ----------
@@ -272,6 +301,11 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
   // Крупнейший держатель — обычно пул ликвидности, поэтому концентрацию считаем по следующим десяти.
   if (holders && holders.top2to11 > 50) hit("Concentrated", -20, `the next 10 wallets hold ${pct(holders.top2to11)}`);
   else if (holders && holders.top2to11 > 30) hit("Top-heavy", -10, `the next 10 wallets hold ${pct(holders.top2to11)}`);
+  const cluster = bundles?.clusters[0];
+  // Пять и больше топ-кошельков под одним хозяином — бандл, даже если доля пока небольшая.
+  if (cluster && (cluster.pct >= 10 || cluster.wallets >= 5)) hit("Bundled", -25, `${cluster.wallets} linked wallets hold ${pct(cluster.pct)}`);
+  else if (cluster && (cluster.pct >= 4 || cluster.wallets >= 3)) hit("Linked wallets", -10, `${cluster.wallets} top wallets share a funder (${pct(cluster.pct)})`);
+  if (bundles && bundles.fresh.pct >= 15) hit("Fresh wallets", -10, `${bundles.fresh.wallets} wallets under 3 days old hold ${pct(bundles.fresh.pct)}`);
   if (cloneInfo.biggerTwin) hit("Possible copy", -45, `a token worth ${usd(cloneInfo.biggerTwin)} already uses this ticker`);
   else if (clones > 2 && !cloneInfo.original) hit("Copycats", -10, `${clones} other tokens share the ticker`);
   const buys = p?.txns?.h1?.buys ?? 0;
@@ -318,6 +352,7 @@ export async function runScan(q: string, emit: (l: ScanLog) => void): Promise<Sc
         }
       : undefined,
     holders: holders && { top1: holders.top1, top10: holders.top10, mintAuthority: holders.mintAuthority, freezeAuthority: holders.freezeAuthority },
+    bundles,
     clones,
     original: !!cloneInfo.original,
     telegram,

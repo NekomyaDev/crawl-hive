@@ -30,20 +30,29 @@ In one line: *you bring the edge, your crawler does the watching, the scoreboard
 
 ## Try it in 10 seconds: Instant Crawl
 
-No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Four crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
+No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Five crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
 
 | Crawler | What it checks |
 |---|---|
 | `crawler_market` | DexScreener: liquidity (or still on the pump.fun curve), FDV, pair age, 1h volume, buys vs sells |
 | `crawler_holders` | Solana RPC: mint authority, freeze authority, top holder and how much the next 10 wallets hold |
 | `crawler_clones` | Other tokens with the same ticker, compared by FDV: is this the original or a copy? |
+| `crawler_bundles` | Who funded the top wallets: wallets that got their first SOL from one address, or whose first transaction was paid by the same signer, are grouped as one owner |
 | `crawler_telegram` | Mentions in tracked Telegram channels |
+| `crawler_x` | Grok reads X for the contract and `$TICKER` over the last two days: sentiment, a one-line summary, concrete warnings (rug, dev sold, bundled) and links to real posts. Arrives 30–60 s after the verdict, does not change the score |
 
 They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for pairs under 30 minutes) with a one-line reason, a shareable link (`/?scan=<address>`), and a **Watch 30 days** button that turns the one-off scan into a crawler watching that token for you.
 
 <p align="center">
   <img src="docs/images/instant-crawl.png" alt="Instant Crawl: live crawler log and verdict for a token" width="100%">
   <br><sub>Instant Crawl on dogwifhat: the original $WIF among 10 tokens with that ticker, mint renounced, no freeze, scored CLEAN.</sub>
+</p>
+
+**Bundle detection.** Pools and pump.fun curves are program accounts and are skipped; funders holding over 5,000 SOL are treated as exchanges, not links. Five or more linked top wallets (or 10%+ of supply) score as *Bundled*. Example: a 1-hour-old pump.fun token whose 12 top wallets were all created by one signer.
+
+<p align="center">
+  <img src="docs/images/instant-crawl-bundles.png" alt="Instant Crawl flags 12 linked wallets and shows the X buzz" width="100%">
+  <br><sub>12 top wallets share one funder → Bundled. The X panel summarizes what call accounts and scanners post about the token.</sub>
 </p>
 
 <p align="center">
@@ -118,7 +127,7 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 | Part | State |
 |---|---|
-| Instant Crawl: free token scan (market, mint, holders, copycats, Telegram) | ✅ **real data**, no wallet needed |
+| Instant Crawl: free token scan (market, mint, holders, bundles, copycats, Telegram, X) | ✅ **real data**, no wallet needed |
 | Spawn and renewal payments in SOL through Phantom, verified on-chain | ✅ **real**, mainnet; 30 days of crawling per payment |
 | Ready-made crawlers in the marketplace | ✅ **real**: a purchase is an on-chain spawn with tested settings |
 | Buyback treasury counter on the home page | ✅ **real**: sum of verified payments plus the live treasury balance |
@@ -254,6 +263,7 @@ SOLANA_RPC_URL=https://api.devnet.solana.com
 # SPAWN_PRICE_SOL=0.001,0.002,0.003,0.005      # optional per-tier prices (larva..queen)
 XAI_API_KEY=...                                # enables X crawlers and AI reading of Telegram/docs
 # XAI_DAILY_CALLS=300                          # Grok cost limit per day
+# SCAN_X_DAILY=80                              # X checks in free scans per day (also 4/hour per IP, cached 30 min)
 # DEMO_NETWORK=0                               # production: real crawlers only
 # CRAWLER_TERM_DAYS=30                         # days per spawn / renewal
 # TELEGRAM_BOT_TOKEN=...  PUBLIC_URL=https://crawlhive.xyz   # signal delivery
@@ -313,7 +323,7 @@ db/schema.sql                target Postgres schema
 - [x] Production mode: real crawlers only, own domain (crawlhive.xyz), terms & risks
 - [x] Instant Crawl: free token scan without a wallet
 - [x] Ready-made crawlers, buyback treasury counter
-- [ ] Instant Crawl: X mentions through Grok, holder clustering (wallets run by one person)
+- [x] Instant Crawl: X mentions through Grok, bundle detection (wallets run by one person)
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks

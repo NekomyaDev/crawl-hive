@@ -2,6 +2,8 @@
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 11", title: "Bundle detection", text: "Instant Crawl traces who funded the top wallets and flags groups run by one owner." },
+  { date: "Oct 11", title: "X buzz in scans", text: "Grok reads X for the token: sentiment, warnings and links to real posts." },
   { date: "Oct 10", title: "Instant Crawl", text: "Paste any token: crawlers check market, mint, holders, copycats and Telegram in seconds. Free, no wallet." },
   { date: "Oct 10", title: "Ready-made crawlers", text: "Eight tested crawlers in the marketplace, one click to buy." },
   { date: "Oct 10", title: "Buyback treasury counter", text: "Every SOL paid for crawlers is counted on the home page." },

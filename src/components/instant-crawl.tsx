@@ -45,9 +45,16 @@ interface Result {
     url?: string;
   };
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
+  bundles?: { checked: number; clusters: { wallets: number; pct: number; funder: string }[]; fresh: { wallets: number; pct: number } };
   clones: number;
   original?: boolean;
   telegram: { channel: string; url: string }[];
+}
+interface XBuzz {
+  sentiment: "bullish" | "mixed" | "bearish" | "quiet";
+  summary: string;
+  warnings: string[];
+  posts: { handle: string; text: string; url: string }[];
 }
 interface Recent {
   id: string;
@@ -80,6 +87,8 @@ export function InstantCrawl() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  // undefined — X ещё не спрашивали, "loading" — Grok ищет, null — пропущено.
+  const [x, setX] = useState<XBuzz | null | "loading" | undefined>(undefined);
   const es = useRef<EventSource | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const { data: recent, reload } = useApi<Recent[]>("/api/scan/recent", 8000);
@@ -92,31 +101,41 @@ export function InstantCrawl() {
       setQ(v);
       setLines([{ ts: Date.now(), crawler: "swarm", text: `crawl ${v.length > 20 ? short(v) : v}`, tone: "info" }]);
       setResult(null);
+      setX(undefined);
       setError(null);
       setRunning(true);
       const src = new EventSource(`/api/scan?q=${encodeURIComponent(v)}`);
       es.current = src;
+      let gotResult = false;
       const done = () => {
         src.close();
         setRunning(false);
+        setX((cur) => (cur === "loading" ? null : cur));
         reload();
       };
       src.onmessage = (m) => {
         const e = JSON.parse(m.data);
         if (e.type === "log") setLines((l) => [...l, e]);
         else if (e.type === "result") {
+          // Вердикт готов; поток остаётся открытым, пока догружается X.
+          gotResult = true;
           setResult(e.result);
+          setRunning(false);
+          if (e.result.chain === "solana") setX("loading");
           try {
             window.history.replaceState(null, "", `/?scan=${e.result.id}`);
           } catch {}
-          done();
-        } else if (e.type === "error") {
+          reload();
+        } else if (e.type === "x") setX(e.x);
+        else if (e.type === "done") done();
+        else if (e.type === "error") {
           setError(e.message);
           done();
         }
       };
       src.onerror = () => {
         if (src.readyState === EventSource.CLOSED) return;
+        if (gotResult) return done();
         setError((x) => x ?? "Connection lost, try again");
         done();
       };
@@ -136,6 +155,7 @@ export function InstantCrawl() {
   }, [lines]);
 
   const active = running || lines.length > 0;
+  const live = running || x === "loading";
 
   return (
     <section className="mb-6">
@@ -149,7 +169,7 @@ export function InstantCrawl() {
             Send the <span className="text-gradient">swarm</span> after any memecoin
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted lg:text-base">
-            Paste a contract address or a $ticker. Crawlers check the market, the mint, the top wallets, copycat tickers and Telegram, then return a verdict.
+            Paste a contract address or a $ticker. Crawlers check the market, the mint, who funded the top wallets, copycat tickers, Telegram and X, then return a verdict.
           </p>
           <form
             className="mt-5 flex max-w-3xl flex-col gap-2 sm:flex-row"
@@ -187,7 +207,7 @@ export function InstantCrawl() {
               <div className="overflow-hidden rounded-xl border border-line bg-[#05060a]">
                 <div className="flex items-center justify-between border-b border-line px-3 py-2 text-[11px]">
                   <span className="num text-lime">❯ tail -f crawler.log</span>
-                  {running ? (
+                  {live ? (
                     <span className="flex items-center gap-1 text-lime">
                       <span className="size-1.5 animate-pulse rounded-full bg-lime" /> live
                     </span>
@@ -204,11 +224,11 @@ export function InstantCrawl() {
                       <span className={cn("min-w-0", l.tone ? TONE[l.tone] : "text-fg")}>{l.text}</span>
                     </div>
                   ))}
-                  {running && <div className="animate-pulse text-muted">▍</div>}
+                  {live && <div className="animate-pulse text-muted">▍</div>}
                   {error && <div className="text-danger">✕ {error}</div>}
                 </div>
               </div>
-              {result ? <ResultCard r={result} /> : <ResultSkeleton running={running} />}
+              {result ? <ResultCard r={result} x={x} /> : <ResultSkeleton running={running} />}
             </div>
           )}
         </div>
@@ -242,7 +262,7 @@ function ResultSkeleton({ running }: { running: boolean }) {
   );
 }
 
-function ResultCard({ r }: { r: Result }) {
+function ResultCard({ r, x }: { r: Result; x: XBuzz | null | "loading" | undefined }) {
   const st = VERDICT_STYLE[r.verdict];
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -290,6 +310,7 @@ function ResultCard({ r }: { r: Result }) {
             <Flag ok={!r.holders.freezeAuthority} label={r.holders.freezeAuthority ? "freeze on" : "no freeze"} />
           </>
         )}
+        {r.bundles && <BundleFlag b={r.bundles} />}
         <Flag ok={r.clones <= 2 || !!r.original} label={r.original ? `original · ${r.clones} copycats` : r.clones ? `${r.clones} copycat tickers` : "unique ticker"} />
         {r.telegram.map((t) => (
           <a key={t.channel} href={t.url} target="_blank" rel="noreferrer" className="rounded-md border border-sky/40 px-1.5 py-0.5 text-sky hover:bg-sky/10">
@@ -297,6 +318,7 @@ function ResultCard({ r }: { r: Result }) {
           </a>
         ))}
       </div>
+      {x !== undefined && <XPanel x={x} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <WatchButton r={r} />
         <Button size="sm" variant="ghost" onClick={share}>
@@ -317,6 +339,62 @@ function ResultCard({ r }: { r: Result }) {
         </button>
       </div>
       <p className="text-[10px] text-muted">Automated checks, not financial advice. A high score is not a guarantee.</p>
+    </div>
+  );
+}
+
+function BundleFlag({ b }: { b: NonNullable<Result["bundles"]> }) {
+  const c = b.clusters[0];
+  if (c) return <Flag ok={c.pct < 4 && c.wallets < 3} label={`${c.wallets} linked wallets · ${c.pct.toFixed(1)}%`} />;
+  if (b.fresh.pct >= 15) return <Flag ok={false} label={`fresh wallets hold ${b.fresh.pct.toFixed(0)}%`} />;
+  return b.checked ? <Flag ok label="no linked wallets" /> : null;
+}
+
+const MOOD: Record<XBuzz["sentiment"], string> = { bullish: "text-lime", mixed: "text-honey", bearish: "text-danger", quiet: "text-muted" };
+function XPanel({ x }: { x: XBuzz | null | "loading" }) {
+  if (x === null) return null;
+  return (
+    <div className="rounded-lg border border-line bg-panel-2/60 p-3 text-xs">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="font-semibold">𝕏 buzz</span>
+        {x === "loading" ? (
+          <span className="flex items-center gap-1 text-muted">
+            <span className="size-1.5 animate-pulse rounded-full bg-sky" /> Grok is reading X…
+          </span>
+        ) : (
+          <span className={cn("font-semibold uppercase", MOOD[x.sentiment])}>{x.sentiment}</span>
+        )}
+      </div>
+      {x === "loading" ? (
+        <div className="space-y-1.5">
+          <div className="h-2.5 w-11/12 animate-pulse rounded bg-line" />
+          <div className="h-2.5 w-2/3 animate-pulse rounded bg-line" />
+        </div>
+      ) : (
+        <>
+          <p className="text-fg/90">{x.summary}</p>
+          {!!x.warnings.length && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {x.warnings.map((w) => (
+                <span key={w} className="rounded-md border border-danger/40 px-1.5 py-0.5 text-[11px] text-danger">
+                  ⚠ {w}
+                </span>
+              ))}
+            </div>
+          )}
+          {!!x.posts.length && (
+            <ul className="mt-2 space-y-1">
+              {x.posts.map((p) => (
+                <li key={p.url} className="truncate">
+                  <a href={p.url} target="_blank" rel="noreferrer" className="hover:underline">
+                    <span className="text-sky">@{p.handle}</span> <span className="text-muted">{p.text}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   );
 }
