@@ -7,13 +7,15 @@ import type { Signal } from "@/lib/types";
 import { BotOcto } from "@/components/bot-octo";
 
 // Исход сигнала: ждём проверки цены, попал, не попал, или оценить нельзя (нет токена).
+const signed = (n: number) => `${n > 0 ? "+" : ""}${n}%`;
+
 export function OutcomeBadge({ s }: { s: Signal }) {
   const o = s.outcome;
   if (!o) return null;
   const map = {
     pending: { t: "scoring…", c: "text-muted border-line" },
     // Попадание засчитывается по лучшему результату за окно: показываем пик, а не цену в конце.
-    hit: { t: `hit ${o.peakPct !== undefined ? `peak +${o.peakPct}%` : o.changePct !== undefined ? `+${o.changePct}%` : ""}`, c: "text-lime border-lime/40" },
+    hit: { t: `hit ${o.peakPct !== undefined ? `peak ${signed(o.peakPct)}` : o.changePct !== undefined ? signed(o.changePct) : ""}`, c: "text-lime border-lime/40" },
     miss: { t: `miss ${o.changePct !== undefined ? `${o.changePct}%` : ""}${o.peakPct !== undefined && o.peakPct > 0 ? ` · peak +${o.peakPct}%` : ""}`, c: "text-danger border-danger/40" },
     unscored: { t: "not scored", c: "text-muted border-line" },
   } as const;

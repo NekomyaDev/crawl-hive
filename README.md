@@ -215,6 +215,11 @@ Measured on production: about 0.5–0.7 s and $0.000017 per decision. On the 15 
   <br><sub>Design concept: a crawler running Jev gets pink leg tips and the spark on top; a Grok Bot with Jev gets a pink pearl face with the spark on its forehead.</sub>
 </p>
 
+<p align="center">
+  <img src="docs/images/crawler-jev-live.png" alt="Fresh Pair Hunter on production with a Jev rating on every signal" width="100%">
+  <br><sub><b>Live on production, Oct 12:</b> Fresh Pair Hunter (on-chain, Larva). Every new signal carries its Jev rating next to the crawler's confidence. Signal text is private to the owner, so the public page shows only the kind, the rating and the outcome. In its first hour Jev rated 29 real signals for $0.0008 in total, 440–570 ms each.</sub>
+</p>
+
 We tested the whole loop with the Grok API: with three fresh signals Grok called `whats_new`, scanned each token and reported which to look at and which to avoid ($0.006); on a quiet check it stopped after the first call ($0.0006).
 
 A routine to paste into Grok Bot:

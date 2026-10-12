@@ -325,7 +325,7 @@ function redact(sig: Signal, viewer?: string): Signal {
     live: true,
     redacted: true,
     jev: sig.jev,
-    outcome: sig.outcome ? { status: sig.outcome.status, changePct: sig.outcome.changePct } : undefined,
+    outcome: sig.outcome ? { status: sig.outcome.status, changePct: sig.outcome.changePct, peakPct: sig.outcome.peakPct } : undefined,
   };
 }
 
