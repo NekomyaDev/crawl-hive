@@ -11,6 +11,7 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Wallet: Phantom" src="https://img.shields.io/badge/wallet-Phantom-ab9ff2?style=flat-square">
   <img alt="Wallet: MetaMask / Rabby" src="https://img.shields.io/badge/wallet-MetaMask%20%7C%20Rabby-f6851b?style=flat-square">
+  <img alt="Grok Bots via MCP" src="https://img.shields.io/badge/Grok%20Bots-MCP-e8eaed?style=flat-square">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square">
 </p>
 
@@ -30,9 +31,16 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
+**Latest (Oct 12):**
+- 🐙 **Grok Bot on duty.** One switch under a crawler: the bot reads every new signal and answers LOOK, WATCH or AVOID. It sleeps while nothing happens, and a wake-up costs about $0.001.
+- 🔌 **Bring your own agent.** Grok Bot, Claude or Cursor can plug into your crawlers through our MCP server. Tested live with the Grok API.
+- 🛡 **Every signal is safety-checked.** Each token a crawler finds is scanned first, and rugs never reach you.
+- 📈 **Fair scoring.** The price is sampled every 5 minutes, and a hit counts the best moment in the window.
+- 💸 **Cheaper to run.** Free scans no longer touch Grok, and an X check went from about $0.40 to $0.05.
+
 ## Try it in 10 seconds: Instant Crawl
 
-No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Works for **Solana** and **Robinhood Chain** tokens: addresses pick their network by themselves, and a toggle under the box says where to look up a `$TICKER`. Five crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
+No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Works for **Solana** and **Robinhood Chain** tokens: addresses pick their network by themselves, and a toggle under the box says where to look up a `$TICKER`. The crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
 
 | Crawler | What it checks |
 |---|---|
@@ -84,7 +92,7 @@ They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for p
 
 <p align="center">
   <img src="docs/images/home-live.png" alt="crawlhive.xyz home page" width="100%">
-  <br><sub>crawlhive.xyz today: real crawlers only, so the swarm starts empty. Spawn the first one. (The octopus-spider crawls around the site; poke it.)</sub>
+  <br><sub>crawlhive.xyz: real crawlers only, no simulated network. (The octopus-spider crawls around the site; poke it.)</sub>
 </p>
 
 <p align="center">
@@ -92,21 +100,25 @@ They return a **0–100 score** (CLEAN / OK / RISKY / DANGER, or TOO EARLY for p
   <br><sub>The same map in demo mode (local runs): every dot is a crawler (colour = source, size = reputation), hexagons are the wallets that spawned them, dots flash when they fire a signal.</sub>
 </p>
 
+The map sits on a honeycomb grid that pans and zooms with it. While the swarm is small, every crawler is labelled with its name, source and tier, every wallet with how many crawlers it runs, and the view zooms in so nothing gets lost; dashed links with a running spark show which wallet spawned which crawler.
+
 ## How it works
 
 ```mermaid
 flowchart LR
-    A["👤 You<br/>sources + instructions"] -->|"pay in SOL<br/>via Phantom · 30 days"| B["🕷 Crawler"]
-    B -->|"crawls X · Telegram<br/>on-chain · docs"| C["⚡ Private signals"]
+    A["👤 You<br/>sources + instructions"] -->|"pay in SOL or ETH<br/>30 days"| B["🕷 Crawler"]
+    B -->|"crawls X · Telegram<br/>on-chain · docs"| S["🛡 Safety scan<br/>rugs blocked"]
+    S --> C["⚡ Private signals"]
     C --> T["📬 My Signals<br/>& Telegram"]
-    C -->|"price after your horizon"| E["⭐ Hit / miss<br/>Reputation"]
+    C -.->|"optional"| GB["🐙 Grok Bot<br/>look · watch · avoid"]
+    C -->|"best price in your window"| E["⭐ Hit / miss<br/>Reputation"]
     E --> G["🏆 Leaderboard"]
     B -->|"renew any time"| B
     B -.->|"after token launch"| H["🛒 Marketplace · 🗳 Governance"]
 ```
 
 1. **Spawn.** Choose a tier, a source, a chain (Solana, Robinhood Chain, Base, Ethereum), up to three narratives and your targets. Write your crawler's **specification**: plain-language instructions, keywords, filters, and what counts as a hit. Pay in SOL from Phantom, or in ETH on Robinhood Chain from MetaMask or Rabby. A payment buys **30 days** of crawling.
-2. **Crawl.** Your crawler sweeps its targets on a schedule: X through Grok search, public Telegram channels, DexScreener, or any web page. An AI reads what it finds through your instructions.
+2. **Crawl.** Your crawler sweeps its targets on a schedule: X through Grok search, public Telegram channels, DexScreener, or any web page. An AI reads what it finds through your instructions, and every token it picks out is safety-scanned before it becomes a signal.
 3. **Get your signals.** Signals land in your private *My Signals* inbox and, if you connect the bot, in your **Telegram DMs**, with links to the source. Nobody else sees their content.
 4. **See who was right.** Every signal with a token is tracked against the real price through your horizon: a hit if it reached your target, a miss if it did not. Precision, uptime, data volume and stake make up the crawler's reputation.
 5. **Renew.** Three days before the term ends the bot reminds you. One click on the crawler page adds another 30 days; an expired crawler simply pauses until you renew.
@@ -130,7 +142,7 @@ Every crawler you spawn gets a **specification**: what it should look for, writt
   <br><sub>Writing the specification while spawning: instructions, keywords, signal types, minimum confidence, on-chain filters and what counts as a hit.</sub>
 </p>
 
-Signals are **yours alone**. They land in *My Signals* with links to the source, and each one that points at a token is checked against the real price after your horizon: a **hit** or a **miss**. Other users only see that your crawler fired.
+Signals are **yours alone**. They land in *My Signals* with links to the source and the safety verdict, and each one that points at a token is tracked against the real price through your horizon: a **hit** if it reached your target, a **miss** if it did not. Other users only see that your crawler fired.
 
 <p align="center">
   <img src="docs/images/my-signals.png" alt="My Signals: private inbox with hit/miss scoring" width="100%">
@@ -174,6 +186,20 @@ The point is cost. An agent that wakes up every few minutes to look at a feed bu
 
 Server: `https://crawlhive.xyz/mcp` (Streamable HTTP, JSON responses), header `Authorization: Bearer chb_…`; clients that take only a URL can pass `?key=`. A bot sees only the crawlers you picked, cannot change them and cannot move funds. Keys are stored as hashes and shown once; disconnecting a bot revokes its key at once. MCP calls never trigger a Grok search on our side, and `scan_token` is limited to 20 per hour per bot. Bots are an add-on: crawlers, signals and Telegram delivery work the same without one.
 
+<p align="center">
+  <img src="docs/images/grok-bot-octo.png" alt="A CrawlHive crawler with a Grok Bot on duty turns into our octopus with the bot's face" width="100%">
+  <br><sub>A crawler with a Grok Bot on duty turns into our octopus with a Grok Bot face. Legs take the colour of its source (X, Telegram, on-chain, docs); it glows and blinks while the bot is connected; a badge counts several bots.</sub>
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/grok-duty-switch.png" alt="Grok Bot on duty switch under every crawler"><br><sub><b>One switch per crawler</b> in <i>My Crawlers</i> (test data).</sub></td>
+    <td width="50%"><img src="docs/images/grok-duty-signals.png" alt="Signals with the Grok Bot's LOOK verdict"><br><sub><b>The bot's line under each signal:</b> take, scan verdict, reason, link to the scan (test data).</sub></td>
+  </tr>
+</table>
+
+We tested the whole loop with the Grok API: with three fresh signals Grok called `whats_new`, scanned each token and reported which to look at and which to avoid ($0.006); on a quiet check it stopped after the first call ($0.0006).
+
 A routine to paste into Grok Bot:
 
 ```
@@ -196,7 +222,9 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 | Ready-made crawlers in the marketplace | ✅ **real**: a purchase is an on-chain spawn with tested settings |
 | Buyback fund counter on the home page | ✅ **real**: live treasury balances in SOL and ETH (Robinhood Chain), total in USD, plus what came from verified crawler payments |
 | Crawlers you spawn: X (via Grok), Telegram channels, on-chain (DexScreener), page changes | ✅ **real data**, read through your own specification |
-| Private signals in *My Signals*, scored against the real price after your horizon | ✅ **real** |
+| Private signals in *My Signals*, tracked against the real price through your horizon (sampled every 5 minutes) | ✅ **real** |
+| Safety scan of every token a crawler finds, rugs blocked before they reach you | ✅ **real** |
+| Grok Bot on duty (switch under a crawler) and the MCP server for your own agent | ✅ **real**; MCP tested with the Grok API, the Grok Bot app itself not yet (it needs xAI's top plan) |
 | Signal delivery to Telegram, renewal reminders | ✅ **built**; the bot goes live on crawlhive.xyz as soon as its token is configured |
 | Sign-in with your wallet (signed message, no transaction): Phantom, or any EVM wallet via `personal_sign` | ✅ **real** |
 | Swarm map and leaderboard on crawlhive.xyz | ✅ **real crawlers only**. A simulated demo network exists for local runs (`DEMO_NETWORK`), never on the live site |
@@ -251,7 +279,7 @@ ETH paid on Robinhood Chain goes to the project's EVM treasury:
 
 > **[`0x2FAea62a86Ef02A9B7e61c644FDD8E5358FD0c42`](https://robin.etherscan.io/address/0x2FAea62a86Ef02A9B7e61c644FDD8E5358FD0c42)**
 
-Anyone can audit both balances and their history on Solscan and the Robinhood Chain explorer. The home page shows them live as one **buyback fund** (SOL + ETH, total in USD) (in SOL and USD, with the part that came from crawler payments), and a badge in the hero links to it. The fund will be spent on buying back the project token once it launches.
+Anyone can audit both balances and their history on Solscan and the Robinhood Chain explorer. The home page shows them live as one **buyback fund** (SOL + ETH, total in USD, with the part that came from crawler payments), and a badge in the hero links to it. The fund will be spent on buying back the project token once it launches.
 
 **How a payment is verified** (`src/lib/server/solana.ts`):
 
@@ -298,7 +326,9 @@ X crawls go through paid Grok search, so they have their own, slower floor per t
 
 **Paid term.** Every spawn or renewal buys 30 days (`CRAWLER_TERM_DAYS`). The crawler page shows the end date and a *Renew* button; renewing early adds to the remaining time.
 
-**Telegram bot.** Long-polling bot (no webhook or open port): wallet linking by one-time code, signal DMs, renewal reminders 3 days ahead.
+**Telegram bot.** Long-polling bot (no webhook or open port): wallet linking by one-time code, signal DMs, the Grok Bot's take right after each signal, renewal reminders 3 days ahead.
+
+**Running costs, by design.** Grok is the only paid dependency, so it is called only when it adds something: free scans never touch it, the X check runs on a button press with one search on a non-reasoning model and is cached for 6 hours, X crawlers have slow per-tier floors, the Grok Bot wakes only on new signals, and MCP calls never trigger a search. A daily call cap (`XAI_DAILY_CALLS`) backs all of it, and every call logs its token count and price.
 
 **Reputation.** 0–1000 with grades S/A/B/C/D, recalculated continuously (`src/lib/reputation.ts`):
 
@@ -313,7 +343,7 @@ X crawls go through paid Grok search, so they have their own, slower floor per t
 
 **Marketplace and governance** (demo mode now, live after the token launch). Sell or rent a crawler for 1–30 days, with rewards going to the renter during the lease; credit-weighted proposals on crawl priorities, reward split and network parameters.
 
-**Mascot.** The logo's octopus-spider crawls over the site with inverse-kinematics legs, runs from the cursor and hides with one click (off automatically for reduced-motion users).
+**Mascot.** The logo's octopus-spider crawls over the site with inverse-kinematics legs, runs from the cursor and hides with one click (off automatically for reduced-motion users). Crawlers with a Grok Bot on duty wear its pearl head with the bot's face.
 
 ## Run it locally
 
@@ -341,12 +371,14 @@ Copy `.env.example` to `.env.local`:
 PAYMENT_TOKEN=sol                              # sol now; "token" after the project token launches
 SOLANA_CLUSTER=devnet                          # or mainnet-beta
 SOLANA_RPC_URL=https://api.devnet.solana.com
+# SOLANA_RPC_RPS=12                            # requests per second to your RPC (shared limiter, retries on 429)
 # SPAWN_SOL_RECIPIENT=...                      # defaults to the project treasury
 # SPAWN_PRICE_SOL=0.001,0.002,0.003,0.005      # optional per-tier prices (larva..queen)
 # SPAWN_ETH_RECIPIENT=0x...                    # turns on ETH payments on Robinhood Chain for EVM wallets
 # SPAWN_PRICE_ETH=0.002,0.008,0.03,0.1         # optional per-tier ETH prices
 # ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com
 XAI_API_KEY=...                                # enables X crawlers and AI reading of Telegram/docs
+# XAI_MODEL=grok-4.20-0309-non-reasoning      # model for X search, signal reading and the Grok Bot
 # XAI_DAILY_CALLS=60                           # Grok cost limit per day
 # SCAN_X_DAILY=20                              # X checks in free scans per day (also 2/hour per IP, cached 6 h)
 # DEMO_NETWORK=0                               # production: real crawlers only
@@ -375,6 +407,9 @@ src/
       signals/               private inbox
       telegram/              link / status / unlink
       scan/ scan/recent/     Instant Crawl (SSE log + verdict), recently scanned
+      scan/x/                Check X on demand (Grok), cached 6 h
+      bots/ bots/[id]/       your MCP bot keys: create, scope to crawlers, revoke
+      bots/duty/             Grok Bot on duty switch per crawler
       treasury/              collected SOL and treasury balance
       auth/                  nonce + signed-message sign-in
       spawn/intent/          build the unsigned payment tx
@@ -382,6 +417,7 @@ src/
       market/ [id]/          list, buy / rent, delist
       leaderboard/ governance/ wallet/ config/ faucet/
       stream/                Server-Sent Events: signals, spawns, trades
+    mcp/                     MCP server for Grok Bot, Claude, Cursor (whats_new, scan_token, …)
   components/                swarm map (react-force-graph-2d), UI kit, wallet provider
   lib/
     economy.ts reputation.ts types.ts
@@ -391,8 +427,13 @@ src/
     server/scan-evm.ts       Instant Crawl on Robinhood Chain: contract owner, holders, honeypot
     server/telegram.ts       bot: wallet linking, signal DMs, renewal reminders
     server/scan.ts           Instant Crawl: parallel checks and the 0–100 score
+    server/scan-x.ts         Check X: Grok search, who's talking map, cost limits
+    server/bots.ts           MCP bot keys (hashed), scopes, whats_new cursor
+    server/grok-duty.ts      Grok Bot on duty: wakes on new signals, LOOK / WATCH / AVOID
+    server/rpc-limit.ts      shared Solana RPC rate limiter
     templates.ts             ready-made crawlers
-    server/crawl/            scheduler and sources: X (Grok), Telegram, on-chain, docs
+    server/crawl/            scheduler and sources: X (Grok), Telegram, on-chain, docs;
+                             analyze.ts runs the safety scan, dedupe and price snapshot for every signal
 db/schema.sql                target Postgres schema
 ```
 
@@ -421,6 +462,9 @@ db/schema.sql                target Postgres schema
 - [x] Robinhood Chain: token scans, crawlers on the chain, ETH payments from MetaMask / Rabby into the same buyback fund
 - [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
 - [x] Grok Bots: MCP server for Grok Bot, Claude, Cursor; a bot can watch one, several or all of your crawlers
+- [x] Grok Bot on duty: one switch under a crawler, wakes only on new signals
+- [x] Safety scan of every crawler signal, peak-based hit scoring, backoff for failing sources
+- [x] Running costs cut: X check on demand, non-reasoning model, shared caches
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks
