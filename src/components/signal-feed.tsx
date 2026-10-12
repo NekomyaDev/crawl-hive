@@ -66,6 +66,11 @@ function BotTakeLine({ s }: { s: Signal }) {
           </span>
         )}
         <span className="ml-1.5 text-fg/90">{b.note}</span>
+        {b.by === "jev" && b.conf != null && (
+          <span className="num ml-1.5 text-muted" title="Decided by Jev, a fast decision model; Grok is only asked when Jev is unsure">
+            · Jev {Math.round(b.conf * 100)}%
+          </span>
+        )}
         {s.token?.address && (
           <a href={`/scan/${s.token.address}`} className="ml-1.5 text-sky hover:underline">
             scan →
@@ -131,7 +136,17 @@ export function SignalFeed({ signals, max = 30, showCrawler = true }: { signals:
             ) : (
               <span />
             )}
-            <span className="num">conf {(s.confidence * 100).toFixed(0)}%</span>
+            <span className="num flex items-center gap-2">
+              {s.jev && (
+                <span
+                  className={cn(s.jev.p >= 0.7 ? "text-lime" : s.jev.p >= 0.4 ? "text-honey" : "text-muted")}
+                  title={`Jev rated this signal ${Math.round(s.jev.p * 100)}% worth attention in ${s.jev.ms} ms`}
+                >
+                  ⚡ Jev {Math.round(s.jev.p * 100)}%
+                </span>
+              )}
+              conf {(s.confidence * 100).toFixed(0)}%
+            </span>
           </div>
         </li>
       ))}

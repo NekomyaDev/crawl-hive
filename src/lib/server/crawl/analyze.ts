@@ -8,6 +8,7 @@ import { SIGNAL_KIND_LABEL } from "../../spec";
 import { extractJson, grok, grokEnabled } from "./grok";
 import { bestPairs, priceOf, searchPairs, type PairInfo } from "./dexscreener";
 import { runScan } from "../scan";
+import { jev, jevEnabled, jevMany, noulOf } from "./jev";
 
 export interface RawItem {
   id: string;
@@ -191,8 +192,9 @@ async function safetyCheck(
   let filtered = 0;
   let scans = 0;
   const deadline = Date.now() + SAFETY_BUDGET_MS;
-  // Первыми проверяем самые уверенные сигналы.
-  for (const sig of [...signals].sort((a, b) => b.confidence - a.confidence)) {
+  // Первыми проверяем самые многообещающие сигналы: по решению Jev, а без него — по уверенности краулера.
+  const rank = (x: LiveSignalInput) => x.jev?.p ?? x.confidence;
+  for (const sig of [...signals].sort((a, b) => rank(b) - rank(a))) {
     const t = sig.token;
     if (!t || !SAFETY_CHAINS.has(t.chain)) {
       kept.push(sig);
@@ -227,6 +229,60 @@ async function safetyCheck(
   return { kept, filtered, deferred, failed };
 }
 
+// Сортировка находок Jev: одно решение «стоит ли это внимания трейдера» на сигнал, за доли секунды и цента.
+// Почти наверняка пустое отбрасываем до скана безопасности, остальное проверяем в порядке вероятности.
+// Порог низкий нарочно: Jev отсекает только явный шум, а сомнительное решает скан и владелец.
+const JEV_DROP = Number(process.env.JEV_DROP ?? 0.15);
+
+async function jevTriage(job: LiveJob, signals: LiveSignalInput[], pairOf: Map<LiveSignalInput, PairInfo | undefined>) {
+  if (!jevEnabled() || !signals.length) return { kept: signals, dropped: [] as LiveSignalInput[] };
+  const focus = [job.narratives.join(", "), job.spec.keywords.join(", ")].filter(Boolean).join(" · ");
+  const res = await jevMany(signals, (sig) => {
+    const p = pairOf.get(sig);
+    return jev(
+      {
+        crawler_focus: focus || "memecoins",
+        chain: job.chain,
+        signal_kind: sig.kind,
+        ticker: sig.ticker || "unknown",
+        signal: sig.text,
+        crawler_confidence: sig.confidence,
+        market: p
+          ? {
+              liquidity_usd: Math.round(p.liquidity?.usd ?? 0),
+              fdv_usd: Math.round(p.fdv ?? 0),
+              volume_1h_usd: Math.round(p.volume?.h1 ?? 0),
+              price_change_1h_pct: p.priceChange?.h1 ?? 0,
+              age_hours: p.pairCreatedAt ? Math.round((Date.now() - p.pairCreatedAt) / 360_000) / 10 : null,
+            }
+          : "no tradable pair found",
+      },
+      {
+        worth: {
+          type: "noul",
+          instructions: "Is this a concrete memecoin signal worth a trader's attention right now?",
+          criteria: {
+            true: "A specific token with real activity: a call, buy, listing, spike or update that fits the crawler focus.",
+            false: "Noise, spam, a giveaway, an unrelated topic, or nothing a trader could act on.",
+          },
+        },
+      },
+    );
+  });
+  const kept: LiveSignalInput[] = [];
+  const dropped: LiveSignalInput[] = [];
+  signals.forEach((sig, i) => {
+    const r = res[i];
+    const p = noulOf(r?.answers.worth);
+    if (r && p != null) sig.jev = { p: Math.round(p * 100) / 100, ms: r.ms };
+    // Jev не ответил — сигнал идёт дальше как раньше.
+    if (p != null && p < JEV_DROP) dropped.push(sig);
+    else kept.push(sig);
+  });
+  if (dropped.length) console.log(`[jev] ${job.id}: skipped ${dropped.length}/${signals.length} as noise`);
+  return { kept, dropped };
+}
+
 // Кандидаты → финальные сигналы: фильтр по типам и уверенности, цена на момент сигнала, без повторов за 12 ч,
 // проверка безопасности токена.
 export async function finalize(
@@ -239,6 +295,7 @@ export async function finalize(
   for (const [k, t] of Object.entries(seen)) if (now - t > DEDUP_MS) delete seen[k];
   const out: LiveSignalInput[] = [];
   const keyOf = new Map<LiveSignalInput, string>();
+  const pairOf = new Map<LiveSignalInput, PairInfo | undefined>();
 
   for (const c of candidates) {
     if (!job.spec.signalKinds.includes(c.kind)) continue;
@@ -267,9 +324,15 @@ export async function finalize(
       priceAtSignal: priceOf(pair),
     };
     keyOf.set(sig, key);
+    pairOf.set(sig, pair);
     out.push(sig);
   }
-  const { kept, filtered, deferred, failed } = await safetyCheck(out);
+  // Отброшенное Jev остаётся в seen: тот же шум не будем разбирать снова 12 часов.
+  const triaged = await jevTriage(job, out, pairOf).catch((e) => {
+    console.warn("[jev] triage skipped:", (e as Error).message);
+    return { kept: out, dropped: [] };
+  });
+  const { kept, filtered, deferred, failed } = await safetyCheck(triaged.kept);
   for (const d of deferred) delete seen[keyOf.get(d)!];
   // Скан упал: первый раз откладываем сигнал до следующего обхода (медленный RPC не должен пропускать руги),
   // второй раз подряд — отправляем без вердикта, чтобы сломанный RPC не заглушил краулер насовсем.

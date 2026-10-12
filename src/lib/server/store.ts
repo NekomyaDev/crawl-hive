@@ -324,6 +324,7 @@ function redact(sig: Signal, viewer?: string): Signal {
     confidence: sig.confidence,
     live: true,
     redacted: true,
+    jev: sig.jev,
     outcome: sig.outcome ? { status: sig.outcome.status, changePct: sig.outcome.changePct } : undefined,
   };
 }
@@ -917,7 +918,7 @@ export function claimRun(id: string, minIntervalMin: number) {
 }
 
 export type LiveSignalInput = Pick<Signal, "kind" | "ticker" | "text" | "confidence"> &
-  Partial<Pick<Signal, "urls" | "token" | "safety">> & { priceAtSignal?: number };
+  Partial<Pick<Signal, "urls" | "token" | "safety" | "jev">> & { priceAtSignal?: number };
 
 export interface RunResult {
   ok: boolean;
@@ -974,6 +975,7 @@ export function recordRun(id: string, r: RunResult) {
       urls: x.urls,
       token: x.token,
       safety: x.safety,
+      jev: x.jev,
       outcome,
     };
     c.stats.signals++;

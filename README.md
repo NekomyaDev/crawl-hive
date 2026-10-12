@@ -32,6 +32,7 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 **Latest (Oct 12):**
+- ⚡ **Jev decides, Grok researches.** Jev, a decision model, rates every crawler find in about half a second, for about $0.00002 per decision. Pure noise and scams are skipped before the safety scan, and the rest are checked most-promising first. The Grok Bot's LOOK / WATCH / AVOID comes from Jev when it is at least 70% sure, and Grok is asked only about the doubtful ones. Each signal shows its Jev rating.
 - 🐙 **Grok Bot on duty.** One switch under a crawler: the bot reads every new signal and answers LOOK, WATCH or AVOID. It sleeps while nothing happens, and a wake-up costs about $0.001.
 - 🔌 **Bring your own agent.** Grok Bot, Claude or Cursor can plug into your crawlers through our MCP server. Tested live with the Grok API.
 - 🛡 **Every signal is safety-checked.** Each token a crawler finds is scanned first, and rugs never reach you.
@@ -381,6 +382,8 @@ XAI_API_KEY=...                                # enables X crawlers and AI readi
 # XAI_MODEL=grok-4.20-0309-non-reasoning      # model for X search, signal reading and the Grok Bot
 # XAI_DAILY_CALLS=60                           # Grok cost limit per day
 # SCAN_X_DAILY=20                              # X checks in free scans per day (also 2/hour per IP, cached 6 h)
+# OPENROUTER_API_KEY=sk-or-...                 # optional: Jev triage of finds and Grok Bot takes (typesafe/jev-1.13)
+# JEV_DROP=0.15  JEV_SURE=0.7  JEV_DAILY_CALLS=3000   # skip-as-noise threshold, sure-enough-to-skip-Grok, daily cap
 # DEMO_NETWORK=0                               # production: real crawlers only
 # CRAWLER_TERM_DAYS=30                         # days per spawn / renewal
 # TELEGRAM_BOT_TOKEN=...  PUBLIC_URL=https://crawlhive.xyz   # signal delivery

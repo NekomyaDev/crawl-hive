@@ -188,7 +188,7 @@ export function deliverBotTake(sig: Signal) {
   const b = sig.bot;
   const score = b.verdict ? ` · ${esc(b.verdict)}${b.score != null ? ` ${b.score}` : ""}` : "";
   const scan = sig.token?.address ? `\n<a href="${siteUrl()}/scan/${sig.token.address}">Full scan</a>` : "";
-  send(chat, `🐙 <b>Grok Bot</b> on ${esc(sig.crawlerName)}${sig.ticker ? ` · <b>$${esc(sig.ticker)}</b>` : ""}\n${TAKE_ICON[b.take]} <b>${b.take.toUpperCase()}</b>${score}\n${esc(b.note)}${scan}`);
+  send(chat, `🐙 <b>Grok Bot</b> on ${esc(sig.crawlerName)}${sig.ticker ? ` · <b>$${esc(sig.ticker)}</b>` : ""}\n${TAKE_ICON[b.take]} <b>${b.take.toUpperCase()}</b>${score}\n${esc(b.note)}${b.by === "jev" && b.conf != null ? `\n<i>decided by Jev · ${Math.round(b.conf * 100)}% sure</i>` : ""}${scan}`);
 }
 
 export function startTelegram() {

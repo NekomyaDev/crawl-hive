@@ -118,6 +118,12 @@ export interface Signal {
   outcome?: SignalOutcome;
   safety?: SignalSafety; // проверка токена сканером Instant Crawl до отправки сигнала
   bot?: BotTake; // разбор встроенного Grok Bot: смотреть, следить или обходить стороной
+  jev?: SignalJev; // решение Jev: насколько находка стоит внимания
+}
+
+export interface SignalJev {
+  p: number; // вероятность, что сигнал стоит внимания, 0..1
+  ms: number; // сколько Jev думал
 }
 
 export interface SignalSafety {
@@ -132,7 +138,8 @@ export interface BotTake {
   note: string;
   verdict?: string; // вердикт Instant Crawl по токену сигнала
   score?: number | null;
-  by: "grok" | "scan"; // grok — разобрал Grok; scan — бюджет Grok кончился, вывод прямо из скана
+  by: "grok" | "jev" | "scan"; // grok — разобрал Grok; jev — уверенно решил Jev; scan — вывод прямо из скана
+  conf?: number; // уверенность Jev в выводе, 0..1
   at: number;
 }
 
