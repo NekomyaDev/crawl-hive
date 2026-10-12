@@ -74,5 +74,5 @@ export async function crawlDocs(job: LiveJob): Promise<SourceResult> {
   }
   if (errors.length === job.targets.length) throw new Error(errors.join("; "));
   const fin = await finalize(job, candidates);
-  return { items: job.targets.length - errors.length, signals: fin.signals, cursor: { ...cursor, ...fin.cursor } };
+  return { items: job.targets.length - errors.length, signals: fin.signals, cursor: { ...cursor, ...fin.cursor }, filtered: fin.filtered };
 }

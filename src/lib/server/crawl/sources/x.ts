@@ -32,6 +32,6 @@ export async function crawlX(job: LiveJob): Promise<SourceResult> {
     },
   });
   const candidates = parseCandidates(text, citations);
-  const { signals, cursor } = await finalize(job, candidates);
-  return { items: citations.length, signals, cursor: { ...cursor, lastSeenAt: String(Date.now()) } };
+  const { signals, cursor, filtered } = await finalize(job, candidates);
+  return { items: citations.length, signals, cursor: { ...cursor, lastSeenAt: String(Date.now()) }, filtered };
 }

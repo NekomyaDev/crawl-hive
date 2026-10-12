@@ -7,6 +7,7 @@ import type { LiveJob, LiveSignalInput } from "../store";
 import { SIGNAL_KIND_LABEL } from "../../spec";
 import { extractJson, grok, grokEnabled } from "./grok";
 import { bestPairs, priceOf, searchPairs, type PairInfo } from "./dexscreener";
+import { runScan } from "../scan";
 
 export interface RawItem {
   id: string;
@@ -143,6 +144,14 @@ function seenMap(cursor: Record<string, string>): Record<string, number> {
   }
 }
 
+function retryMap(cursor: Record<string, string>): Record<string, number> {
+  try {
+    return JSON.parse(cursor.retry ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
 async function resolvePair(chain: string, c: Candidate, cache: Map<string, PairInfo | undefined>): Promise<PairInfo | undefined> {
   if (c.contract) {
     if (!cache.has(c.contract)) cache.set(c.contract, (await bestPairs(chain, [c.contract])).get(c.contract));
@@ -163,16 +172,73 @@ async function resolvePair(chain: string, c: Candidate, cache: Map<string, PairI
   return undefined;
 }
 
-// Кандидаты → финальные сигналы: фильтр по типам и уверенности, цена на момент сигнала, без повторов за 12 ч.
+// Проверка безопасности: каждый найденный токен проходит скан Instant Crawl (без X, Grok не вызывается).
+// DANGER (бандл, honeypot, руг) до владельца не доходит, остальным сигналам прикладывается вердикт.
+// Сканов за обход не больше SAFETY_MAX и не дольше бюджета: сигналы сверх лимита откладываются до следующего обхода.
+const SAFETY_MAX = 6;
+const SAFETY_BUDGET_MS = 110_000; // на всю проверку за обход: обход целиком ограничен 4 минутами
+const SAFETY_SCAN_MS = 35_000;
+const SAFETY_CHAINS = new Set(["solana", "robinhood"]);
+
+// Возвращает пропущенные сигналы, отсеянные (DANGER) и отложенные: на них не хватило лимита сканов или времени.
+// Отложенные не уходят непроверенными — краулер увидит их снова на следующем обходе и проверит тогда.
+async function safetyCheck(
+  signals: LiveSignalInput[],
+): Promise<{ kept: LiveSignalInput[]; filtered: number; deferred: LiveSignalInput[]; failed: LiveSignalInput[] }> {
+  const kept: LiveSignalInput[] = [];
+  const deferred: LiveSignalInput[] = [];
+  const failed: LiveSignalInput[] = [];
+  let filtered = 0;
+  let scans = 0;
+  const deadline = Date.now() + SAFETY_BUDGET_MS;
+  // Первыми проверяем самые уверенные сигналы.
+  for (const sig of [...signals].sort((a, b) => b.confidence - a.confidence)) {
+    const t = sig.token;
+    if (!t || !SAFETY_CHAINS.has(t.chain)) {
+      kept.push(sig);
+      continue;
+    }
+    if (scans >= SAFETY_MAX || Date.now() > deadline) {
+      deferred.push(sig);
+      continue;
+    }
+    scans++;
+    try {
+      const r = await Promise.race([
+        runScan(t.address, () => {}, t.chain, { record: false }),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("safety scan timed out")), SAFETY_SCAN_MS)),
+      ]);
+      if (r.verdict === "DANGER") {
+        filtered++;
+        continue;
+      }
+      sig.safety = {
+        verdict: r.verdict,
+        score: r.score,
+        reason: r.reason.slice(0, 160),
+        flags: r.factors.filter((f) => f.impact < 0).map((f) => f.label).slice(0, 5),
+      };
+      kept.push(sig);
+    } catch {
+      // Скан не удался (RPC, таймаут): что делать с сигналом, решает finalize по числу попыток.
+      failed.push(sig);
+    }
+  }
+  return { kept, filtered, deferred, failed };
+}
+
+// Кандидаты → финальные сигналы: фильтр по типам и уверенности, цена на момент сигнала, без повторов за 12 ч,
+// проверка безопасности токена.
 export async function finalize(
   job: LiveJob,
   candidates: Candidate[],
   pairsKnown = new Map<string, PairInfo | undefined>(),
-): Promise<{ signals: LiveSignalInput[]; cursor: Record<string, string> }> {
+): Promise<{ signals: LiveSignalInput[]; cursor: Record<string, string>; filtered: number }> {
   const now = Date.now();
   const seen = seenMap(job.cursor);
   for (const [k, t] of Object.entries(seen)) if (now - t > DEDUP_MS) delete seen[k];
   const out: LiveSignalInput[] = [];
+  const keyOf = new Map<LiveSignalInput, string>();
 
   for (const c of candidates) {
     if (!job.spec.signalKinds.includes(c.kind)) continue;
@@ -185,10 +251,13 @@ export async function finalize(
       pair = undefined; // DexScreener недоступен — сигнал уйдёт без оценки
     }
     const ticker = (pair?.baseToken.symbol ?? c.ticker ?? "").toUpperCase();
-    const key = pair?.baseToken.address ?? c.contract ?? (ticker ? `$${ticker}` : c.summary.slice(0, 60));
-    if (seen[key]) continue;
+    const token = pair?.baseToken.address ?? c.contract ?? (ticker ? `$${ticker}` : c.summary.slice(0, 60));
+    // Повтор глушим по токену и типу сигнала: крупная покупка после «новой пары» — это новость, а не дубль.
+    // Ключ без типа — старый формат курсора, учитываем его, пока не истечёт.
+    const key = `${token}|${c.kind}`;
+    if (seen[key] || seen[token]) continue;
     seen[key] = now;
-    out.push({
+    const sig: LiveSignalInput = {
       kind: c.kind,
       ticker,
       text: c.summary,
@@ -196,7 +265,25 @@ export async function finalize(
       urls: [...new Set([...c.urls, ...(pair?.url ? [pair.url] : [])])],
       token: pair ? { chain: job.chain, address: pair.baseToken.address, symbol: pair.baseToken.symbol } : undefined,
       priceAtSignal: priceOf(pair),
-    });
+    };
+    keyOf.set(sig, key);
+    out.push(sig);
   }
-  return { signals: out, cursor: { seen: JSON.stringify(seen) } };
+  const { kept, filtered, deferred, failed } = await safetyCheck(out);
+  for (const d of deferred) delete seen[keyOf.get(d)!];
+  // Скан упал: первый раз откладываем сигнал до следующего обхода (медленный RPC не должен пропускать руги),
+  // второй раз подряд — отправляем без вердикта, чтобы сломанный RPC не заглушил краулер насовсем.
+  const retry = retryMap(job.cursor);
+  for (const f of failed) {
+    const key = keyOf.get(f)!;
+    if ((retry[key] ?? 0) >= 1) {
+      delete retry[key];
+      kept.push(f);
+    } else {
+      retry[key] = 1;
+      delete seen[key];
+    }
+  }
+  for (const k of Object.keys(retry)) if (seen[k]) delete retry[k];
+  return { signals: kept, cursor: { seen: JSON.stringify(seen), retry: JSON.stringify(retry) }, filtered };
 }

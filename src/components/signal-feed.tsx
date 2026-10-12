@@ -12,12 +12,37 @@ export function OutcomeBadge({ s }: { s: Signal }) {
   if (!o) return null;
   const map = {
     pending: { t: "scoring…", c: "text-muted border-line" },
-    hit: { t: `hit ${o.changePct !== undefined ? `+${o.changePct}%` : ""}`, c: "text-lime border-lime/40" },
-    miss: { t: `miss ${o.changePct !== undefined ? `${o.changePct}%` : ""}`, c: "text-danger border-danger/40" },
+    // Попадание засчитывается по лучшему результату за окно: показываем пик, а не цену в конце.
+    hit: { t: `hit ${o.peakPct !== undefined ? `peak +${o.peakPct}%` : o.changePct !== undefined ? `+${o.changePct}%` : ""}`, c: "text-lime border-lime/40" },
+    miss: { t: `miss ${o.changePct !== undefined ? `${o.changePct}%` : ""}${o.peakPct !== undefined && o.peakPct > 0 ? ` · peak +${o.peakPct}%` : ""}`, c: "text-danger border-danger/40" },
     unscored: { t: "not scored", c: "text-muted border-line" },
   } as const;
   const m = map[o.status];
   return <span className={cn("num rounded border px-1.5 py-px text-[10px]", m.c)}>{m.t}</span>;
+}
+
+// Проверка токена сканером до отправки: краулер прикладывает вердикт к каждому сигналу.
+const SAFE_TONE: Record<string, string> = { CLEAN: "text-lime", OK: "text-lime", RISKY: "text-honey", TOO_EARLY: "text-muted" };
+function SafetyLine({ s }: { s: Signal }) {
+  const f = s.safety!;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+      <span className={cn("num font-semibold", SAFE_TONE[f.verdict] ?? "text-muted")}>
+        ✓ checked · {f.verdict.replace("_", " ")}
+        {f.score != null ? ` ${f.score}` : ""}
+      </span>
+      {f.flags.slice(0, 3).map((x) => (
+        <span key={x} className="rounded border border-line px-1 text-muted">
+          {x}
+        </span>
+      ))}
+      {s.token?.address && (
+        <a href={`/scan/${s.token.address}`} className="text-sky hover:underline">
+          scan →
+        </a>
+      )}
+    </div>
+  );
 }
 
 // Вывод встроенного Grok Bot под сигналом.
@@ -96,6 +121,7 @@ export function SignalFeed({ signals, max = 30, showCrawler = true }: { signals:
               ))}
             </div>
           )}
+          {s.safety && !s.redacted && !s.bot && <SafetyLine s={s} />}
           {s.bot && !s.redacted && <BotTakeLine s={s} />}
           <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
             {showCrawler ? (

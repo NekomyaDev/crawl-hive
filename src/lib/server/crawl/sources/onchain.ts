@@ -91,5 +91,5 @@ export async function crawlOnchain(job: LiveJob): Promise<SourceResult> {
 
   const known = new Map<string, PairInfo | undefined>([...pairs].map(([a, p]) => [a, p]));
   const fin = await finalize(job, picked, known);
-  return { items: pairs.size, signals: fin.signals, cursor: fin.cursor };
+  return { items: pairs.size, signals: fin.signals, cursor: fin.cursor, filtered: fin.filtered };
 }

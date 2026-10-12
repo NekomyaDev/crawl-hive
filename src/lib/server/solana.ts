@@ -6,6 +6,7 @@
 // Схема одна для обоих режимов: сервер собирает неподписанную транзакцию с memo «crawlhive:spawn:<id>»,
 // Phantom подписывает и отправляет, сервер находит транзакцию в сети и проверяет каждую деталь.
 import "server-only";
+import { limitedFetch } from "./rpc-limit";
 import { randomBytes } from "node:crypto";
 import {
   Connection,
@@ -138,7 +139,8 @@ function chain() {
   const e = env();
   if (!g.__crawlhiveChain || g.__crawlhiveChain.rpc !== e.rpc) {
     g.__crawlhiveChain = {
-      conn: new Connection(e.rpc, "confirmed"),
+      // Свой ограничитель вместо слепых повторов web3.js на 429 (см. rpc-limit.ts).
+      conn: new Connection(e.rpc, { commitment: "confirmed", fetch: limitedFetch, disableRetryOnRateLimit: true }),
       rpc: e.rpc,
       intents: new Map(),
       faucetAt: new Map(),

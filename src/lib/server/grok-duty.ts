@@ -55,7 +55,7 @@ export function setDuty(wallet: string, crawlerId: string, on: boolean) {
 const g = globalThis as unknown as { __crawlhiveDuty?: { started: boolean; queue: Map<string, Signal[]>; timers: Map<string, NodeJS.Timeout> } };
 const st = () => (g.__crawlhiveDuty ??= { started: false, queue: new Map(), timers: new Map() });
 
-function fromScan(r: ScanResult | undefined): Omit<BotTake, "at" | "by"> {
+function fromScan(r: Pick<ScanResult, "verdict" | "reason" | "score"> | undefined): Omit<BotTake, "at" | "by"> {
   if (!r) return { take: "watch", note: "No token to check in this signal: read the source before acting." };
   const take = r.verdict === "CLEAN" || r.verdict === "OK" ? "look" : r.verdict === "DANGER" ? "avoid" : "watch";
   return { take, note: r.reason.slice(0, 160), verdict: r.verdict, score: r.score };
@@ -75,10 +75,11 @@ async function run(crawlerId: string, signals: Signal[]) {
 
   // Сканы токенов: без X, поэтому Grok внутри не вызывается.
   const scans = new Map<string, ScanResult>();
-  const tokens = [...new Map(signals.filter((s) => s.token?.address).map((s) => [s.token!.address, s.token!])).values()].slice(0, SCANS_PER_RUN);
+  // Сигнал уже проверен краулером (signal.safety) — повторно не сканируем.
+  const tokens = [...new Map(signals.filter((s) => s.token?.address && !s.safety).map((s) => [s.token!.address, s.token!])).values()].slice(0, SCANS_PER_RUN);
   for (const t of tokens) {
     try {
-      scans.set(t.address, await runScan(t.address, () => {}, t.chain === "robinhood" ? "robinhood" : undefined));
+      scans.set(t.address, await runScan(t.address, () => {}, t.chain === "robinhood" ? "robinhood" : undefined, { record: false }));
     } catch (e) {
       console.warn("[grok-duty] scan failed", t.address, (e as Error).message);
     }
@@ -94,7 +95,7 @@ async function run(crawlerId: string, signals: Signal[]) {
           id: s.id,
           signal: `${s.ticker ? `$${s.ticker}: ` : ""}${s.text}`,
           confidence: s.confidence,
-          scan: r ? { verdict: r.verdict, score: r.score, reason: r.reason, flags: r.factors.filter((f) => f.impact < 0).map((f) => f.label), fdv: r.market?.fdv, liquidity: r.market?.liquidityUsd, ageHours: r.market?.ageHours } : null,
+          scan: !r && s.safety ? s.safety : r ? { verdict: r.verdict, score: r.score, reason: r.reason, flags: r.factors.filter((f) => f.impact < 0).map((f) => f.label), fdv: r.market?.fdv, liquidity: r.market?.liquidityUsd, ageHours: r.market?.ageHours } : null,
         };
       });
       const { text } = await grok({
@@ -116,7 +117,7 @@ async function run(crawlerId: string, signals: Signal[]) {
   const { deliverBotTake } = await import("./telegram");
   for (const s of signals) {
     const r = s.token?.address ? scans.get(s.token.address) : undefined;
-    const base = fromScan(r);
+    const base = fromScan(r ?? (s.safety ? { verdict: s.safety.verdict as ScanResult["verdict"], reason: s.safety.reason, score: s.safety.score } : undefined));
     const t = takes[s.id];
     const take = t && ["look", "watch", "avoid"].includes(String(t.take)) ? (t.take as BotTake["take"]) : base.take;
     const note = t?.note ? String(t.note).slice(0, 200) : base.note;

@@ -95,6 +95,8 @@ export interface CrawlerRunState {
   lastError?: string;
   runs: number;
   failedRuns: number;
+  failStreak?: number; // ошибок подряд: после каждой следующий обход откладывается дольше
+  lastFiltered?: number; // сколько найденных токенов отсеяла проверка безопасности в последнем обходе
   cursor: Record<string, string>; // последние увиденные id постов / хеши страниц по каждой цели
 }
 
@@ -114,7 +116,15 @@ export interface Signal {
   urls?: string[]; // источники: посты, сообщения, страница пары
   token?: { chain: string; address: string; symbol?: string };
   outcome?: SignalOutcome;
+  safety?: SignalSafety; // проверка токена сканером Instant Crawl до отправки сигнала
   bot?: BotTake; // разбор встроенного Grok Bot: смотреть, следить или обходить стороной
+}
+
+export interface SignalSafety {
+  verdict: string; // CLEAN | OK | RISKY | TOO_EARLY (DANGER до владельца не доходит)
+  score: number | null;
+  reason: string;
+  flags: string[];
 }
 
 export interface BotTake {
@@ -132,6 +142,8 @@ export interface SignalOutcome {
   priceAtCheck?: number;
   changePct?: number;
   checkAt?: number; // когда проверять
+  peakPct?: number; // лучший результат за окно (цену смотрим каждые 5 минут)
+  lowPct?: number; // худшая просадка за окно
 }
 
 export interface Listing {

@@ -917,7 +917,7 @@ export function claimRun(id: string, minIntervalMin: number) {
 }
 
 export type LiveSignalInput = Pick<Signal, "kind" | "ticker" | "text" | "confidence"> &
-  Partial<Pick<Signal, "urls" | "token">> & { priceAtSignal?: number };
+  Partial<Pick<Signal, "urls" | "token" | "safety">> & { priceAtSignal?: number };
 
 export interface RunResult {
   ok: boolean;
@@ -925,6 +925,7 @@ export interface RunResult {
   error?: string;
   cursor?: Record<string, string>;
   signals: LiveSignalInput[];
+  filtered?: number; // токены, которые отсеяла проверка безопасности
   // Сколько секунд работы засчитать в аптайм (интервал с прошлого успешного прохода)
   creditSec: number;
 }
@@ -939,7 +940,14 @@ export function recordRun(id: string, r: RunResult) {
   c.run.lastItems = r.items;
   c.run.lastSignals = r.signals.length;
   c.run.lastError = r.ok ? undefined : r.error;
-  if (!r.ok) c.run.failedRuns++;
+  c.run.lastFiltered = r.filtered;
+  if (!r.ok) {
+    c.run.failedRuns++;
+    // Источник сбоит — не долбим его: каждый следующий обход откладывается вдвое дольше, до часа.
+    c.run.failStreak = (c.run.failStreak ?? 0) + 1;
+    const pause = Math.min(60, 2 ** c.run.failStreak) * 60_000;
+    c.run.nextRunAt = Math.max(c.run.nextRunAt, now + pause);
+  } else c.run.failStreak = 0;
   if (r.cursor) c.run.cursor = { ...c.run.cursor, ...r.cursor };
   c.stats.items += r.items;
   if (r.ok) c.stats.uptimeSec = Math.min(c.stats.totalSec, c.stats.uptimeSec + r.creditSec);
@@ -965,6 +973,7 @@ export function recordRun(id: string, r: RunResult) {
       owner,
       urls: x.urls,
       token: x.token,
+      safety: x.safety,
       outcome,
     };
     c.stats.signals++;
@@ -1059,6 +1068,25 @@ export function dueOutcomes(now = Date.now(), limit = 25) {
     .map((x) => ({ id: x.id, crawlerId: x.crawlerId, token: x.token!, priceAtSignal: x.outcome!.priceAtSignal! }));
 }
 
+// Сигналы, которые ещё в окне проверки: цену смотрим каждые 5 минут и запоминаем пик и просадку.
+export function pendingOutcomes(limit = 300) {
+  return state()
+    .liveSignals.filter((x) => x.outcome?.status === "pending" && x.token && x.outcome.priceAtSignal)
+    .slice(0, limit)
+    .map((x) => ({ id: x.id, token: x.token! }));
+}
+
+export function sampleOutcome(signalId: string, price: number) {
+  const s = state();
+  const sig = s.liveSignals.find((x) => x.id === signalId);
+  const o = sig?.outcome;
+  if (!o || o.status !== "pending" || !o.priceAtSignal || !(price > 0)) return;
+  const pct = Math.round(((price - o.priceAtSignal) / o.priceAtSignal) * 1000) / 10;
+  o.peakPct = Math.max(o.peakPct ?? pct, pct);
+  o.lowPct = Math.min(o.lowPct ?? pct, pct);
+  markDirty(s);
+}
+
 export function resolveOutcome(signalId: string, priceAtCheck: number | null) {
   const s = state();
   const sig = s.liveSignals.find((x) => x.id === signalId);
@@ -1070,8 +1098,18 @@ export function resolveOutcome(signalId: string, priceAtCheck: number | null) {
   } else {
     const change = ((priceAtCheck - sig.outcome.priceAtSignal!) / sig.outcome.priceAtSignal!) * 100;
     const threshold = c?.spec?.outcome.hitThresholdPct ?? 20;
-    const hit = change >= threshold;
-    sig.outcome = { ...sig.outcome, status: hit ? "hit" : "miss", priceAtCheck, changePct: Math.round(change * 10) / 10 };
+    // Мемкоин может дать цель за 20 минут и откатиться к концу окна: засчитываем лучший результат за окно.
+    const peak = Math.max(change, sig.outcome.peakPct ?? -Infinity);
+    const hit = peak >= threshold;
+    const r1 = (n: number) => Math.round(n * 10) / 10;
+    sig.outcome = {
+      ...sig.outcome,
+      status: hit ? "hit" : "miss",
+      priceAtCheck,
+      changePct: r1(change),
+      peakPct: r1(peak),
+      lowPct: r1(Math.min(change, sig.outcome.lowPct ?? Infinity)),
+    };
     if (c) {
       c.stats.scored = (c.stats.scored ?? 0) + 1;
       if (hit) c.stats.hits++;

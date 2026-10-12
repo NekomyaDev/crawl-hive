@@ -240,7 +240,18 @@ function RunCard({ c }: { c: Detail }) {
             {r.lastItems ?? 0} items · {r.lastSignals ?? 0} signals
           </dd>
         </div>
-        {r.lastError && <div className="mt-2 rounded-md border border-danger/40 bg-danger/5 p-2 text-xs text-danger">{r.lastError}</div>}
+        {!!r.lastFiltered && (
+          <div className="flex justify-between">
+            <dt className="text-muted">Blocked as unsafe</dt>
+            <dd className="num text-danger">{r.lastFiltered} token{r.lastFiltered > 1 ? "s" : ""}</dd>
+          </div>
+        )}
+        {r.lastError && (
+          <div className="mt-2 rounded-md border border-danger/40 bg-danger/5 p-2 text-xs text-danger">
+            {r.lastError}
+            {(r.failStreak ?? 0) > 1 && <span className="mt-1 block text-muted">Failed {r.failStreak} times in a row, so the next tries are spaced out (up to an hour).</span>}
+          </div>
+        )}
       </dl>
     </Card>
   );

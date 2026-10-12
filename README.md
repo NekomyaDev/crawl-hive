@@ -108,7 +108,7 @@ flowchart LR
 1. **Spawn.** Choose a tier, a source, a chain (Solana, Robinhood Chain, Base, Ethereum), up to three narratives and your targets. Write your crawler's **specification**: plain-language instructions, keywords, filters, and what counts as a hit. Pay in SOL from Phantom, or in ETH on Robinhood Chain from MetaMask or Rabby. A payment buys **30 days** of crawling.
 2. **Crawl.** Your crawler sweeps its targets on a schedule: X through Grok search, public Telegram channels, DexScreener, or any web page. An AI reads what it finds through your instructions.
 3. **Get your signals.** Signals land in your private *My Signals* inbox and, if you connect the bot, in your **Telegram DMs**, with links to the source. Nobody else sees their content.
-4. **See who was right.** Every signal with a token is checked against the real price after your horizon: a hit or a miss. Precision, uptime, data volume and stake make up the crawler's reputation.
+4. **See who was right.** Every signal with a token is tracked against the real price through your horizon: a hit if it reached your target, a miss if it did not. Precision, uptime, data volume and stake make up the crawler's reputation.
 5. **Renew.** Three days before the term ends the bot reminds you. One click on the crawler page adds another 30 days; an expired crawler simply pauses until you renew.
 
 Full specification format, sources and limits: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
@@ -141,6 +141,14 @@ Signals are **yours alone**. They land in *My Signals* with links to the source,
   <img src="docs/images/crawler-live.png" alt="Live crawler page: status, specification, private signals" width="80%">
   <br><sub>A live crawler's page as its owner sees it: crawl status, editable specification, reputation breakdown, private signals.</sub>
 </p>
+
+**Under the hood, every signal is checked before it reaches you:**
+
+- **Safety gate.** Each token a crawler finds on Solana or Robinhood Chain goes through the Instant Crawl scan first (market, holders, bundles, creator history, honeypot and owner on Robinhood). DANGER never reaches you; every other signal carries its verdict and a link to the full scan. The most confident finds are checked first; whatever does not fit into a run's scan budget waits for the next run instead of going out unchecked. If a scan fails, the signal waits one run; only a second failure in a row lets it through without a verdict.
+- **Fair scoring.** The price is sampled every 5 minutes while a signal is in its window. A hit means the token reached your target at any point in the window, not only at the last minute, and every scored signal shows its peak and drawdown.
+- **Smarter repeats.** Duplicates are muted per token *and* signal type, so a whale buy after a new-pair alert still gets through.
+- **Backoff.** When a source keeps failing, each next try waits twice as long, up to an hour, instead of hammering it.
+- **RPC limiter.** All Solana RPC calls share one rate limiter with retries on 429, so a rush of scans no longer starves the checks.
 
 What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
 

@@ -1,7 +1,7 @@
 // Планировщик живых краулеров. Каждые 15 секунд берёт краулеров, которым пора на обход,
 // запускает сборщик их источника (не больше 3 одновременно) и проверяет исходы старых сигналов.
 import "server-only";
-import { claimRun, dueCrawlers, dueOutcomes, recordRun, resolveOutcome, type LiveJob } from "../store";
+import { claimRun, dueCrawlers, dueOutcomes, pendingOutcomes, recordRun, resolveOutcome, sampleOutcome, type LiveJob } from "../store";
 import { bestPairs, priceOf } from "./dexscreener";
 import { crawlX } from "./sources/x";
 import { crawlTelegram } from "./sources/telegram";
@@ -41,6 +41,7 @@ async function runJob(job: LiveJob, running: Set<string>) {
       ok: true,
       items: result.items,
       signals: result.signals,
+      filtered: result.filtered,
       cursor: { ...result.cursor, lastOkAt: String(started) },
       creditSec,
     });
@@ -66,8 +67,30 @@ async function checkOutcomes() {
   }
 }
 
+// Пик и просадка за окно: раз в 5 минут смотрим текущую цену всех сигналов, которые ещё ждут оценки.
+const SAMPLE_MS = 5 * 60_000;
+let lastSample = 0;
+async function sampleOutcomes() {
+  if (Date.now() - lastSample < SAMPLE_MS) return;
+  lastSample = Date.now();
+  const byChain = new Map<string, { id: string; address: string }[]>();
+  for (const p of pendingOutcomes()) byChain.set(p.token.chain, [...(byChain.get(p.token.chain) ?? []), { id: p.id, address: p.token.address }]);
+  for (const [chain, list] of byChain) {
+    try {
+      const pairs = await bestPairs(chain, [...new Set(list.map((x) => x.address))]);
+      for (const x of list) {
+        const price = priceOf(pairs.get(x.address));
+        if (price) sampleOutcome(x.id, price);
+      }
+    } catch {
+      // DexScreener недоступен — следующий замер через 5 минут
+    }
+  }
+}
+
 async function tick(running: Set<string>) {
   try {
+    await sampleOutcomes();
     await checkOutcomes();
   } catch (e) {
     console.error("outcomes", e);

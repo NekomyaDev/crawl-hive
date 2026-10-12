@@ -63,5 +63,5 @@ export async function crawlTelegram(job: LiveJob): Promise<SourceResult> {
   if (errors.length === job.targets.length) throw new Error(errors.join("; "));
   const candidates = await extract(job, fresh, "public Telegram channels", "kol_call");
   const fin = await finalize(job, candidates);
-  return { items: fresh.length, signals: fin.signals, cursor: { ...cursor, ...fin.cursor } };
+  return { items: fresh.length, signals: fin.signals, cursor: { ...cursor, ...fin.cursor }, filtered: fin.filtered };
 }

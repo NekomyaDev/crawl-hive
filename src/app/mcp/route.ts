@@ -85,7 +85,7 @@ async function callTool(bot: GrokBot, name: string, args: Record<string, unknown
       if (!q) throw new ApiError("query is required");
       if (!allowBotScan(bot)) throw new ApiError("Scan limit for this bot reached (20 per hour)", 429);
       const chain = args.chain === "robinhood" ? "robinhood" : undefined;
-      return scanBrief(await runScan(q, () => {}, chain));
+      return scanBrief(await runScan(q, () => {}, chain, { record: false }));
     }
     case "crawler_signals":
       return botSignals(bot, { crawlerId: typeof args.crawler_id === "string" ? args.crawler_id : undefined, limit: Number(args.limit) || undefined });
