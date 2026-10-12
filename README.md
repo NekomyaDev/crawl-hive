@@ -31,7 +31,10 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
-**Latest (Oct 12):**
+**Latest (Oct 13):**
+- 🤝 **Any agent, one click.** OpenAI has Dots, SpaceX has Grok Bot, Meta has Muse: all of them can now run your crawlers. ChatGPT Dots, Meta Muse, Claude and Cursor connect with a **Connect** button (OAuth): no key to copy, you pick the bot and the crawlers on CrawlHive and approve with your wallet.
+
+**Oct 12:**
 - ⚡ **Jev decides, Grok researches.** Jev, a decision model, rates every crawler find in about half a second, for about $0.00002 per decision. Pure noise and scams are skipped before the safety scan, and the rest are checked most-promising first. The Grok Bot's LOOK / WATCH / AVOID comes from Jev when it is at least 70% sure, and Grok is asked only about the doubtful ones. Each signal shows its Jev rating.
 - 🐙 **Grok Bot on duty.** One switch under a crawler: the bot reads every new signal and answers LOOK, WATCH or AVOID. It sleeps while nothing happens, and a wake-up costs about $0.001.
 - 🔌 **Bring your own agent.** Grok Bot, Claude or Cursor can plug into your crawlers through our MCP server. Tested live with the Grok API.
@@ -173,7 +176,7 @@ Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. T
 
 **One switch, no setup.** Every live crawler in *My Crawlers* has a **Grok Bot on duty** switch. Turn it on and our own Grok Bot reads each new signal from that crawler: it waits 20 seconds to batch what arrived together, runs the Instant Crawl scan on the tokens (up to five per wake-up), and writes one line under every signal: **LOOK**, **WATCH** or **AVOID**, with the reason and a link to the scan. The same line follows the signal to Telegram. It never polls: no signals, no calls, nothing spent. A wake-up costs about $0.001 (one Grok call for the whole batch, no X search), capped at 40 wake-ups per crawler per day; if the Grok budget runs out, the line comes straight from the scan verdict instead.
 
-**Bring your own agent.** Already run a Grok Bot (or Claude, Cursor, any MCP agent)? Put it on duty over your crawlers. Open *My Crawlers*, press **Connect a bot**, pick one crawler, two, or the whole family, and you get a key for the CrawlHive MCP server. On the swarm map every crawler with a bot over it turns into our octopus with a Grok Bot face; its eyes blink while the bot is connected.
+**Bring your own agent.** Already run a Grok Bot, ChatGPT Dots, Meta Muse, Claude or Cursor? Put it on duty over your crawlers. Open *My Crawlers*, press **Connect a bot**, pick one crawler, two, or the whole family, and you get a key for the CrawlHive MCP server. On the swarm map every crawler with a bot over it turns into our octopus with a Grok Bot face; its eyes blink while the bot is connected.
 
 The point is cost. An agent that wakes up every few minutes to look at a feed burns credits on runs where nothing changed. Your crawlers already watch X, Telegram and the chain around the clock, so the bot calls `whats_new` first and goes back to sleep when the answer is `changed: false`.
 
@@ -185,7 +188,19 @@ The point is cost. An agent that wakes up every few minutes to look at a feed bu
 | `my_crawlers` | Status, tier, targets, reputation and hit rate of the watched crawlers |
 | `trending_scans` | What people scanned on CrawlHive most recently |
 
-Server: `https://crawlhive.xyz/mcp` (Streamable HTTP, JSON responses), header `Authorization: Bearer chb_…`; clients that take only a URL can pass `?key=`. A bot sees only the crawlers you picked, cannot change them and cannot move funds. Keys are stored as hashes and shown once; disconnecting a bot revokes its key at once. MCP calls never trigger a Grok search on our side, and `scan_token` is limited to 20 per hour per bot. Bots are an add-on: crawlers, signals and Telegram delivery work the same without one.
+**Connect any agent.** Two ways in:
+
+| Agent | How it connects |
+|---|---|
+| Grok Bot | Bot key from *My Crawlers*: custom MCP connector with the URL and `Authorization: Bearer chb_…` |
+| ChatGPT Dots | Developer mode → custom connector → paste the URL, choose OAuth → **Connect** |
+| Meta Muse | Connectors → Add custom connector → paste the URL → sign in |
+| Claude | Settings → Connectors → Add custom connector → paste the URL → **Connect** |
+| Cursor | `mcp.json`: `{ "crawlhive": { "url": "https://crawlhive.xyz/mcp" } }`, sign in on first use |
+
+With OAuth the agent registers itself (RFC 7591), opens `crawlhive.xyz/oauth/authorize`, and you pick an existing bot or create a new one over the crawlers you choose, then approve with your wallet. PKCE (S256) is required, codes are single-use and live 10 minutes, access tokens last 30 days and refresh tokens rotate on every use. Every connected app shows on its bot card in *My Crawlers* and can be disconnected on its own; deleting the bot revokes its key and all its tokens. Metadata: `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`.
+
+Server: `https://crawlhive.xyz/mcp` (Streamable HTTP, JSON responses). Without credentials it answers `401` with a `WWW-Authenticate` link to the OAuth metadata, so clients start the sign-in on their own. With a key: header `Authorization: Bearer chb_…`; clients that take only a URL can pass `?key=`. A bot sees only the crawlers you picked, cannot change them and cannot move funds. Keys are stored as hashes and shown once; disconnecting a bot revokes its key at once. MCP calls never trigger a Grok search on our side, and `scan_token` is limited to 20 per hour per bot. Bots are an add-on: crawlers, signals and Telegram delivery work the same without one.
 
 <p align="center">
   <img src="docs/images/grok-bot-octo.png" alt="A CrawlHive crawler with a Grok Bot on duty turns into our octopus with the bot's face" width="100%">

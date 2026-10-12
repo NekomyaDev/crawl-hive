@@ -2,6 +2,7 @@
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 13", title: "Any agent, one click", text: "ChatGPT Dots, Meta Muse, Claude and Cursor connect to your crawlers with a Connect button: no key to copy. Pick the bot and crawlers, approve with your wallet, disconnect any time." },
   { date: "Oct 12", title: "Jev on every signal", text: "Jev, a fast decision model, rates every crawler find in about half a second and skips pure noise. The Grok Bot's take comes from Jev when it is sure, and Grok is asked only about the doubtful ones." },
   { date: "Oct 12", title: "Safer, fairer crawlers", text: "Every token a crawler finds is scanned before it reaches you and rugs are blocked. Hits now count the best price in the window, sampled every 5 minutes." },
   { date: "Oct 12", title: "Grok Bot on duty", text: "One switch under any crawler: our Grok Bot reads every new signal, scans the token and tells you look, watch or avoid. It sleeps while nothing happens." },

@@ -1,5 +1,7 @@
 // POST /mcp — сервер Model Context Protocol (Streamable HTTP, ответы обычным JSON) для Grok Bots и любых
-// других агентов. Ключ бота: заголовок Authorization: Bearer chb_… (или ?key= для клиентов без заголовков).
+// других агентов. Доступ: ключ бота Authorization: Bearer chb_… (или ?key= для клиентов без заголовков),
+// либо токен OAuth cht_… — его получают ChatGPT, Muse, Claude кнопкой Connect (см. oauth.ts).
+// Без доступа отвечаем 401 со ссылкой на метаданные OAuth: так клиент сам начинает подключение.
 // Агент видит только краулеры, над которыми его поставил владелец. Скан токена бесплатный для нас:
 // в нём нет поиска по X, поэтому Grok из MCP не вызывается никогда.
 import type { NextRequest } from "next/server";
@@ -7,6 +9,13 @@ import { connection } from "next/server";
 import { allowBotScan, botByKey, botCrawlers, botSignals, botWhatsNew, type GrokBot } from "@/lib/server/bots";
 import { recentScans, runScan, type ScanResult } from "@/lib/server/scan";
 import { ApiError } from "@/lib/server/store";
+import { CORS, ISSUER } from "@/lib/server/oauth";
+
+const UNAUTHORIZED = {
+  ...CORS,
+  "WWW-Authenticate": `Bearer resource_metadata="${ISSUER}/.well-known/oauth-protected-resource/mcp", scope="crawlers"`,
+  "Access-Control-Expose-Headers": "WWW-Authenticate",
+};
 
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
@@ -156,7 +165,11 @@ export async function POST(req: NextRequest) {
   await connection();
   const key = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || req.nextUrl.searchParams.get("key") || "";
   const bot = key ? botByKey(key) : null;
-  if (key && !bot) return Response.json(fail(null, -32001, "Unknown or revoked bot key"), { status: 401 });
+  if (!bot)
+    return Response.json(fail(null, -32001, key ? "Unknown, expired or revoked bot key" : "Connect your agent: crawlhive.xyz → My Crawlers → Grok Bots"), {
+      status: 401,
+      headers: UNAUTHORIZED,
+    });
 
   let payload: Rpc | Rpc[];
   try {
@@ -172,11 +185,15 @@ export async function POST(req: NextRequest) {
     if (m.id === undefined || m.id === null) continue;
     out.push(await dispatch(m, bot));
   }
-  if (!out.length) return new Response(null, { status: 202 });
-  return Response.json(batch ? out : out[0]);
+  if (!out.length) return new Response(null, { status: 202, headers: CORS });
+  return Response.json(batch ? out : out[0], { headers: CORS });
+}
+
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS });
 }
 
 // Поток событий от сервера к клиенту нам не нужен: все ответы приходят в теле POST.
 export async function GET() {
-  return new Response("Use POST for MCP requests", { status: 405, headers: { Allow: "POST" } });
+  return new Response("Use POST for MCP requests", { status: 405, headers: { ...CORS, Allow: "POST" } });
 }

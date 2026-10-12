@@ -1,6 +1,7 @@
 "use client";
-// Grok Bots на странице My Crawlers: необязательное подключение своего ИИ-агента (Grok Bot, Claude, Cursor)
-// к краулерам через MCP. Бота ставят над одним, двумя или всеми краулерами; ключ показывается один раз.
+// Grok Bots на странице My Crawlers: необязательное подключение своего ИИ-агента (Grok Bot, ChatGPT Dots,
+// Meta Muse, Claude, Cursor) к краулерам через MCP. Бота ставят над одним, двумя или всеми краулерами.
+// Grok Bot подключается ключом (показывается один раз), остальные — кнопкой Connect по OAuth.
 import { useState } from "react";
 import { Check, Copy, Trash2 } from "lucide-react";
 import { BotOcto } from "@/components/bot-octo";
@@ -13,6 +14,7 @@ import type { PublicCrawler } from "@/lib/types";
 import { SOURCE_META, cn } from "@/lib/utils";
 
 export interface PublicBot {
+  apps?: { name: string; at: number }[]; // агенты, подключённые через Connect (OAuth)
   id: string;
   name: string;
   keyTail: string;
@@ -29,6 +31,72 @@ const ROUTINE = `Every hour: call CrawlHive whats_new.
 If changed is false, stop.
 Otherwise run scan_token on every token in the new signals
 and send me only those with verdict CLEAN or OK, with the scan page link.`;
+
+// Как подключить каждого агента. OAuth-клиенты сами откроют /oauth/authorize, где владелец выберет бота.
+const AGENTS = [
+  {
+    id: "grok",
+    name: "Grok Bot",
+    steps: ["Create a bot key below.", "In Grok Bot add a custom MCP connector with the URL and the Authorization header.", "Paste the routine so it checks your crawlers every hour."],
+  },
+  {
+    id: "dots",
+    name: "ChatGPT Dots",
+    steps: [
+      "In ChatGPT turn on Developer mode and add a custom connector (MCP).",
+      "Paste the MCP URL and choose OAuth as the sign-in method.",
+      "Press Connect: CrawlHive opens, you pick the bot and crawlers, done. Then let your Dot use the CrawlHive app.",
+    ],
+  },
+  {
+    id: "muse",
+    name: "Meta Muse",
+    steps: ["In Muse open Connectors → Add custom connector.", "Paste the MCP URL and sign in.", "Pick the bot and crawlers on CrawlHive, then ask Muse to check your crawlers."],
+  },
+  {
+    id: "claude",
+    name: "Claude",
+    steps: ["On claude.ai open Settings → Connectors → Add custom connector.", "Paste the MCP URL and press Connect.", "Pick the bot and crawlers on CrawlHive."],
+  },
+  {
+    id: "cursor",
+    name: "Cursor",
+    steps: ['Add to mcp.json: { "crawlhive": { "url": "https://crawlhive.xyz/mcp" } }', "Cursor opens the CrawlHive sign-in when you first use a tool.", "Pick the bot and crawlers."],
+  },
+] as const;
+
+function ConnectGuide() {
+  const [tab, setTab] = useState<(typeof AGENTS)[number]["id"]>("dots");
+  const a = AGENTS.find((x) => x.id === tab)!;
+  return (
+    <div className="rounded-xl border border-line bg-panel-2/40 p-3">
+      <div className="mb-2 text-xs font-medium">Connect your agent</div>
+      <div className="flex flex-wrap gap-1.5">
+        {AGENTS.map((x) => (
+          <button
+            key={x.id}
+            type="button"
+            onClick={() => setTab(x.id)}
+            className={cn("rounded-lg border px-2.5 py-1 text-xs", tab === x.id ? "border-honey/60 bg-honey/10 text-fg" : "border-line text-muted hover:text-fg")}
+          >
+            {x.name}
+          </button>
+        ))}
+      </div>
+      <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-muted">
+        {a.steps.map((st) => (
+          <li key={st} className="break-words">{st}</li>
+        ))}
+      </ol>
+      <div className="mt-3">
+        <CopyBox label="MCP server URL" value={MCP_URL} />
+      </div>
+      {tab !== "grok" && (
+        <p className="mt-2 text-xs text-muted">No key to copy: the agent signs in with your wallet through CrawlHive and gets read access to the crawlers you pick.</p>
+      )}
+    </div>
+  );
+}
 
 function CopyBox({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   const [done, setDone] = useState(false);
@@ -56,7 +124,7 @@ function CopyBox({ label, value, mono = true }: { label: string; value: string; 
 
 // Выбор краулеров, над которыми стоит бот: чипы с цветом источника и кнопка «все».
 // onChange получает функцию от текущего выбора: два быстрых клика подряд не затирают друг друга.
-function CrawlerPicker({ crawlers, value, onChange }: { crawlers: PublicCrawler[]; value: string[]; onChange: (f: (v: string[]) => string[]) => void }) {
+export function CrawlerPicker({ crawlers, value, onChange }: { crawlers: PublicCrawler[]; value: string[]; onChange: (f: (v: string[]) => string[]) => void }) {
   const allOn = crawlers.length > 0 && crawlers.every((c) => value.includes(c.id));
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -139,6 +207,15 @@ export function GrokBots({ crawlers, bots, reload }: { crawlers: PublicCrawler[]
     }
   };
 
+  const disconnect = async (b: PublicBot, at: number) => {
+    try {
+      await patch(`/api/bots/${b.id}`, { disconnect: at });
+      reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
+
   const byId = new Map(crawlers.map((c) => [c.id, c]));
 
   return (
@@ -153,7 +230,7 @@ export function GrokBots({ crawlers, bots, reload }: { crawlers: PublicCrawler[]
             </div>
             <p className="mt-0.5 max-w-xl text-sm text-muted">
               Put your Grok Bot on duty over one crawler, two, or the whole family. Your crawlers watch 24/7 for cents; the bot wakes up only when there is
-              something new, so it stops burning credits on empty runs. Works with any MCP agent: Grok Bot, Claude, Cursor.
+              something new, so it stops burning credits on empty runs. Works with Grok Bot, ChatGPT Dots, Meta Muse, Claude, Cursor and any MCP agent.
             </p>
           </div>
         </div>
@@ -166,6 +243,7 @@ export function GrokBots({ crawlers, bots, reload }: { crawlers: PublicCrawler[]
 
       <div className="space-y-4 p-4">
         {!crawlers.length && <p className="text-sm text-muted">Spawn a crawler first, then put a Grok Bot on duty over it.</p>}
+        {crawlers.length > 0 && <ConnectGuide />}
 
         {open && (
           <div className="space-y-3 rounded-xl border border-honey/30 bg-panel-2/50 p-3">
@@ -234,6 +312,19 @@ export function GrokBots({ crawlers, bots, reload }: { crawlers: PublicCrawler[]
                 </Button>
               </div>
             </div>
+            {!!b.apps?.length && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                Connected:
+                {b.apps.map((a) => (
+                  <span key={a.at} className="flex items-center gap-1 rounded-md border border-lime/40 bg-lime/[0.05] px-1.5 py-0.5 text-fg">
+                    {a.name}
+                    <button onClick={() => disconnect(b, a.at)} className="text-muted hover:text-danger" aria-label={`Disconnect ${a.name}`}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {editing === b.id ? (
               <div className="mt-3 space-y-2">
                 <CrawlerPicker crawlers={crawlers} value={editPick} onChange={setEditPick} />

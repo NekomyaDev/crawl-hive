@@ -25,10 +25,22 @@ export interface GrokBot {
   lastSeenAt?: number;
   calls: number;
   cursor?: number; // до какого времени бот уже видел сигналы (для whats_new)
+  tokens?: BotToken[]; // доступ агентов, подключённых кнопкой Connect (OAuth), см. oauth.ts
 }
 
-export interface PublicBot extends Omit<GrokBot, "keyHash" | "cursor"> {
+// Токен OAuth: хранится только хешем, как и ключ. Удаление бота отзывает все его токены.
+interface BotToken {
+  h: string; // sha256 токена доступа cht_…
+  rh: string; // sha256 токена обновления chr_…
+  exp: number; // когда истекает токен доступа
+  rexp: number; // когда истекает токен обновления
+  app: string; // имя приложения из регистрации: ChatGPT, Claude, Muse…
+  at: number;
+}
+
+export interface PublicBot extends Omit<GrokBot, "keyHash" | "cursor" | "tokens"> {
   live: boolean;
+  apps: { name: string; at: number }[]; // агенты, подключённые через Connect
 }
 
 // Вызовы между записями на диск копим в памяти, чтобы счётчик не терял их.
@@ -52,7 +64,12 @@ function save(list: GrokBot[]) {
   setMeta(KEY, JSON.stringify(list));
 }
 
-const toPublic = ({ keyHash: _k, cursor: _c, ...b }: GrokBot): PublicBot => ({ ...b, calls: b.calls + (pending.get(b.id) ?? 0), live: !!b.lastSeenAt && Date.now() - b.lastSeenAt < LIVE_MS });
+const toPublic = ({ keyHash: _k, cursor: _c, tokens, ...b }: GrokBot): PublicBot => ({
+  ...b,
+  calls: b.calls + (pending.get(b.id) ?? 0),
+  live: !!b.lastSeenAt && Date.now() - b.lastSeenAt < LIVE_MS,
+  apps: (tokens ?? []).filter((t) => t.rexp > Date.now()).map((t) => ({ name: t.app, at: t.at })),
+});
 
 // Краулеры кошелька, над которыми можно поставить бота: свои и арендованные.
 function ownCrawlerIds(wallet: string) {
@@ -136,12 +153,14 @@ export function botsByCrawler(): Map<string, { count: number; live: boolean }> {
 
 // ---------- для MCP ----------
 
-// Бот по ключу; заодно отмечаем, что он на связи. Краулеры, которые владелец потерял (истёк аренда), отсекаем.
+// Бот по ключу chb_ или токену OAuth cht_; заодно отмечаем, что он на связи.
+// Краулеры, которые владелец потерял (истекла аренда), отсекаем.
 export function botByKey(key: string): GrokBot | null {
-  if (!key.startsWith("chb_")) return null;
+  if (!key.startsWith("chb_") && !key.startsWith("cht_")) return null;
   const h = hash(key);
   const list = all();
-  const b = list.find((x) => x.keyHash === h);
+  const now0 = Date.now();
+  const b = key.startsWith("chb_") ? list.find((x) => x.keyHash === h) : list.find((x) => x.tokens?.some((t) => t.h === h && t.exp > now0));
   if (!b) return null;
   const now = Date.now();
   // Сохраняем не чаще раза в минуту: частые вызовы агента не должны дёргать запись на диск.
@@ -205,4 +224,60 @@ export function allowBotScan(b: GrokBot) {
   list.push(now);
   scanLog.set(b.id, list);
   return true;
+}
+
+// ---------- OAuth (oauth.ts) ----------
+
+const ACCESS_TTL_MS = 30 * 86400_000;
+const REFRESH_TTL_MS = 180 * 86400_000;
+const MAX_TOKENS = 6; // подключений одного бота: старые вытесняются
+
+export function ownBot(wallet: string, id: string) {
+  const b = all().find((x) => x.id === id && x.wallet === wallet);
+  if (!b) throw new ApiError("Pick one of your bots", 404);
+  return b;
+}
+
+function mint(b: GrokBot, app: string) {
+  const access = `cht_${randomBytes(24).toString("base64url")}`;
+  const refresh = `chr_${randomBytes(24).toString("base64url")}`;
+  const now = Date.now();
+  b.tokens = [...(b.tokens ?? []).filter((t) => t.rexp > now), { h: hash(access), rh: hash(refresh), exp: now + ACCESS_TTL_MS, rexp: now + REFRESH_TTL_MS, app, at: now }].slice(-MAX_TOKENS);
+  return { access, refresh, expiresIn: ACCESS_TTL_MS / 1000 };
+}
+
+export function attachBotToken(wallet: string, botId: string, app: string) {
+  const list = all();
+  const b = list.find((x) => x.id === botId && x.wallet === wallet);
+  if (!b) throw new ApiError("Bot not found", 404);
+  const t = mint(b, app);
+  save(list);
+  return t;
+}
+
+// Обновление: старая пара токенов сгорает, выдаётся новая.
+export function refreshBotToken(refresh: string) {
+  if (!refresh.startsWith("chr_")) return null;
+  const rh = hash(refresh);
+  const list = all();
+  const now = Date.now();
+  for (const b of list) {
+    const old = b.tokens?.find((t) => t.rh === rh && t.rexp > now);
+    if (!old) continue;
+    b.tokens = b.tokens!.filter((t) => t !== old);
+    const t = mint(b, old.app);
+    save(list);
+    return t;
+  }
+  return null;
+}
+
+// Отключить одно приложение от бота, не трогая ключ и остальные подключения.
+export function disconnectApp(wallet: string, botId: string, at: number) {
+  const list = all();
+  const b = list.find((x) => x.id === botId && x.wallet === wallet);
+  if (!b) throw new ApiError("Bot not found", 404);
+  b.tokens = (b.tokens ?? []).filter((t) => t.at !== at);
+  save(list);
+  return toPublic(b);
 }
