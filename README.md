@@ -199,6 +199,22 @@ Server: `https://crawlhive.xyz/mcp` (Streamable HTTP, JSON responses), header `A
   </tr>
 </table>
 
+### Jev: decides in half a second, Grok researches
+
+[Jev](https://openrouter.ai/typesafe/jev-1.13) is a decision model from TypeSafe. It does not write text: it picks an answer from options we define and returns a probability. We call it through OpenRouter in two places:
+
+| Where | Question to Jev | What happens |
+|---|---|---|
+| Every crawler find | "Is this a concrete memecoin signal worth a trader's attention right now?" | Below 15% the find is skipped as noise. The rest go to the safety scan most-promising first, and the signal shows `⚡ Jev 74%` |
+| Grok Bot on duty | "Look, watch or avoid?" with the safety scan as context | At 70%+ Jev's take is final; only doubtful signals reach Grok, in one call |
+
+Measured on production: about 0.5–0.7 s and $0.000017 per decision. On the 15 latest real signals Jev rated hits 66–83% and the weakest movers 49–55%, and skipped none of them. Spam like "FREE AIRDROP, connect wallet" scored 3%. Without `OPENROUTER_API_KEY` the layer is off and crawlers work as before.
+
+<p align="center">
+  <img src="docs/images/jev-octo.png" alt="CrawlHive crawlers with Jev turn pink at the tips and wear a spark" width="100%">
+  <br><sub>Design concept: a crawler running Jev gets pink leg tips and the spark on top; a Grok Bot with Jev gets a pink pearl face with the spark on its forehead.</sub>
+</p>
+
 We tested the whole loop with the Grok API: with three fresh signals Grok called `whats_new`, scanned each token and reported which to look at and which to avoid ($0.006); on a quiet check it stopped after the first call ($0.0006).
 
 A routine to paste into Grok Bot:
