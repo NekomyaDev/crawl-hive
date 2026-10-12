@@ -6,7 +6,8 @@ import { PageHeader } from "@/components/page-header";
 import { Card, Stat } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CrawlerCard } from "@/components/crawler/crawler-row";
-import { GrokBots, type PublicBot } from "@/components/grok-bots";
+import { GrokBots, GrokDutyToggle, type PublicBot } from "@/components/grok-bots";
+import { SOURCE_META } from "@/lib/utils";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
@@ -20,6 +21,7 @@ export default function MyCrawlers() {
   const toast = useToast();
   const { data, reload } = useApi<PublicCrawler[]>(address && signedIn ? `/api/crawlers?mine=1&w=${address}` : null, 5000);
   const { data: bots, reload: reloadBots } = useApi<PublicBot[]>(address && signedIn ? `/api/bots?w=${address}` : null, 15000);
+  const { data: onDuty, reload: reloadDuty } = useApi<Record<string, { runs: number }>>(address && signedIn ? `/api/bots/duty?w=${address}` : null, 30000);
 
   if (!address)
     return (
@@ -38,6 +40,7 @@ export default function MyCrawlers() {
   const rented = (data ?? []).filter((c) => c.renter === address);
   // Над какими краулерами стоят Grok Bots: карточка рисует спрута вместо точки.
   const duty = new Map<string, { count: number; live: boolean }>();
+  for (const id of Object.keys(onDuty ?? {})) duty.set(id, { count: 1, live: true });
   for (const b of bots ?? [])
     for (const id of b.crawlerIds) {
       const cur = duty.get(id) ?? { count: 0, live: false };
@@ -100,6 +103,7 @@ export default function MyCrawlers() {
                 c.status === "rented" ? (
                   <span className="text-xs text-violet">Rented out — rewards go to the renter until the lease ends</span>
                 ) : (
+                  <div>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => toggle(c)}>
                       {c.status === "paused" ? <Play className="size-3" /> : <Pause className="size-3" />}
@@ -110,6 +114,8 @@ export default function MyCrawlers() {
                         Manage
                       </Button>
                     </Link>
+                  </div>
+                  {c.live && <GrokDutyToggle crawlerId={c.id} on={!!onDuty?.[c.id]} color={SOURCE_META[c.source].color} onChange={reloadDuty} />}
                   </div>
                 )
               }

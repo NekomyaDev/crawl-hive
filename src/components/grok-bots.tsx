@@ -260,3 +260,45 @@ export function GrokBots({ crawlers, bots, reload }: { crawlers: PublicCrawler[]
     </Card>
   );
 }
+
+// Переключатель под краулером: встроенный Grok Bot просыпается на каждом сигнале и пишет к нему вывод.
+export function GrokDutyToggle({ crawlerId, on, color, onChange }: { crawlerId: string; on: boolean; color: string; onChange: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const flip = async () => {
+    setBusy(true);
+    try {
+      await post("/api/bots/duty", { crawlerId, on: !on });
+      onChange();
+      if (!on) toast("Grok Bot is on duty: it wakes up on every new signal");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={busy}
+      onClick={flip}
+      className={cn(
+        "mt-3 flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors disabled:opacity-60",
+        on ? "border-honey/40 bg-honey/[0.06]" : "border-line hover:border-honey/30",
+      )}
+    >
+      <BotOcto size={22} color={on ? color : "#8a9099"} live={on} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-semibold">Grok Bot on duty</span>
+        <span className="block truncate text-[11px] text-muted">
+          {on ? "Reads every new signal and tells you: look, watch or avoid" : "Wakes up only on a new signal, costs nothing while it is quiet"}
+        </span>
+      </span>
+      <span className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", on ? "bg-honey" : "bg-line")}>
+        <span className={cn("absolute top-0.5 size-4 rounded-full bg-white shadow transition-all", on ? "left-[18px]" : "left-0.5")} />
+      </span>
+    </button>
+  );
+}

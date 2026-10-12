@@ -4,6 +4,7 @@ import { ExternalLink, Lock, Radio } from "lucide-react";
 import { SOURCE_META, cn, timeAgo } from "@/lib/utils";
 import { SIGNAL_KIND_LABEL } from "@/lib/spec";
 import type { Signal } from "@/lib/types";
+import { BotOcto } from "@/components/bot-octo";
 
 // Исход сигнала: ждём проверки цены, попал, не попал, или оценить нельзя (нет токена).
 export function OutcomeBadge({ s }: { s: Signal }) {
@@ -17,6 +18,37 @@ export function OutcomeBadge({ s }: { s: Signal }) {
   } as const;
   const m = map[o.status];
   return <span className={cn("num rounded border px-1.5 py-px text-[10px]", m.c)}>{m.t}</span>;
+}
+
+// Вывод встроенного Grok Bot под сигналом.
+const TAKE = {
+  look: { t: "LOOK", c: "text-lime border-lime/40 bg-lime/[0.06]" },
+  watch: { t: "WATCH", c: "text-honey border-honey/40 bg-honey/[0.06]" },
+  avoid: { t: "AVOID", c: "text-danger border-danger/40 bg-danger/[0.06]" },
+} as const;
+function BotTakeLine({ s }: { s: Signal }) {
+  const b = s.bot!;
+  const m = TAKE[b.take];
+  return (
+    <div className={cn("mt-1.5 flex items-start gap-2 rounded-lg border px-2 py-1.5 text-[12px]", m.c)}>
+      <BotOcto size={18} color="currentColor" className="mt-px shrink-0" />
+      <span className="min-w-0">
+        <span className="font-semibold">{m.t}</span>
+        {b.verdict && (
+          <span className="num ml-1.5 text-muted">
+            {b.verdict}
+            {b.score != null ? ` ${b.score}` : ""}
+          </span>
+        )}
+        <span className="ml-1.5 text-fg/90">{b.note}</span>
+        {s.token?.address && (
+          <a href={`/scan/${s.token.address}`} className="ml-1.5 text-sky hover:underline">
+            scan →
+          </a>
+        )}
+      </span>
+    </div>
+  );
 }
 
 function hostOf(u: string) {
@@ -64,6 +96,7 @@ export function SignalFeed({ signals, max = 30, showCrawler = true }: { signals:
               ))}
             </div>
           )}
+          {s.bot && !s.redacted && <BotTakeLine s={s} />}
           <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
             {showCrawler ? (
               <Link href={`/crawler/${s.crawlerId}`} className="hover:text-honey">

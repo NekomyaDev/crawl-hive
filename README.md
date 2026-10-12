@@ -150,7 +150,9 @@ Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. T
 
 ### Grok Bots (optional)
 
-Already run a Grok Bot (or Claude, Cursor, any MCP agent)? Put it on duty over your crawlers. Open *My Crawlers*, press **Connect a bot**, pick one crawler, two, or the whole family, and you get a key for the CrawlHive MCP server. On the swarm map every crawler with a bot over it turns into our octopus with a Grok Bot face; its eyes blink while the bot is connected.
+**One switch, no setup.** Every live crawler in *My Crawlers* has a **Grok Bot on duty** switch. Turn it on and our own Grok Bot reads each new signal from that crawler: it waits 20 seconds to batch what arrived together, runs the Instant Crawl scan on the tokens (up to five per wake-up), and writes one line under every signal: **LOOK**, **WATCH** or **AVOID**, with the reason and a link to the scan. The same line follows the signal to Telegram. It never polls: no signals, no calls, nothing spent. A wake-up costs about $0.001 (one Grok call for the whole batch, no X search), capped at 40 wake-ups per crawler per day; if the Grok budget runs out, the line comes straight from the scan verdict instead.
+
+**Bring your own agent.** Already run a Grok Bot (or Claude, Cursor, any MCP agent)? Put it on duty over your crawlers. Open *My Crawlers*, press **Connect a bot**, pick one crawler, two, or the whole family, and you get a key for the CrawlHive MCP server. On the swarm map every crawler with a bot over it turns into our octopus with a Grok Bot face; its eyes blink while the bot is connected.
 
 The point is cost. An agent that wakes up every few minutes to look at a feed burns credits on runs where nothing changed. Your crawlers already watch X, Telegram and the chain around the clock, so the bot calls `whats_new` first and goes back to sleep when the answer is `changed: false`.
 

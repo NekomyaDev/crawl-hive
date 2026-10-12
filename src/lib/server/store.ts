@@ -25,7 +25,7 @@ import { seedNetwork, mulberry32, crawlerId, pick, TICKERS, type Rng } from "./s
 import { loadSnapshot, scheduleSave, type Snapshot } from "./persist";
 import { normalizeSpec } from "../spec";
 import { TEMPLATE_IDS } from "../templates";
-import type { CrawlerSpec, CrawlerRunState, SignalOutcome } from "../types";
+import type { BotTake, CrawlerSpec, CrawlerRunState, SignalOutcome } from "../types";
 
 interface State {
   crawlers: Map<string, Crawler>;
@@ -99,8 +99,11 @@ function init(): State {
   for (const [w, b] of Object.entries(saved.burnedBy)) seed.burnedBy.set(w, b);
   const totalBurned = [...crawlers.values()].reduce((s, c) => s + c.burned, 0);
   // Планировщик живых краулеров стартует вместе с хранилищем (динамический импорт — без циклов).
+  // Grok Bot подписывается на сигналы раньше, чем планировщик успеет их найти.
+  setTimeout(() => import("./grok-duty").then((m) => m.startGrokDuty()).catch((e) => console.error(e)), 500);
   setTimeout(() => import("./crawl/scheduler").then((m) => m.startScheduler()).catch((e) => console.error(e)), 1000);
   setTimeout(() => import("./telegram").then((m) => m.startTelegram()).catch((e) => console.error(e)), 1500);
+
   return {
     crawlers,
     balances: seed.balances,
@@ -1006,8 +1009,20 @@ export function templateCounts(): Record<string, number> {
   return out;
 }
 
+// Разбор встроенного Grok Bot дописывается в сигнал позже, когда бот его прочитал.
+export function annotateSignal(id: string, bot: BotTake) {
+  const s = state();
+  const sig = s.liveSignals.find((x) => x.id === id);
+  if (!sig) return null;
+  sig.bot = bot;
+  markDirty(s);
+  return sig;
+}
+
 // Подписка на полные (не обрезанные) сигналы живых краулеров: доставка владельцу в Telegram.
-const liveSignalHooks = new Set<(sig: Signal) => void>();
+// На globalThis, как и само состояние: разные маршруты могут получить свою копию модуля, а подписчики общие.
+const hookHost = globalThis as unknown as { __crawlhiveSignalHooks?: Set<(sig: Signal) => void> };
+const liveSignalHooks = (hookHost.__crawlhiveSignalHooks ??= new Set<(sig: Signal) => void>());
 export function onLiveSignal(fn: (sig: Signal) => void) {
   liveSignalHooks.add(fn);
   return () => liveSignalHooks.delete(fn);

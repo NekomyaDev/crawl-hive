@@ -180,6 +180,17 @@ function remindExpiring() {
   }
 }
 
+// Разбор встроенного Grok Bot приходит отдельным сообщением вслед за сигналом.
+const TAKE_ICON = { look: "👀", watch: "⏳", avoid: "⛔" } as const;
+export function deliverBotTake(sig: Signal) {
+  const chat = telegramEnabled() && sig.owner ? chatFor(sig.owner) : null;
+  if (!chat || !sig.bot) return;
+  const b = sig.bot;
+  const score = b.verdict ? ` · ${esc(b.verdict)}${b.score != null ? ` ${b.score}` : ""}` : "";
+  const scan = sig.token?.address ? `\n<a href="${siteUrl()}/scan/${sig.token.address}">Full scan</a>` : "";
+  send(chat, `🐙 <b>Grok Bot</b> on ${esc(sig.crawlerName)}${sig.ticker ? ` · <b>$${esc(sig.ticker)}</b>` : ""}\n${TAKE_ICON[b.take]} <b>${b.take.toUpperCase()}</b>${score}\n${esc(b.note)}${scan}`);
+}
+
 export function startTelegram() {
   const st = tg();
   if (st.started || !telegramEnabled()) return;

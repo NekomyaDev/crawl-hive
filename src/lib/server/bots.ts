@@ -7,6 +7,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { ApiError, getMeta, listCrawlers, mySignals, setMeta } from "./store";
 import type { Signal } from "../types";
+import { dutyCrawlerIds } from "./grok-duty";
 
 const KEY = "grokbots";
 const MAX_PER_WALLET = 10;
@@ -124,6 +125,11 @@ export function botsByCrawler(): Map<string, { count: number; live: boolean }> {
       const cur = m.get(id) ?? { count: 0, live: false };
       m.set(id, { count: cur.count + 1, live: cur.live || live });
     }
+  }
+  // Встроенный бот с переключателя тоже стоит над краулером и всегда на связи.
+  for (const id of dutyCrawlerIds()) {
+    const cur = m.get(id) ?? { count: 0, live: false };
+    m.set(id, { count: cur.count + 1, live: true });
   }
   return m;
 }

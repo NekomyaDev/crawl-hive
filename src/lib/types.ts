@@ -114,6 +114,16 @@ export interface Signal {
   urls?: string[]; // источники: посты, сообщения, страница пары
   token?: { chain: string; address: string; symbol?: string };
   outcome?: SignalOutcome;
+  bot?: BotTake; // разбор встроенного Grok Bot: смотреть, следить или обходить стороной
+}
+
+export interface BotTake {
+  take: "look" | "watch" | "avoid";
+  note: string;
+  verdict?: string; // вердикт Instant Crawl по токену сигнала
+  score?: number | null;
+  by: "grok" | "scan"; // grok — разобрал Grok; scan — бюджет Grok кончился, вывод прямо из скана
+  at: number;
 }
 
 export interface SignalOutcome {
