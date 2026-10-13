@@ -12,6 +12,10 @@ import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
+import { xrayEvm, xrayFactors, xrayLive, type XRayReport } from "./scan-xray";
+import { t22Factors, xraySolana, type T22Report } from "./scan-t22";
+import { siteFactors, xraySite, type SiteReport } from "./scan-site";
+import type { XRayView } from "@/components/xray-panel";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
 
@@ -47,6 +51,7 @@ export interface ScanResult {
   bundles?: BundleReport;
   dev?: DevReport;
   evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
+  xray?: XRayView; // Contract X-Ray: рычаги владельца из байткода (EVM) или расширений Token-2022 (Solana)
   core?: string; // базовый актив сети (SOL, USDC…): мем-проверки к нему не применяются
   clones: number;
   original?: boolean; // самый крупный из токенов с этим тикером
@@ -280,6 +285,16 @@ export async function runScan(
           })
       : Promise.resolve(undefined);
 
+  // Contract X-Ray: что владелец может сделать с держателями. На EVM читаем байткод (работает и без
+  // опубликованного исходника), на Solana — расширения Token-2022.
+  const xrayP: Promise<XRayReport | T22Report | undefined> = core
+    ? Promise.resolve(undefined)
+    : EVM_SCAN[chain]
+      ? xrayEvm(address, chain)
+      : chain === "solana"
+        ? withTimeout(xraySolana(rpcConnection(), address), 10_000).catch(() => undefined)
+        : Promise.resolve(undefined);
+
   // Связанные кошельки: кто профинансировал топ-держателей. Идёт после держателей, ему нужен их список.
   const bundlesP: Promise<BundleReport | undefined> = holdersP.then((h) =>
     h
@@ -332,6 +347,23 @@ export async function runScan(
 
   const market = await marketP;
   const symbol = sym(market?.pair.baseToken.symbol);
+
+  // Сайт проекта: у мем-лендинга нет причин просить у кошелька апрувы — так прячутся дрейнеры.
+  const site = (market?.pair.info?.websites ?? []).map((w) => (typeof w === "string" ? w : (w as { url?: string })?.url)).find((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+  const siteP: Promise<SiteReport | undefined> =
+    site && !core
+      ? withTimeout(xraySite(site), 20_000)
+          .then((r) => {
+            if (r)
+              log({
+                crawler: "crawler_site",
+                text: r.error ? `${r.host}: site unreachable, not checked` : r.findings.length ? `${r.host}: ${r.findings.map((f) => f.label.toLowerCase()).join(", ")}` : `${r.host}: ${r.scripts} scripts read, no drainer code`,
+                tone: r.findings.some((f) => f.severity === "high") ? "bad" : r.findings.some((f) => f.severity === "medium") ? "warn" : r.error ? "info" : "ok",
+              });
+            return r;
+          })
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
 
   // Клоны: другие токены с тем же тикером. Если у кого-то из них ликвидность больше, этот, скорее всего, копия.
   const clonesP: Promise<{ n: number; biggerTwin?: number; original?: boolean }> = symbol && !core
@@ -402,7 +434,13 @@ export async function runScan(
     return found;
   });
 
-  const [holders, cloneInfo, telegram, bundles, dev, evm] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP]);
+  const [holders, cloneInfo, telegram, bundles, dev, evm, xr, siteR] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP, xrayP, siteP]);
+  let xray = xr && "program" in xr ? xrayViewSol(xr) : xr ? xrayViewEvm(xr, !!evm?.owner) : undefined;
+  if (siteR) {
+    const siteView = { host: siteR.host, wallet: siteR.wallet, error: siteR.error, findings: siteR.findings.map((f) => ({ label: f.label, note: f.note, severity: f.severity, detail: f.evidence })) };
+    xray = xray ? { ...xray, site: siteView } : { kind: chain === "solana" ? "solana" : "evm", summary: "token contract not read", findings: [], site: siteView };
+  }
+  if (xray) log({ crawler: "crawler_xray", text: `${xray.summary}${xray.findings.length ? ` · ${xray.findings.filter((f) => f.severity !== "low").map((f) => f.label.toLowerCase()).join(", ") || "only launch mechanics"}` : " · nothing the owner can pull"}`, tone: xray.findings.some((f) => f.severity === "high") ? "bad" : xray.findings.some((f) => f.severity === "medium") ? "warn" : "ok" });
   const clones = cloneInfo.n;
 
   // ---------- оценка ----------
@@ -442,6 +480,9 @@ export async function runScan(
     if ((evm.top10 ?? 0) > 90) hit("Concentrated", -15, `the top 10 wallets (pool included) hold ${pct(evm.top10!)}`);
     if (evm.holders !== undefined && evm.holders < 50) hit("Few holders", -10, `only ${evm.holders} wallets hold it`);
   }
+  if (xr && "program" in xr) for (const f of t22Factors(xr)) hit(f.label, f.impact, f.note);
+  else if (xr) for (const f of xrayFactors(xr, !!evm?.owner)) hit(f.label, f.impact, f.note);
+  if (siteR) for (const f of siteFactors(siteR)) hit(f.label, f.impact, f.note);
   if (cloneInfo.biggerTwin) hit("Possible copy", -45, `a token worth ${usd(cloneInfo.biggerTwin)} already uses this ticker`);
   else if (clones > 2 && !cloneInfo.original) hit("Copycats", -10, `${clones} other tokens share the ticker`);
   const buys = p?.txns?.h1?.buys ?? 0;
@@ -467,7 +508,7 @@ export async function runScan(
   // уже в первые минуты, и молчать о них нельзя.
   const SERIOUS = ["Bundled", "Linked wallets", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
   const tooEarly =
-    !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !factors.some((f) => SERIOUS.includes(f.label));
+    !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !xray?.findings.some((f) => f.severity === "high") && !factors.some((f) => SERIOUS.includes(f.label));
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";
   const worst = [...factors].sort((a, b) => a.impact - b.impact)[0];
   const reason = tooEarly
@@ -507,6 +548,7 @@ export async function runScan(
     bundles,
     dev,
     evm,
+    xray,
     core,
     clones,
     original: !!cloneInfo.original,
@@ -527,6 +569,26 @@ export async function runScan(
   // Каждый вердикт попадает в Track Record: через сутки видно, сбылся ли он.
   trackVerdict(result, opts.src ?? (opts.record === false ? "crawler" : "scan"));
   return result;
+}
+
+// Отчёты X-Ray в общий вид для интерфейса: одинаковые строки для EVM и Solana.
+function xrayViewEvm(x: XRayReport, ownerActive: boolean): XRayView {
+  const live = xrayLive(x, ownerActive);
+  const dead = x.powers.length - live.filter((p) => p.key !== "selfdestruct").length;
+  const proxy = x.proxy ? ` · proxy (${x.proxy.kind})` : "";
+  return {
+    kind: "evm",
+    summary: `read ${x.selectors} functions from the bytecode${x.unknown ? `, ${x.unknown} unknown` : ""}${proxy}${dead > 0 ? ` · ${dead} owner power${dead > 1 ? "s" : ""} dead (ownership renounced)` : ""}`,
+    findings: live.map((p) => ({ label: p.label, note: p.note, severity: p.severity, detail: p.fns.length ? p.fns.slice(0, 4).join(", ") : undefined })),
+  };
+}
+
+function xrayViewSol(r: T22Report): XRayView {
+  return {
+    kind: "solana",
+    summary: r.program === "spl" ? "classic SPL token: no extensions" : `Token-2022 · ${r.extensions.length ? `${r.extensions.length} extension${r.extensions.length > 1 ? "s" : ""} of note` : "metadata only"}`,
+    findings: r.extensions.map((e) => ({ label: e.label, note: e.note, severity: e.severity, detail: e.detail })),
+  };
 }
 
 function devTone(d: DevReport): ScanLog["tone"] {

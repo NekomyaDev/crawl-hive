@@ -147,12 +147,22 @@ function caption(r: ScanResult, take: { take: string; conf: number } | null, com
     esc(r.reason),
     mk,
     ...flags.map((f) => `▫️ ${esc(f.label)}${compact ? "" : `: ${esc(f.note).slice(0, 80)}`}`),
+    xrayLine(r, compact),
     take ? `⚡ Jev: <b>${TAKE_LABEL[take.take] ?? take.take}</b> · ${Math.round(take.conf * 100)}% sure` : "",
     compact ? "" : `<code>${esc(r.id)}</code>`,
   ]
     .filter(Boolean)
     .join("\n")
     .slice(0, 1000);
+}
+
+// Одна строка Contract X-Ray: самые опасные рычаги владельца и находки на сайте проекта.
+function xrayLine(r: ScanResult, compact = false) {
+  const x = r.xray;
+  if (!x) return "";
+  const bad = [...x.findings, ...(x.site?.findings ?? [])].filter((f) => f.severity === "high");
+  if (bad.length) return `🩻 X-Ray: <b>${bad.slice(0, compact ? 2 : 3).map((f) => esc(f.label.toLowerCase())).join(", ")}</b>`;
+  return compact ? "" : `🩻 X-Ray: ${x.findings.some((f) => f.severity === "medium") ? "minor owner powers only" : "nothing the owner can pull"}`;
 }
 
 const chartUrl = (r: ScanResult) => `https://dexscreener.com/${r.chain}/${r.id}`;

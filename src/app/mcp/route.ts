@@ -29,7 +29,7 @@ const TOOLS = [
   {
     name: "scan_token",
     description:
-      "Full CrawlHive safety scan of a memecoin: market, holders, bundled wallets, dev history, copycat tickers, Telegram mentions; Robinhood Chain and BNB Chain add owner and honeypot. Returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY). Takes 5-20 seconds.",
+      "Full CrawlHive safety scan of a memecoin: market, holders, bundled wallets, dev history, copycat tickers, Telegram mentions; Robinhood Chain and BNB Chain add owner and honeypot; every scan includes Contract X-Ray (owner powers read from the EVM bytecode, or risky Token-2022 extensions on Solana) and a check of the project website for wallet-drainer code. Returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY). Takes 5-20 seconds.",
     inputSchema: {
       type: "object",
       properties: {
@@ -76,7 +76,8 @@ function scanBrief(r: ScanResult) {
     holders: r.holders,
     bundles: r.bundles ? { linkedGroups: r.bundles.clusters, freshWallets: r.bundles.fresh } : undefined,
     dev: r.dev,
-    robinhood: r.evm,
+    evm: r.evm,
+    contractXray: r.xray,
     copycats: r.clones,
     original: r.original,
     page: `https://crawlhive.xyz/scan/${r.id}`,

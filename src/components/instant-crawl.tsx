@@ -2,6 +2,7 @@
 // Instant Crawl на главной: вставь адрес токена или $тикер — краулеры сканируют его за секунды, без кошелька.
 // Ход работы виден в живом логе, результат — оценка 0–100 с причиной. Под ним кнопка «следить постоянно»:
 // спавн краулера-наблюдателя за этим токеном. ?scan=<адрес> в URL запускает скан сразу (для ссылок).
+import { XRayPanel, type XRayView } from "@/components/xray-panel";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -55,6 +56,7 @@ interface Result {
   bundles?: { checked: number; clusters: { wallets: number; pct: number; funder: string }[]; fresh: { wallets: number; pct: number } };
   dev?: { creator: string; launched: number; graduated: number; walletAgeHours?: number; walletTxs: number; holdsPct?: number };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
+  xray?: XRayView;
   core?: string;
   clones: number;
   original?: boolean;
@@ -409,6 +411,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </a>
         ))}
       </div>
+      {r.xray && <XRayPanel x={r.xray} />}
       {x !== undefined && <XPanel x={x} onCheck={onCheckX} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <WatchButton r={r} />

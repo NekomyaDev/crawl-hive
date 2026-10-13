@@ -13,6 +13,7 @@ Three days ago CrawlHive was a scanner with crawlers behind it. Since then we sh
 - 📱 CrawlHive is now an app inside Telegram: scan, Launch Radar, watchlist and your crawlers, one tap from @crawlhivebot.
 - 🤖 The bot scans any token in chat, watches it for rugs, answers contract addresses in groups and works inline in any chat.
 - 🟡 Scans now cover BNB Chain and every Solana launchpad, Meteora included.
+- 🩻 Contract X-Ray reads the token's code, even unpublished, and lists what the team can still do to holders.
 - 🔐 We audited our own code and closed more than a dozen holes before anyone else found them.
 - 💸 The same product costs 8 to 50 times less to run, with a hard ceiling of $1.25 a day on AI.
 
@@ -58,6 +59,18 @@ The agent gets read access to those crawlers and free token scans, nothing more.
 Why it matters: an agent that wakes up every few minutes to check a feed burns credits on runs where nothing happened. Your crawlers already watch X, Telegram and the chain around the clock, so the agent asks "anything new?" first and goes back to sleep when the answer is no. Tested live through the Grok API: $0.0006 for a quiet run, $0.006 when there were signals.
 
 [ IMAGE 05: images/05-agents.png ]
+
+## 🩻 Contract X-Ray: we reverse engineer every token
+
+AI agents are learning to take apart closed-source software. We pointed the same idea at the place memecoin traps actually hide: the token contract.
+
+- On BNB Chain and Robinhood Chain the scanner reads the contract's bytecode straight from the chain, even when the team never published the source. It lists what the team can still do to you: mint new tokens, blacklist your wallet, raise the sell tax, stop trading, cap how much you can sell, or swap the whole contract through a proxy. If ownership is renounced, those powers are shown as dead.
+- On Solana it reads Token-2022 extensions, the newer token standard that can carry nasty switches: a permanent delegate that can take tokens from any wallet, a transfer hook that can block sells, a transfer tax, wallets frozen by default.
+- And it opens the project's website and checks the code for wallet drainers: hidden unlimited approvals, transfers to a hard-coded wallet, known drainer kits.
+
+Every finding costs points in the score and shows up in a Contract X-Ray panel on the site, in the Telegram app and on the bot's scan card. Agents connected over MCP get it too.
+
+[ IMAGE 12: images/12-contract-xray.png ]
 
 ## 🎯 Track Record: we publish our misses
 

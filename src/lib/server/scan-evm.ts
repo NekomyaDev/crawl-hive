@@ -11,7 +11,7 @@ export const EVM_SCAN: Record<string, { gecko: string; rpc?: () => string }> = {
   bsc: { gecko: "bsc", rpc: () => process.env.BSC_RPC_URL?.trim() || "https://bsc-dataseed.bnbchain.org" },
 };
 
-async function chainRpc<T>(chain: string, method: string, params: unknown[]): Promise<T> {
+export async function chainRpc<T>(chain: string, method: string, params: unknown[]): Promise<T> {
   const url = EVM_SCAN[chain]?.rpc?.();
   if (!url) return evmRpc<T>(method, params); // Robinhood Chain — общий RPC из robinhood.ts
   const r = await fetch(url, {

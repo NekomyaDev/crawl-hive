@@ -10,6 +10,7 @@ import { savedScan, type ScanResult } from "@/lib/server/scan";
 import { CHAIN_LABEL, VERDICT_COLOR, VERDICT_LABEL, explorerToken, shareText } from "@/lib/scan-share";
 import { ShareOnX } from "@/components/share-on-x";
 import { XVoices } from "@/components/x-voices";
+import { XRayPanel } from "@/components/xray-panel";
 import { cn, timeAgo } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/scan/[id]">): Promise<Metadata> {
@@ -96,6 +97,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
         </div>
 
         <Factors r={r} />
+
+        {r.xray && <XRayPanel x={r.xray} className="mt-4" />}
 
         {r.x && (
           <div className="mt-4 rounded-lg border border-line bg-panel-2/60 p-3 text-sm">

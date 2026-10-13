@@ -46,6 +46,7 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 **Latest (Oct 13):**
+- 🩻 **Contract X-Ray: we reverse engineer every token.** On BNB Chain and Robinhood Chain the scanner reads the deployed bytecode, even when the source is not published, and lists what the team can still do to holders: mint, blacklist wallets, change the tax, stop trading, cap sells, upgrade the contract through a proxy. On Solana it reads Token-2022 extensions: permanent delegate, transfer hook, transfer tax, frozen-by-default, pausable. The project website is checked for wallet-drainer code. Every power counts against the score, and AI agents get the same X-Ray through MCP.
 - 🔐 **Security audit.** Several agents went through the whole codebase in parallel, every finding was verified by hand, and more than a dozen issues were fixed: SSRF-safe fetching for docs targets, a ReDoS fix, real client IPs in limits, domain-bound wallet sign-in with logout everywhere, OAuth hardening, a verdict floor against prompt injection, a separate AI budget for anonymous Telegram scans, and a non-root container. Details in [Trust & safety](#trust--safety).
 - 💬 **Bot: welcome banner, inline and support.** `/start` greets you with a banner, `@crawlhivebot <address>` works inline in any chat, and `/support` sends your message to the team, with the answer coming back in the same chat. Group settings can be changed by group admins only.
 - 🟡 **BNB Chain and Meteora.** Scans now cover BNB Chain tokens (holders, honeypot, contract owner, four.meme bonding curve) and every Solana launchpad: pump.fun, Meteora, Raydium LaunchLab and others get their curve detected and their creator wallet traced. A `0x` address finds its chain by itself.
@@ -190,6 +191,20 @@ Signals are **yours alone**. They land in *My Signals* with links to the source 
 - **RPC limiter.** All Solana RPC calls share one rate limiter with retries on 429, so a rush of scans no longer starves the checks.
 
 What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
+
+### Contract X-Ray
+
+Closed-source contracts are where the traps hide, so the scanner reads the code itself.
+
+- **EVM (BNB Chain, Robinhood Chain).** `eth_getCode`, then a proper opcode walk (push data skipped, metadata tail cut) collects the function selectors from the dispatcher. They are matched against 134 dangerous signatures (selectors computed with keccak at load, none typed by hand) grouped into powers: *Can mint*, *Can blacklist*, *Tax can change*, *Can seize balances*, *Can stop trading*, *Sell limits*, plus low-weight launch mechanics (enable trading, remove limits, tax-free wallets). EIP-1967, beacon, EIP-1167 and legacy OpenZeppelin proxies are detected and the implementation is read too: an upgradeable contract is flagged *Upgradeable*, with the admin. `SELFDESTRUCT` is flagged. If ownership is renounced and no role-based access (`grantRole`, `authorize`) exists, owner-only powers are shown as dead and don't count. Unknown functions are counted, never guessed.
+- **Solana.** Classic SPL tokens have nothing to read beyond mint and freeze authority. Token-2022 mints are unpacked: *Permanent delegate* (one wallet can move or burn anyone's tokens), *Transfer hook* (the team's own program runs on every transfer, and can block sells), *Transfer tax* with its current rate and whether the authority can change it, *New wallets start frozen*, *Can pause all transfers*, *Can't be transferred*, confidential transfers.
+- **Project website.** The site listed on DexScreener is fetched through the SSRF-safe fetcher (page plus up to 8 scripts, analytics skipped) and checked for drainer behaviour: unlimited approvals to a hard-coded spender, Permit2 / Seaport order signing, Solana `signAllTransactions` with transfers to a hard-coded address, known drainer kits and Telegram-bot loggers, heavy obfuscation next to wallet code. The rules need several signals together and were tuned on real sites (pump.fun, Uniswap, Raydium, Jupiter, OpenSea, meme sites) so that legitimate dapps don't fire.
+
+Each finding becomes a scored factor (for example *Can mint* −25, *Permanent delegate* −35, *Drainer signs* −40), shows up in the 🩻 Contract X-Ray panel on the site, in the Telegram app and on the bot's scan card, and is returned to agents as `contractXray` by the MCP `scan_token` tool. Code: `src/lib/server/scan-xray.ts`, `scan-t22.ts`, `scan-site.ts`.
+
+<p align="center">
+  <img src="docs/images/contract-xray.png" alt="Contract X-Ray on a Token-2022 mint: permanent delegate, switchable transfer hook, confidential transfers" width="85%">
+</p>
 
 ### Track Record and Launch Radar
 

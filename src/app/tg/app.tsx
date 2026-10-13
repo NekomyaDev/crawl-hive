@@ -1,6 +1,7 @@
 "use client";
 // CrawlHive внутри Telegram: скан, Launch Radar, список наблюдения, свои краулеры, Track Record.
 // Пользователя узнаём по initData от Telegram (подпись проверяет сервер), список наблюдения общий с ботом.
+import { XRayPanel, type XRayView } from "@/components/xray-panel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Bell, Bug, ClipboardPaste, Eye, Radar, ScanSearch, Share2, Target, Trash2, X as XIcon } from "lucide-react";
@@ -63,6 +64,7 @@ interface ScanRes {
   reason: string;
   factors: Factor[];
   market?: { priceUsd?: number; liquidityUsd?: number; fdv?: number; ageHours?: number; volume1h?: number };
+  xray?: XRayView;
 }
 interface Me {
   user: { id: number; name: string; username: string | null };
@@ -275,6 +277,11 @@ function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: 
                 </li>
               ))}
             </ul>
+          )}
+          {res.xray && (
+            <div className="border-t border-line p-3">
+              <XRayPanel x={res.xray} />
+            </div>
           )}
           <div className="grid grid-cols-3 gap-2 border-t border-line p-3">
             <button onClick={watch} disabled={!inTg || watched === res.id} className="flex flex-col items-center gap-1 rounded-xl border border-line py-2 text-xs disabled:opacity-60">
