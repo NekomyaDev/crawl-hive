@@ -1,4 +1,6 @@
-// Доставка сигналов в Telegram. Бот работает через long polling (вебхук и открытый порт не нужны).
+// Telegram-бот: доставка сигналов краулеров владельцам, плюс открытые всем функции — скан любого токена
+// прямо в чате, список наблюдения с оповещениями (ликвидность вытащили, цена −50%, вердикт стал DANGER)
+// и свежие запуски из Launch Radar. Бот работает через long polling (вебхук и открытый порт не нужны).
 // Привязка: вошедший кошелёк получает одноразовую ссылку t.me/<bot>?start=<код>, бот по коду
 // запоминает чат за кошельком. Дальше каждый сигнал живого краулера уходит владельцу в личку,
 // а за 3 дня до конца оплаченного срока бот напоминает о продлении.
@@ -7,6 +9,7 @@ import { randomBytes } from "node:crypto";
 import type { Signal } from "../types";
 import { SIGNAL_KIND_LABEL } from "../spec";
 import { expiringCrawlers, getMeta, metaEntries, onLiveSignal, setMeta } from "./store";
+import type { ScanResult } from "./scan";
 
 const API = "https://api.telegram.org";
 const CODE_TTL_MS = 15 * 60_000;
@@ -50,10 +53,20 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 // Сообщения шлём по одному: так не упираемся в лимиты Telegram и сохраняем порядок.
-function send(chatId: string, html: string) {
+type Keyboard = { text: string; url?: string; callback_data?: string }[][];
+
+function send(chatId: string, html: string, keyboard?: Keyboard) {
   const st = tg();
   st.queue = st.queue
-    .then(() => call("sendMessage", { chat_id: chatId, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true } }))
+    .then(() =>
+      call("sendMessage", {
+        chat_id: chatId,
+        text: html,
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
+      }),
+    )
     .catch((e: Error & { code?: number }) => {
       // Пользователь заблокировал бота — отвязываем его кошельки, чтобы не долбиться впустую.
       if (e.code === 403) {
@@ -104,11 +117,222 @@ function signalMessage(sig: Signal) {
   ].join("\n");
 }
 
-async function handleUpdate(u: { message?: { chat: { id: number; type: string }; text?: string } }) {
+// ---------- скан и список наблюдения ----------
+
+const SCANS_PER_HOUR = 10; // сканов на чат в час: скан бесплатный для нас (без X), но ходит в RPC
+const WATCH_MAX = 5;
+const WATCH_MS = 7 * 86400_000;
+const WATCH_CHECK_MS = 10 * 60_000;
+const WATCH_RESCAN_MS = 3 * 3600_000;
+const ADDR_RE = /\b(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/;
+
+interface Watch {
+  id: string;
+  chain: string;
+  symbol: string;
+  verdict: string;
+  price0: number;
+  liq0: number;
+  at: number;
+  rescanAt: number;
+  alerted: string[]; // о чём уже предупредили: liq, dump, danger, gone
+}
+
+const scanHits = new Map<string, number[]>();
+function allowScan(chatId: string) {
+  const now = Date.now();
+  const hits = (scanHits.get(chatId) ?? []).filter((t) => now - t < 3600_000);
+  if (hits.length >= SCANS_PER_HOUR) return false;
+  hits.push(now);
+  scanHits.set(chatId, hits);
+  return true;
+}
+
+function watches(): Record<string, Watch[]> {
+  try {
+    return JSON.parse(getMeta("tgwatch") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+const saveWatches = (w: Record<string, Watch[]>) => setMeta("tgwatch", JSON.stringify(w));
+
+// Запрос к скану из текста: адрес, ссылка DexScreener / pump.fun или $TICKER.
+function scanQuery(text: string): string | null {
+  const t = text.trim();
+  if (/^\$[A-Za-z][A-Za-z0-9]{1,11}$/.test(t)) return t;
+  if (/dexscreener\.com|pump\.fun|geckoterminal\.com/.test(t)) return t.split(/\s+/).find((x) => /^https?:\/\//.test(x)) ?? null;
+  return t.match(ADDR_RE)?.[1] ?? null;
+}
+
+const VERDICT_ICON: Record<string, string> = { CLEAN: "🟢", OK: "🟢", RISKY: "🟠", DANGER: "🔴", TOO_EARLY: "⚪️" };
+
+function scanMessage(r: ScanResult) {
+  const flags = r.factors.filter((f) => f.impact < 0).slice(0, 4);
+  const m = r.market;
+  const mk = m ? [m.liquidityUsd ? `liq $${fmtUsd(m.liquidityUsd)}` : "", m.fdv ? `FDV $${fmtUsd(m.fdv)}` : "", m.ageHours != null ? `age ${m.ageHours < 1 ? `${Math.round(m.ageHours * 60)}m` : `${Math.round(m.ageHours)}h`}` : ""].filter(Boolean).join(" · ") : "";
+  return [
+    `${VERDICT_ICON[r.verdict] ?? "⚪️"} <b>$${esc(r.symbol)}</b> · <b>${r.score ?? "—"} ${r.verdict.replace("_", " ")}</b>`,
+    esc(r.reason),
+    mk,
+    ...flags.map((f) => `▫️ ${esc(f.label)}: ${esc(f.note).slice(0, 90)}`),
+    `<code>${esc(r.id)}</code>`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const fmtUsd = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`);
+
+async function doScan(chatId: string, q: string) {
+  if (!allowScan(chatId)) {
+    send(chatId, `Up to ${SCANS_PER_HOUR} scans an hour per chat. Full scans are always free on ${siteUrl()}`);
+    return;
+  }
+  call("sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
+  try {
+    const { runScan } = await import("./scan");
+    const r = await runScan(q, () => {}, q.startsWith("0x") ? "robinhood" : undefined);
+    send(chatId, scanMessage(r), [
+      [
+        { text: "Full scan", url: `${siteUrl()}/scan/${r.id}` },
+        { text: "👁 Watch 7 days", callback_data: `w:${r.id}` },
+      ],
+    ]);
+  } catch (e) {
+    send(chatId, `Could not scan that: ${esc((e as Error).message).slice(0, 160)}`);
+  }
+}
+
+async function addWatch(chatId: string, id: string) {
+  const all = watches();
+  const mine = (all[chatId] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
+  if (mine.some((w) => w.id === id)) return send(chatId, "Already on your watchlist. /watchlist");
+  if (mine.length >= WATCH_MAX) return send(chatId, `Your watchlist is full (${WATCH_MAX}). Remove one with /unwatch.`);
+  const { savedScan, runScan } = await import("./scan");
+  const r = savedScan(id) ?? (await runScan(id, () => {}, id.startsWith("0x") ? "robinhood" : undefined, { record: false }).catch(() => undefined));
+  if (!r?.market?.priceUsd) return send(chatId, "This token has no tradable pair yet, nothing to watch.");
+  const now = Date.now();
+  mine.push({ id, chain: r.chain, symbol: r.symbol, verdict: r.verdict, price0: r.market.priceUsd, liq0: r.market.liquidityUsd ?? 0, at: now, rescanAt: now + WATCH_RESCAN_MS, alerted: [] });
+  all[chatId] = mine;
+  saveWatches(all);
+  send(chatId, `👁 Watching <b>$${esc(r.symbol)}</b> for 7 days. I will ping you if liquidity is pulled, the price falls 50% or the verdict turns DANGER.`);
+}
+
+// Раз в 10 минут: цена и ликвидность всех наблюдаемых токенов, раз в 3 часа — новый скан.
+async function checkWatches() {
+  const all = watches();
+  const now = Date.now();
+  const byChain = new Map<string, string[]>();
+  for (const [chat, list] of Object.entries(all)) {
+    all[chat] = list.filter((w) => now - w.at < WATCH_MS);
+    if (!all[chat].length) delete all[chat];
+    for (const w of all[chat] ?? []) byChain.set(w.chain, [...new Set([...(byChain.get(w.chain) ?? []), w.id])]);
+  }
+  const { bestPairs } = await import("./crawl/dexscreener");
+  const pairs = new Map<string, Awaited<ReturnType<typeof bestPairs>> extends Map<string, infer P> ? P | undefined : never>();
+  for (const [chain, ids] of byChain) {
+    const got = await bestPairs(chain, ids).catch(() => null);
+    if (got) for (const id of ids) pairs.set(id, got.get(id));
+  }
+  for (const [chat, list] of Object.entries(all)) {
+    for (const w of list) {
+      if (!pairs.has(w.id)) continue;
+      const p = pairs.get(w.id);
+      const once = (k: string, html: string) => {
+        if (w.alerted.includes(k)) return;
+        w.alerted.push(k);
+        send(chat, html, [[{ text: "Open scan", url: `${siteUrl()}/scan/${w.id}` }]]);
+      };
+      const price = Number(p?.priceUsd);
+      if (!p || !(price > 0)) {
+        once("gone", `🚨 <b>$${esc(w.symbol)}</b>: the trading pair is gone. Liquidity was likely pulled.`);
+        continue;
+      }
+      const liq = p.liquidity?.usd ?? 0;
+      const chg = ((price - w.price0) / w.price0) * 100;
+      if (w.liq0 > 0 && liq < w.liq0 * 0.3) once("liq", `🚨 <b>$${esc(w.symbol)}</b>: liquidity fell from $${fmtUsd(w.liq0)} to $${fmtUsd(liq)}.`);
+      if (chg <= -50) once("dump", `🔻 <b>$${esc(w.symbol)}</b> is down ${Math.round(chg)}% since you started watching.`);
+    }
+  }
+  saveWatches(all);
+  // Пересканы по одному, чтобы не нагружать RPC.
+  const { runScan } = await import("./scan");
+  for (const [chat, list] of Object.entries(all)) {
+    for (const w of list) {
+      if (w.rescanAt > now || w.alerted.includes("danger")) continue;
+      w.rescanAt = now + WATCH_RESCAN_MS;
+      const r = await runScan(w.id, () => {}, w.chain === "robinhood" ? "robinhood" : undefined, { record: false }).catch(() => null);
+      if (r && r.verdict === "DANGER" && w.verdict !== "DANGER") {
+        w.alerted.push("danger");
+        send(chat, `🔴 <b>$${esc(w.symbol)}</b> turned <b>DANGER</b> (${r.score ?? "—"}): ${esc(r.reason)}`, [[{ text: "Open scan", url: `${siteUrl()}/scan/${w.id}` }]]);
+      }
+      if (r) w.verdict = r.verdict;
+    }
+  }
+  saveWatches(all);
+}
+
+async function handleCallback(q: { id: string; data?: string; message?: { chat: { id: number } } }) {
+  call("answerCallbackQuery", { callback_query_id: q.id }).catch(() => {});
+  const chatId = q.message ? String(q.message.chat.id) : null;
+  if (!chatId || !q.data) return;
+  if (q.data.startsWith("w:")) await addWatch(chatId, q.data.slice(2));
+}
+
+async function radarMessage(chatId: string) {
+  const { radarFeed } = await import("./radar");
+  const f = radarFeed();
+  if (!f.items.length) return send(chatId, "Launch Radar has nothing to show yet. Try again in a few minutes.");
+  send(
+    chatId,
+    [`📡 <b>Launch Radar</b> · last ${Math.min(6, f.items.length)} launches (${f.delayMin} min delay)`, ...f.items.slice(0, 6).map((e) => `${VERDICT_ICON[e.verdict] ?? "⚪️"} <a href="${siteUrl()}/scan/${e.id}">$${esc(e.symbol)}</a> · ${e.score ?? "—"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)}`), `\nCrawler owners get launches like these live: ${siteUrl()}/spawn`].join("\n"),
+  );
+}
+
+const HELP = () =>
+  [
+    "🐝 <b>CrawlHive</b>: memecoin crawlers that never sleep.",
+    "",
+    "Send a token address, a DexScreener / pump.fun link or a $TICKER and I scan it: holders, bundles, dev history, copycats.",
+    "",
+    "/watchlist: tokens you watch · /unwatch &lt;address&gt;",
+    "/radar: fresh launches the swarm scanned",
+    "/status · /stop: crawler signals linked to your wallet",
+    "",
+    `Your own crawlers and their signals: ${siteUrl()}/signals`,
+  ].join("\n");
+
+async function handleUpdate(u: {
+  message?: { chat: { id: number; type: string }; text?: string };
+  callback_query?: { id: string; data?: string; message?: { chat: { id: number } } };
+}) {
+  if (u.callback_query) return handleCallback(u.callback_query);
   const m = u.message;
-  if (!m?.text || m.chat.type !== "private") return;
+  if (!m?.text) return;
   const chatId = String(m.chat.id);
-  const [cmd, arg] = m.text.trim().split(/\s+/, 2);
+  const [cmd0, arg] = m.text.trim().split(/\s+/, 2);
+  const cmd = cmd0.replace(/@\w+$/, "");
+  // В группах отвечаем только на /scan и /radar, чтобы не мешать разговору.
+  if (m.chat.type !== "private") {
+    if (cmd === "/scan" && arg) return doScan(chatId, arg);
+    if (cmd === "/radar") return radarMessage(chatId);
+    return;
+  }
+  if (cmd === "/scan") return arg ? doScan(chatId, arg) : send(chatId, "Send /scan followed by a token address or $TICKER.");
+  if (cmd === "/radar") return radarMessage(chatId);
+  if (cmd === "/watchlist") {
+    const mine = (watches()[chatId] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
+    return send(chatId, mine.length ? ["👁 <b>Watching</b>", ...mine.map((w) => `<a href="${siteUrl()}/scan/${w.id}">$${esc(w.symbol)}</a> · ${w.verdict.replace("_", " ")} · ${Math.ceil((w.at + WATCH_MS - Date.now()) / 86400_000)}d left · <code>${esc(w.id)}</code>`)].join("\n") : "Your watchlist is empty. Scan a token and tap 👁 Watch.");
+  }
+  if (cmd === "/unwatch") {
+    const all = watches();
+    const before = all[chatId]?.length ?? 0;
+    all[chatId] = (all[chatId] ?? []).filter((w) => w.id !== arg);
+    saveWatches(all);
+    return send(chatId, (all[chatId]?.length ?? 0) < before ? "Removed." : "Send /unwatch followed by the token address from /watchlist.");
+  }
+  if (cmd === "/help" || (cmd === "/start" && !arg)) return send(chatId, HELP());
   if (cmd === "/start" && arg) {
     const st = tg();
     const link = st.codes.get(arg);
@@ -140,17 +364,16 @@ async function handleUpdate(u: { message?: { chat: { id: number; type: string };
     );
     return;
   }
-  send(
-    chatId,
-    `I deliver signals from your CrawlHive crawlers.\nOpen ${siteUrl()}/signals, sign in with your wallet and press <b>Connect Telegram</b>.\n\n/status · /stop`,
-  );
+  const q = scanQuery(m.text);
+  if (q) return doScan(chatId, q);
+  send(chatId, HELP());
 }
 
 async function poll() {
   let offset = 0;
   for (;;) {
     try {
-      const updates = await call<{ update_id: number }[]>("getUpdates", { offset, timeout: 50, allowed_updates: ["message"] }, 65_000);
+      const updates = await call<{ update_id: number }[]>("getUpdates", { offset, timeout: 50, allowed_updates: ["message", "callback_query"] }, 65_000);
       for (const u of updates) {
         offset = u.update_id + 1;
         await handleUpdate(u as Parameters<typeof handleUpdate>[0]).catch((e) => console.error("tg update", e));
@@ -210,4 +433,15 @@ export function startTelegram() {
   void poll();
   setInterval(remindExpiring, 3600_000);
   setTimeout(remindExpiring, 60_000);
+  setInterval(() => checkWatches().catch((e) => console.warn("[telegram] watchlist", (e as Error).message)), WATCH_CHECK_MS);
+  // Команды в меню бота.
+  call("setMyCommands", {
+    commands: [
+      { command: "scan", description: "Scan a token: address, link or $TICKER" },
+      { command: "watchlist", description: "Tokens you watch" },
+      { command: "radar", description: "Fresh launches the swarm scanned" },
+      { command: "status", description: "Wallet linked for crawler signals" },
+      { command: "help", description: "What I can do" },
+    ],
+  }).catch(() => {});
 }

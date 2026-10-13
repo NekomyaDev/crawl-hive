@@ -2,6 +2,7 @@
 // адресу — рынок (DexScreener), права минта и держатели (Solana RPC; на Robinhood Chain — GeckoTerminal и
 // владелец контракта), клоны тикера, упоминания в Telegram — и сводят всё в оценку 0–100 с одной строкой вывода.
 import "server-only";
+import { trackVerdict, type TrackEntry } from "./track";
 import { PublicKey } from "@solana/web3.js";
 import { bestPairs, searchPairs, type PairInfo } from "./crawl/dexscreener";
 import { fetchChannel } from "./crawl/sources/telegram";
@@ -185,7 +186,12 @@ const withTimeout = <T,>(p: Promise<T>, ms: number) =>
   Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 
 // record=false — скан для внутренних нужд (краулеры, Grok Bot): в публичную ленту «recently scanned» не попадает.
-export async function runScan(q: string, emit: (l: ScanLog) => void, hint?: string, opts: { record?: boolean } = {}): Promise<ScanResult> {
+export async function runScan(
+  q: string,
+  emit: (l: ScanLog) => void,
+  hint?: string,
+  opts: { record?: boolean; src?: TrackEntry["src"] } = {},
+): Promise<ScanResult> {
   const logs: ScanLog[] = [];
   const log = (l: ScanLog) => {
     logs.push(l);
@@ -480,6 +486,8 @@ export async function runScan(q: string, emit: (l: ScanLog) => void, hint?: stri
   });
   mem().cache.set(address, { result, logs: logs.filter((l) => l.crawler !== "resolver") });
   if (opts.record !== false) remember(result);
+  // Каждый вердикт попадает в Track Record: через сутки видно, сбылся ли он.
+  trackVerdict(result, opts.src ?? (opts.record === false ? "crawler" : "scan"));
   return result;
 }
 

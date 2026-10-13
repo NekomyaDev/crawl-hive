@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck } from "lucide-react";
+import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { useWallet } from "./wallet-provider";
@@ -13,6 +13,8 @@ const LINKS = [
   { href: "/spawn", label: "Spawn", icon: Plus, color: "text-coral" },
   { href: "/my", label: "My Crawlers", icon: Bug, color: "text-lime" },
   { href: "/signals", label: "My Signals", icon: Radio, color: "text-teal" },
+  { href: "/radar", label: "Launch Radar", icon: Radar, color: "text-lime" },
+  { href: "/track", label: "Track Record", icon: Target, color: "text-honey" },
   { href: "/market", label: "Marketplace", icon: Store, color: "text-pink" },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-sky" },
   { href: "/governance", label: "Governance", icon: Landmark, color: "text-violet" },

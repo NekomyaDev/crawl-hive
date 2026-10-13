@@ -2,6 +2,8 @@
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 13", title: "Track Record", text: "Every verdict is checked against the real price for 24 hours: how many DANGER tokens dumped, and how many CLEAN ones dumped anyway. Hits and misses, nothing hidden." },
+  { date: "Oct 13", title: "Launch Radar", text: "The swarm scans fresh launches on Solana and Robinhood Chain on its own. Everyone sees them 10 minutes later, crawler owners get them live." },
   { date: "Oct 13", title: "Any agent, one click", text: "ChatGPT Dots, Meta Muse, Claude and Cursor connect to your crawlers with a Connect button: no key to copy. Pick the bot and crawlers, approve with your wallet, disconnect any time." },
   { date: "Oct 12", title: "Jev on every signal", text: "Jev, a fast decision model, rates every crawler find in about half a second and skips pure noise. The Grok Bot's take comes from Jev when it is sure, and Grok is asked only about the doubtful ones." },
   { date: "Oct 12", title: "Safer, fairer crawlers", text: "Every token a crawler finds is scanned before it reaches you and rugs are blocked. Hits now count the best price in the window, sampled every 5 minutes." },

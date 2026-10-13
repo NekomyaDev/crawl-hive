@@ -103,6 +103,7 @@ function init(): State {
   setTimeout(() => import("./grok-duty").then((m) => m.startGrokDuty()).catch((e) => console.error(e)), 500);
   setTimeout(() => import("./crawl/scheduler").then((m) => m.startScheduler()).catch((e) => console.error(e)), 1000);
   setTimeout(() => import("./telegram").then((m) => m.startTelegram()).catch((e) => console.error(e)), 1500);
+  setTimeout(() => import("./radar").then((m) => m.startRadar()).catch((e) => console.error(e)), 2000);
 
   return {
     crawlers,
@@ -400,6 +401,27 @@ export function networkStats(): NetworkStats {
     scored: live.reduce((n, c) => n + (c.stats.scored ?? 0), 0),
     hits: live.reduce((n, c) => n + c.stats.hits, 0),
     demo: demoNetwork(),
+  };
+}
+
+// Track Record краулеров: исходы сигналов живых краулеров. Тикеры не раскрываем — сигналы приватные.
+export function signalTrack() {
+  const done = state().liveSignals.filter((x) => x.outcome && (x.outcome.status === "hit" || x.outcome.status === "miss"));
+  const peaks = done.map((x) => x.outcome!.peakPct ?? x.outcome!.changePct ?? 0).sort((a, b) => a - b);
+  return {
+    scored: done.length,
+    hits: done.filter((x) => x.outcome!.status === "hit").length,
+    medianPeak: peaks.length ? peaks[Math.floor(peaks.length / 2)] : null,
+    recent: done.slice(0, 15).map((x) => ({
+      crawlerId: x.crawlerId,
+      crawlerName: x.crawlerName,
+      kind: x.kind,
+      ts: x.ts,
+      status: x.outcome!.status,
+      peakPct: x.outcome!.peakPct ?? null,
+      changePct: x.outcome!.changePct ?? null,
+      jev: x.jev?.p ?? null,
+    })),
   };
 }
 
