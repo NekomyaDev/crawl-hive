@@ -2,6 +2,7 @@
 // Instant Crawl на главной: вставь адрес токена или $тикер — краулеры сканируют его за секунды, без кошелька.
 // Ход работы виден в живом логе, результат — оценка 0–100 с причиной. Под ним кнопка «следить постоянно»:
 // спавн краулера-наблюдателя за этим токеном. ?scan=<адрес> в URL запускает скан сразу (для ссылок).
+import { TOKEN } from "@/lib/token";
 import { XRayPanel, type XRayView } from "@/components/xray-panel";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
@@ -228,6 +229,14 @@ export function InstantCrawl() {
                 <Flame className="size-3" /> <span className="num font-semibold">{treasury.ethAddress && buybackUsd(treasury) !== null ? usdFmt(buybackUsd(treasury)!) : `${solFmt(buybackFund(treasury))} SOL`}</span> in the buyback fund
               </a>
             )}
+            <a
+              href={TOKEN.buy}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#ff6b2c]/60 bg-[#ff6b2c]/15 px-2.5 py-1 text-[11px] font-semibold text-[#ff9a5c] hover:bg-[#ff6b2c]/25"
+            >
+              🔥 ${TOKEN.symbol} is live · buy
+            </a>
           </div>
           <h1 className="max-w-3xl text-3xl leading-tight font-bold tracking-tight lg:text-5xl">
             Send the <span className="text-gradient">swarm</span> after any memecoin

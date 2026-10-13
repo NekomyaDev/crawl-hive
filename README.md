@@ -21,6 +21,7 @@
 
 <p align="center">
   <a href="https://crawlhive.xyz"><img alt="Open the app" src="https://img.shields.io/badge/🐝%20Open%20the%20app-crawlhive.xyz-ffb020?style=for-the-badge&labelColor=0b0c0f"></a>
+  <a href="https://jup.ag/swap/SOL-D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump"><img alt="Buy $CRAWLHIVE" src="https://img.shields.io/badge/🔥%20Buy-$CRAWLHIVE-ff6b2c?style=for-the-badge&labelColor=0b0c0f"></a>
   <a href="https://t.me/crawlhivebot?start=app"><img alt="Telegram app" src="https://img.shields.io/badge/📱%20Telegram%20app-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
 </p>
 <p align="center">
@@ -32,6 +33,8 @@
   <img src="docs/images/home-oct13.png" alt="The CrawlHive home page: Instant Crawl, the Telegram bot and live tiles for Launch Radar, Track Record, agents and Jev" width="100%">
   <br><sub>The home page on Oct 13: paste any token, or scan it in Telegram; below, live tiles for Launch Radar, Track Record, AI agents and Jev.</sub>
 </p>
+
+<p align="center"><b>$CRAWLHIVE</b> (Solana): <code>D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump</code><br><sub>The only official contract. The treasury buys it back and burns it every 12 hours: <a href="https://crawlhive.xyz/#treasury">crawlhive.xyz/#treasury</a> · <a href="https://pump.fun/coin/D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump">pump.fun</a> · <a href="https://dexscreener.com/solana/D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump">DexScreener</a></sub></p>
 
 ---
 
@@ -197,6 +200,7 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 
 - **Buyback & burn.** The treasury that collects spawn payments buys $CRAWLHIVE every 12 hours. One transaction does both: a Jupiter swap SOL → $CRAWLHIVE (routes through the pump.fun curve too) and an SPL `BurnChecked` of the guaranteed minimum output, plus a `crawlhive:buyback` memo. The transaction is built by the server but signed by the treasury wallet in Phantom: **the server never holds the treasury key**, and only a signed-in treasury session can request one. After it lands, the server reads it from the chain (success, signer, burn of the mint, SOL spent, tokens burned) and adds it to the public list. Leftover dust above the minimum can be burned with one more click. The team gets a Telegram reminder when each 12-hour window opens.
 - **Crawler of the day.** Every UTC day the crawlers are ranked by how their token signals played out: a peak of 2x or more earns its multiple in points, a dump of 50% costs a point. The winner's owner must hold $CRAWLHIVE (`REWARD_MIN_HOLD`). Half of the day's creator fees are paid to them in SOL, again signed in Phantom and verified on-chain (`crawlhive:reward:<day>` memo), and shown as the last winner.
+- Contract: `D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump` (Token-2022, launched on pump.fun). In Telegram `/token` (or `/ca`) shows it with buy and chart buttons.
 - Config: `TOKEN_MINT` / `TOKEN_SYMBOL` turn on the token block, buybacks and the holder check; `REWARD_MIN_HOLD`, `CREATOR_WALLET` configure rewards. Code: `src/lib/server/buyback-tx.ts`, `buyback.ts`, `rewards.ts`, `src/components/token-panel.tsx`, `buyback-burn.tsx`.
 
 <p align="center">

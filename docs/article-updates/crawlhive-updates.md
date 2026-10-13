@@ -13,6 +13,7 @@ Three days ago CrawlHive was a scanner with crawlers behind it. Since then we sh
 - 📱 CrawlHive is now an app inside Telegram: scan, Launch Radar, watchlist and your crawlers, one tap from @crawlhivebot.
 - 🤖 The bot scans any token in chat, watches it for rugs, answers contract addresses in groups and works inline in any chat.
 - 🟡 Scans now cover BNB Chain and every Solana launchpad, Meteora included.
+- 🔥 $CRAWLHIVE is live: the treasury buys it back and burns it every 12 hours, and the best crawler of the day earns half the creator fees.
 - 🩻 Contract X-Ray reads the token's code, even unpublished, and lists what the team can still do to holders.
 - 🔐 We audited our own code and closed more than a dozen holes before anyone else found them.
 - 💸 The same product costs 8 to 50 times less to run, with a hard ceiling of $1.25 a day on AI.
@@ -59,6 +60,16 @@ The agent gets read access to those crawlers and free token scans, nothing more.
 Why it matters: an agent that wakes up every few minutes to check a feed burns credits on runs where nothing happened. Your crawlers already watch X, Telegram and the chain around the clock, so the agent asks "anything new?" first and goes back to sleep when the answer is no. Tested live through the Grok API: $0.0006 for a quiet run, $0.006 when there were signals.
 
 [ IMAGE 05: images/05-agents.png ]
+
+## 🔥 $CRAWLHIVE is live: buyback & burn every 12 hours
+
+The project token is out: $CRAWLHIVE on Solana, `D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump`.
+
+Every SOL that crawler owners pay for spawns goes to the treasury, and every 12 hours, at 00:00 and 12:00 UTC, the treasury buys $CRAWLHIVE on the market and burns it in the same transaction. Nothing sits in a wallet waiting to be sold: the supply only goes down, and every buyback is listed on the home page with its transaction.
+
+On top of that, half of the day's creator fees go to the owner of the best crawler of the day, if they hold $CRAWLHIVE. The best crawler is the one whose calls actually pumped, checked against the real price.
+
+The token, its live chart, the countdown to the next buyback and today's crawler leaderboard are on the home page, in the Telegram app, and one /token away in @crawlhivebot.
 
 ## 🩻 Contract X-Ray: we reverse engineer every token
 
@@ -177,6 +188,7 @@ Track Record showed us exactly where to dig. Next we go deeper on holders: walle
 Paste a token. Watch the swarm work. Or open the app in Telegram.
 
 🐝 crawlhive.xyz
+🔥 $CRAWLHIVE: D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump
 📱 t.me/crawlhivebot (press Open app)
 🎯 crawlhive.xyz/track
 📖 github.com/h100envy/crawl-hive

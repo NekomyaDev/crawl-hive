@@ -1,6 +1,7 @@
 "use client";
 // CrawlHive внутри Telegram: скан, Launch Radar, список наблюдения, свои краулеры, Track Record.
 // Пользователя узнаём по initData от Telegram (подпись проверяет сервер), список наблюдения общий с ботом.
+import { TOKEN } from "@/lib/token";
 import { XRayPanel, type XRayView } from "@/components/xray-panel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -656,6 +657,12 @@ export function TgApp() {
           </div>
           <div className="truncate text-[11px] text-muted">{name ? `Hi ${name} · ` : ""}memecoin crawlers that never sleep</div>
         </div>
+        <button
+          onClick={() => (window as unknown as { Telegram?: { WebApp?: { openLink?: (u: string) => void } } }).Telegram?.WebApp?.openLink?.(TOKEN.buy) ?? window.open(TOKEN.buy, "_blank")}
+          className="rounded-lg border border-honey/50 bg-honey/10 px-2 py-1 text-[11px] font-bold text-honey"
+        >
+          🔥 ${TOKEN.symbol}
+        </button>
         {!inTg && !hideHint && (
           <button onClick={() => setHideHint(true)} className="text-muted" aria-label="Hide">
             <XIcon className="size-4" />

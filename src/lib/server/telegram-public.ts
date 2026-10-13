@@ -6,6 +6,7 @@
 // - подписка на Launch Radar с фильтрами; владельцы живых краулеров получают её без задержки;
 // - inline-режим (@bot <адрес> в любом чате) и /track — точность сканера.
 import "server-only";
+import { TOKEN } from "@/lib/token";
 import type { ScanResult } from "./scan";
 import { call, esc, send, sendPhoto, siteUrl, telegramBotName, telegramMainApp, type Keyboard } from "./telegram";
 import { getMeta, listCrawlers, metaEntries, setMeta } from "./store";
@@ -593,10 +594,14 @@ function welcome(chat: string) {
       "🔎 <b>Send me a token</b> (address, link or $TICKER) and I check it in seconds: holders, bundles, dev wallet, copycats, plus a ⚡ Jev take.",
       "Solana · Robinhood Chain · BNB Chain · pump.fun · Meteora · four.meme",
       "",
+      `🔥 <b>$${TOKEN.symbol}</b> is live: the treasury buys back and burns it every 12 hours.`,
+      `<code>${TOKEN.mint}</code>`,
+      "",
       "🆘 Need help? /support",
     ].join("\n"),
     [
       [{ text: "📱 Open the CrawlHive app", web_app: { url: `${siteUrl()}/tg` } }],
+      [{ text: `🔥 Buy $${TOKEN.symbol}`, url: TOKEN.buy }, { text: "📈 Chart", url: TOKEN.chart }],
       [...(bot ? [{ text: "👥 Add to a group", url: `https://t.me/${bot}?startgroup=scan` }] : []), { text: "🌐 crawlhive.xyz", url: siteUrl() }],
     ],
   );
@@ -666,6 +671,25 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   }
 
   // Поддержка: /support текст — сразу; /support без текста — ждём следующее сообщение 10 минут.
+  if (cmd === "/token" || cmd === "/ca") {
+    const { tokenInfo, buybackStats } = await import("./buyback");
+    const [t, b] = await Promise.all([tokenInfo().catch(() => null), buybackStats().catch(() => null)]);
+    const m = (t as { market?: { marketCap?: number; change24h?: number } } | null)?.market;
+    const done = b?.count ?? 0;
+    return send(
+      chat,
+      [
+        `🔥 <b>$${TOKEN.symbol}</b> · Solana`,
+        `<code>${TOKEN.mint}</code>`,
+        m?.marketCap ? `Market cap $${fmtUsd(m.marketCap)}${m.change24h != null ? ` · ${m.change24h > 0 ? "+" : ""}${Math.round(m.change24h)}% 24h` : ""}` : "",
+        `Buyback &amp; burn every 12 hours from the treasury${done ? ` · ${done} done, ${Math.round(b!.burned).toLocaleString("en-US")} burned` : ""}.`,
+      ].filter(Boolean).join("\n"),
+      [
+        [{ text: `🔥 Buy $${TOKEN.symbol}`, url: TOKEN.buy }, { text: "📈 Chart", url: TOKEN.chart }],
+        [{ text: "🔥 Buybacks & burns", url: `${siteUrl()}/#treasury` }],
+      ],
+    );
+  }
   if (cmd === "/support") {
     if (!m.from) return;
     if (arg.trim()) return submitSupport(chat, m.from, arg);

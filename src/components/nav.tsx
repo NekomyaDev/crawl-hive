@@ -1,4 +1,5 @@
 "use client";
+import { TOKEN } from "@/lib/token";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -117,6 +118,13 @@ export function NavShell({ path }: { path: string }) {
           Telegram app
           <span className="ml-auto rounded bg-[#229ED9] px-1.5 py-px text-[9px] font-bold tracking-wide">NEW</span>
         </a>
+        <Link
+          href="/#treasury"
+          className="mt-2 flex items-center gap-2.5 rounded-lg border border-honey/50 bg-honey/10 px-2.5 py-2 text-sm font-medium text-honey transition-colors hover:bg-honey/20"
+        >
+          <span className="text-base leading-none">🔥</span>${TOKEN.symbol}
+          <span className="ml-auto rounded bg-honey px-1.5 py-px text-[9px] font-bold tracking-wide text-black">LIVE</span>
+        </Link>
         <div className="mt-auto">
           <WalletButton />
         </div>
@@ -130,6 +138,9 @@ export function NavShell({ path }: { path: string }) {
             <span className="font-bold">
               Crawl<span className="text-honey">Hive</span>
             </span>
+          </Link>
+          <Link href="/#treasury" className="ml-auto rounded-md border border-honey/50 bg-honey/10 px-2 py-1 text-[11px] font-bold text-honey">
+            ${TOKEN.symbol}
           </Link>
           <div className="w-40">
             <WalletButton compact />
