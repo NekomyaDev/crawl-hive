@@ -6,6 +6,7 @@ import { Nav } from "@/components/nav";
 import { WalletProvider } from "@/components/wallet-provider";
 import { ToastProvider } from "@/components/ui/toast";
 import { Mascot } from "@/components/mascot";
+import { TelegramFab } from "@/components/telegram-cta";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               </main>
             </div>
             <Mascot />
+            <TelegramFab />
           </ToastProvider>
         </WalletProvider>
       </body>

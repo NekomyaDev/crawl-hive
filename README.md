@@ -317,6 +317,8 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 
 ## Trust & safety
 
+**Abuse protection.** Every request goes through a per-IP rate limit in `src/proxy.ts`: a token bucket of 10 requests a second with room for a 60-request burst, `429` with `Retry-After` beyond that; build assets and images are not counted. The client IP is the last `X-Forwarded-For` value set by the reverse proxy, so it cannot be spoofed from the client. Heavier actions have their own limits on top: scans per IP and per hour, X checks per day, 20 MCP scans an hour per bot, 10 Telegram scans an hour per chat. On the server only ports 80, 443 and SSH are open, SSH takes keys only, and fail2ban bans SSH brute force and repeat offenders for a week. Volumetric DDoS (raw traffic in gigabits) has to be absorbed by a CDN in front of the server; an app can't do that.
+
 **Two kinds of wallets.** *Connect* opens a choice: **Phantom** (Solana, pay in SOL) or **MetaMask, Rabby or any EVM wallet** (Robinhood Chain, pay in ETH). The EVM wallet signs in with `personal_sign`; the server recovers the signer from the signature, so a session can't be opened for an address you don't control. When you pay, the site switches the wallet to Robinhood Chain (chain id 4663) and adds the network if it's missing.
 
 <p align="center">

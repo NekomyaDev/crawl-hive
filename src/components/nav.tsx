@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
+import { BOT_URL, TelegramIcon } from "./telegram-cta";
 import { useWallet } from "./wallet-provider";
 import { Button } from "./ui/button";
 
@@ -106,6 +107,16 @@ export function NavShell({ path }: { path: string }) {
             </Link>
           ))}
         </nav>
+        <a
+          href={BOT_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 flex items-center gap-2.5 rounded-lg border border-[#229ED9]/50 bg-[#229ED9]/15 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#229ED9]/25"
+        >
+          <TelegramIcon className="size-4 text-[#5bc4f5]" />
+          Telegram bot
+          <span className="ml-auto rounded bg-[#229ED9] px-1.5 py-px text-[9px] font-bold tracking-wide">NEW</span>
+        </a>
         <div className="mt-auto">
           <WalletButton />
         </div>

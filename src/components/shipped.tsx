@@ -1,3 +1,5 @@
+"use client";
+import { useState } from "react";
 // Таймлайн выкаток: что и когда появилось. Показывает, что проект живой и двигается.
 import { Rocket } from "lucide-react";
 
@@ -26,13 +28,15 @@ const SHIPPED: { date: string; title: string; text: string }[] = [
 ];
 
 export function Shipped() {
+  const [all, setAll] = useState(false);
+  const shown = all ? SHIPPED : SHIPPED.slice(0, 6);
   return (
     <section className="mt-10">
       <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
         <Rocket className="size-4 text-pink" /> Shipped
       </h2>
       <ol className="relative ml-2 border-l border-line">
-        {SHIPPED.map((s, i) => (
+        {shown.map((s, i) => (
           <li key={s.title} className="relative mb-4 pl-5">
             <span
               className="absolute top-1.5 -left-[5px] size-2.5 rounded-full"
@@ -46,6 +50,11 @@ export function Shipped() {
           </li>
         ))}
       </ol>
+      {SHIPPED.length > 6 && (
+        <button onClick={() => setAll((v) => !v)} className="ml-7 text-xs text-honey hover:underline">
+          {all ? "Show less" : `Show all ${SHIPPED.length} updates`}
+        </button>
+      )}
     </section>
   );
 }

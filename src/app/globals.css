@@ -175,3 +175,20 @@ body::before {
 }
 .bot-blink { animation: bot-blink 4.2s infinite; }
 @media (prefers-reduced-motion: reduce) { .bot-blink { animation: none; } }
+
+/* Блик по кнопке Telegram-бота: привлекает взгляд, но не мигает. */
+.tg-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: tg-shine 3.2s ease-in-out infinite;
+}
+@keyframes tg-shine {
+  0%, 55% { transform: translateX(-120%); }
+  85%, 100% { transform: translateX(120%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tg-shine::after { animation: none; }
+}

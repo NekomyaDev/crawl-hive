@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { InstantCrawl } from "@/components/instant-crawl";
 import { WalletSafety } from "@/components/wallet-safety";
 import { Shipped } from "@/components/shipped";
+import { TelegramCta } from "@/components/telegram-cta";
+import { WhatsNew } from "@/components/whats-new";
 import { useStream } from "@/lib/client/use-stream";
 import { fmt, timeLeft } from "@/lib/utils";
 import type { NetworkStats, Signal } from "@/lib/types";
@@ -58,9 +60,9 @@ export default function Dashboard() {
     <>
       <InstantCrawl />
 
-      <TreasuryCard className="mb-5" />
+      <TelegramCta className="mb-6" />
 
-      <WalletSafety className="mb-5" />
+      <WhatsNew />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat tone="honey" icon={<Bug className="size-3.5" />} label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "—"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
@@ -158,6 +160,11 @@ export default function Dashboard() {
           </Button>
         </Link>
       </Card>
+
+      <div className="mt-8 grid gap-5">
+        <TreasuryCard />
+        <WalletSafety />
+      </div>
 
       <Shipped />
     </>
