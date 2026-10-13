@@ -101,7 +101,9 @@ export async function sampleTrack() {
         e.lastPct = pct;
         e.liqNow = Math.round(p.liquidity?.usd ?? 0);
         if (e.lowPct <= DUMP_PCT) e.dumped = true;
-        if (e.liqNow < e.liq0 * RUG_LIQ) e.rugged = e.dumped = true;
+        // Ликвидность одной пары DexScreener бывает ниже суммы по всем пулам на момент скана, поэтому
+        // одно падение ликвидности ругом не считаем — только вместе с падением цены.
+        if (e.liqNow < e.liq0 * RUG_LIQ && e.lowPct <= DUMP_PCT) e.rugged = e.dumped = true;
       }
       if (now - e.at >= WINDOW_MS || e.rugged) e.done = true;
     }
@@ -132,7 +134,10 @@ export function trackStats() {
   const verdicts: TrackVerdict[] = ["CLEAN", "OK", "RISKY", "DANGER", "TOO_EARLY"];
   const by = verdicts.map((v): VerdictStats => {
     const xs = list.filter((e) => e.verdict === v);
-    const settled = xs.filter((e) => e.done);
+    // Итог считаем только после полных суток с момента скана: руги закрываются раньше, и иначе
+    // в первые часы «закрытыми» оказывались бы почти одни руги — ложные 100% в обе стороны.
+    const now = Date.now();
+    const settled = xs.filter((e) => e.done && now - e.at >= WINDOW_MS);
     return {
       verdict: v,
       tracked: xs.length,

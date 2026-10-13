@@ -433,6 +433,15 @@ export async function runScan(
   if (telegram.length) hit("On the radar", 5, `mentioned in ${telegram.map((t) => t.channel).join(", ")}`);
   for (const f of factors) score += f.impact;
   score = Math.max(0, Math.min(100, score));
+  // Жёсткое правило по данным Track Record (13.10): молодые токены со связанными или свежими кошельками
+  // в первые часы массово рушились на 60–98% при вердикте OK/CLEAN. Взвешенная сумма тут обманывает:
+  // такой токен не выше RISKY, сколько бы баллов он ни набрал.
+  const YOUNG_RISK = ["Bundled", "Linked wallets", "Fresh dev wallet", "Fresh wallets", "Owner active", "Dev holds a lot"];
+  const youngFlag = market?.ageHours !== undefined && market.ageHours < 24 ? factors.find((f) => YOUNG_RISK.includes(f.label)) : undefined;
+  if (youngFlag && score >= 60) {
+    hit("Young and linked", -(score - 59), `under a day old with "${youngFlag.label.toLowerCase()}": such launches often dump in the first hours`);
+    score = 59;
+  }
 
   const tooEarly = !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot;
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";

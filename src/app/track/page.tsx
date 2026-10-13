@@ -103,7 +103,7 @@ export default function TrackPage() {
       </div>
 
       <Card className="mb-5">
-        <CardHeader title="By verdict" sub="Settled = 24 hours passed or the token rugged. The gap between DANGER and CLEAN is what the scanner is worth." />
+        <CardHeader title="By verdict" sub="Settled = 24 hours passed since the scan, rugs included. The gap between DANGER and CLEAN is what the scanner is worth." />
         <div className="space-y-3 p-4">
           {(data?.by ?? []).map((b) => {
             const s = share(b.dumped, b.settled);
