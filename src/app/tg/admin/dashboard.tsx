@@ -10,7 +10,9 @@ interface Stats {
   traffic: { visitorsToday: number | null; requestsToday: number | null; blocked: number };
   scans: { verdicts24h: Record<string, number>; total: number; radar24h: number };
   crawlers: { total: number; live: number; active: number; bySource: Record<string, number>; failing: { id: string; name: string; streak?: number; error?: string }[]; signals24h: number; scored: number; hits: number };
-  money: { payments: number; sol: number; eth: number; treasury: { sol?: number; eth?: number; solUsd?: number; ethUsd?: number } };
+  money: { payments: number; sol: number; eth: number; treasury: { sol?: number; eth?: number; solUsd?: number; ethUsd?: number };
+    buybacks?: { count: number; sol: number; burned: number; burnedPct: number; rewardsSol: number; rewardDays: number };
+  };
   ai: { grok: { calls: number; limit: number }; jev: { calls: number; cost: number; limit: number; pub?: number } };
   agents: { bots: number; botsLive: number; oauthApps: number; dutyCrawlers: number };
   telegram: { watchers: number; watched: number; alertSubs: number; groups: number };
@@ -135,6 +137,16 @@ export function AdminDashboard() {
         <div className="grid grid-cols-2 gap-2">
           <Card title="Payments" value={s.money.payments} sub={`${s.money.sol.toFixed(3)} SOL · ${s.money.eth.toFixed(4)} ETH`} tone="text-honey" />
           <Card title="Treasury" value={s.money.treasury.sol != null ? `${s.money.treasury.sol.toFixed(3)} SOL` : "—"} sub={`${solUsd != null ? `$${Math.round(solUsd)}` : ""}${s.money.treasury.eth != null ? ` · ${s.money.treasury.eth.toFixed(4)} ETH` : ""}`} />
+          {s.money.buybacks && (
+            <>
+              <Card title="Buybacks" value={s.money.buybacks.count} sub={`${s.money.buybacks.sol.toFixed(3)} SOL spent`} tone="text-honey" />
+              <Card
+                title="Burned"
+                value={Math.round(s.money.buybacks.burned).toLocaleString("en-US")}
+                sub={`${s.money.buybacks.burnedPct.toFixed(3)}% of supply · rewards ${s.money.buybacks.rewardsSol.toFixed(3)} SOL`}
+              />
+            </>
+          )}
         </div>
       </Section>
 

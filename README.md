@@ -46,6 +46,7 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 **Latest (Oct 13):**
+- 🔥 **$CRAWLHIVE: buyback & burn, Crawler of the day.** The home page shows the token with a live chart. Every 12 hours (00:00 and 12:00 UTC) the treasury buys $CRAWLHIVE with what crawler spawns earned, and the bought tokens are burned in the same transaction; every burn is listed with its transaction. Half of the day's creator fees go to the owner of the best crawler of the day, if they hold $CRAWLHIVE.
 - 🩻 **Contract X-Ray: we reverse engineer every token.** On BNB Chain and Robinhood Chain the scanner reads the deployed bytecode, even when the source is not published, and lists what the team can still do to holders: mint, blacklist wallets, change the tax, stop trading, cap sells, upgrade the contract through a proxy. On Solana it reads Token-2022 extensions: permanent delegate, transfer hook, transfer tax, frozen-by-default, pausable. The project website is checked for wallet-drainer code. Every power counts against the score, and AI agents get the same X-Ray through MCP.
 - 🔐 **Security audit.** Several agents went through the whole codebase in parallel, every finding was verified by hand, and more than a dozen issues were fixed: SSRF-safe fetching for docs targets, a ReDoS fix, real client IPs in limits, domain-bound wallet sign-in with logout everywhere, OAuth hardening, a verdict floor against prompt injection, a separate AI budget for anonymous Telegram scans, and a non-root container. Details in [Trust & safety](#trust--safety).
 - 💬 **Bot: welcome banner, inline and support.** `/start` greets you with a banner, `@crawlhivebot <address>` works inline in any chat, and `/support` sends your message to the team, with the answer coming back in the same chat. Group settings can be changed by group admins only.
@@ -191,6 +192,16 @@ Signals are **yours alone**. They land in *My Signals* with links to the source 
 - **RPC limiter.** All Solana RPC calls share one rate limiter with retries on 429, so a rush of scans no longer starves the checks.
 
 What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
+
+### $CRAWLHIVE: buyback & burn and Crawler of the day
+
+- **Buyback & burn.** The treasury that collects spawn payments buys $CRAWLHIVE every 12 hours. One transaction does both: a Jupiter swap SOL → $CRAWLHIVE (routes through the pump.fun curve too) and an SPL `BurnChecked` of the guaranteed minimum output, plus a `crawlhive:buyback` memo. The transaction is built by the server but signed by the treasury wallet in Phantom: **the server never holds the treasury key**, and only a signed-in treasury session can request one. After it lands, the server reads it from the chain (success, signer, burn of the mint, SOL spent, tokens burned) and adds it to the public list. Leftover dust above the minimum can be burned with one more click. The team gets a Telegram reminder when each 12-hour window opens.
+- **Crawler of the day.** Every UTC day the crawlers are ranked by how their token signals played out: a peak of 2x or more earns its multiple in points, a dump of 50% costs a point. The winner's owner must hold $CRAWLHIVE (`REWARD_MIN_HOLD`). Half of the day's creator fees are paid to them in SOL, again signed in Phantom and verified on-chain (`crawlhive:reward:<day>` memo), and shown as the last winner.
+- Config: `TOKEN_MINT` / `TOKEN_SYMBOL` turn on the token block, buybacks and the holder check; `REWARD_MIN_HOLD`, `CREATOR_WALLET` configure rewards. Code: `src/lib/server/buyback-tx.ts`, `buyback.ts`, `rewards.ts`, `src/components/token-panel.tsx`, `buyback-burn.tsx`.
+
+<p align="center">
+  <img src="docs/images/token-buyback.png" alt="The token block: live chart, buyback & burn with a 12-hour countdown, Crawler of the day" width="100%">
+</p>
 
 ### Contract X-Ray
 
@@ -493,6 +504,8 @@ XAI_API_KEY=...                                # enables X crawlers and AI readi
 # TELEGRAM_BOT_TOKEN=...  PUBLIC_URL=https://crawlhive.xyz   # signal delivery
 # TELEGRAM_ADMIN_IDS=123456  TELEGRAM_ADMIN_USERNAMES=name  # who can open /admin
 # JEV_PUBLIC_DAILY=600                         # Jev budget for anonymous Telegram scans
+# TOKEN_MINT=...  TOKEN_SYMBOL=CRAWLHIVE         # project token: home block, buyback & burn, reward holder check
+# REWARD_MIN_HOLD=1  CREATOR_WALLET=...          # Crawler of the day settings
 # SESSION_SECRET=...                           # optional, otherwise generated and stored in .data/
 ```
 

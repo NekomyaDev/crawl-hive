@@ -252,6 +252,7 @@ export function startTelegram() {
   setInterval(() => pub().then((p) => p.checkWatches()).catch((e) => console.warn("[telegram] watchlist", (e as Error).message)), 10 * 60_000);
   setInterval(() => pub().then((p) => p.sendFollowups()).catch((e) => console.warn("[telegram] follow-ups", (e as Error).message)), 30 * 60_000);
   setInterval(() => pub().then((p) => p.pushRadar()).catch((e) => console.warn("[telegram] radar", (e as Error).message)), 60_000);
+  setInterval(() => pub().then((p) => p.buybackReminder()).catch((e) => console.warn("[telegram] buyback", (e as Error).message)), 60_000);
   // В меню только главное: проверка токена и поддержка. Остальные команды работают, просто не мешают.
   call("setMyCommands", {
     commands: [

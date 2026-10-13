@@ -11,7 +11,7 @@ const SECTIONS: [string, string[]][] = [
     [
       "A spawn or renewal payment buys a period of crawling by one crawler with the specification you set. The length of the period is shown before you pay.",
       "Payments are on-chain transfers to the project treasury shown on the spawn page. They are final and non-refundable, including when a source changes or goes offline.",
-      "The project token does not exist yet. Treasury funds are intended for buybacks of that token once it launches; nothing about its launch, price or timing is promised.",
+      "Treasury funds are used to buy back and burn the project token, $CRAWLHIVE. Buybacks are signed manually by the team; nothing about the token's price, volume or the size of any buyback is promised.",
     ],
   ],
   [

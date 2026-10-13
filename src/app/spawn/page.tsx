@@ -186,7 +186,7 @@ export default function SpawnPage() {
         title="Spawn a crawler"
         sub={
           paying
-            ? `Pay ${cfg?.eth ? "SOL, or ETH on Robinhood Chain," : "SOL"} to hatch a crawler. Pre-launch phase: the payment goes to the project treasury and will fund buybacks of the project token once it launches. Higher tiers get more targets, faster crawl cycles and a reward boost.`
+            ? `Pay ${cfg?.eth ? "SOL, or ETH on Robinhood Chain," : "SOL"} to hatch a crawler. The payment goes to the project treasury, which buys back and burns $CRAWLHIVE every 12 hours. Higher tiers get more targets, faster crawl cycles and a reward boost.`
             : `Burn ${unit} to hatch a crawler. The burn is permanent; higher tiers get more targets, faster crawl cycles and a reward boost.`
         }
       />
@@ -456,7 +456,7 @@ export default function SpawnPage() {
                           >
                             {cfg.solRecipient?.slice(0, 4)}…{cfg.solRecipient?.slice(-4)}
                           </a>
-                          {cfg.buyback ? <>. It will fund buybacks of the project token once the token launches.</> : "."}
+                          {cfg.buyback ? <>. It funds the 12-hour $CRAWLHIVE buyback and burn.</> : "."}
                         </>
                       )}{" "}
                       Phantom must be on the same network. Buys {cfg.termDays} days of crawling; renew any time. Payments are final, signals are not financial advice:{" "}

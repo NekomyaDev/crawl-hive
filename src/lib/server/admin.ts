@@ -125,6 +125,14 @@ export async function adminStats() {
     const [sol, su, eth, eu] = await Promise.all([treasuryBalance(), solUsd(), ethTreasuryBalance(), ethUsd()]);
     treasury = { sol: sol ?? undefined, solUsd: su ?? undefined, eth: eth ?? undefined, ethUsd: eu ?? undefined };
   } catch {}
+  // Байбеки и награды дня: итоги из журнала (эмиссия минта под кэшем, без лишних запросов к RPC).
+  let buybacks = { count: 0, sol: 0, burned: 0, burnedPct: 0, rewardsSol: 0, rewardDays: 0 };
+  try {
+    const { buybackStats } = await import("./buyback");
+    const { rewardsTotals } = await import("./rewards");
+    const [b, r] = [await buybackStats(), rewardsTotals()];
+    buybacks = { count: b.count, sol: b.solSpent, burned: b.burned, burnedPct: b.burnedPct, rewardsSol: r.paidSol, rewardDays: r.paidDays };
+  } catch {}
   const bySrc = (since: number) => {
     const out: Record<string, number> = {};
     for (const e of track) if (e.at > since) out[e.src] = (out[e.src] ?? 0) + 1;
@@ -154,7 +162,7 @@ export async function adminStats() {
       scored: net.scored,
       hits: net.hits,
     },
-    money: { ...paymentTotals(), treasury },
+    money: { ...paymentTotals(), treasury, buybacks },
     ai: { grok: grokUsage(), jev: jevUsage() },
     agents: {
       bots: bots.length,

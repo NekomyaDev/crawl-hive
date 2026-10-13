@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Activity, ArrowRight, Bug, Flame, Plus, Radar, ScrollText, Send, Target, Users, Zap } from "lucide-react";
-import { TreasuryCard, useTreasury } from "@/components/treasury-card";
+import { useTreasury } from "@/components/treasury-card";
+import { TokenSection } from "@/components/token-panel";
 import { TemplateCard } from "@/components/template-card";
 import { TEMPLATES } from "@/lib/templates";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,9 @@ export default function Dashboard() {
       <TelegramCta className="mb-6" />
 
       <WhatsNew />
+
+      {/* Токен проекта, байбек и награды; сюда же ведёт бейдж фонда байбека из Instant Crawl (#treasury). */}
+      <TokenSection />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat tone="honey" icon={<Bug className="size-3.5" />} label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "—"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
@@ -162,7 +166,6 @@ export default function Dashboard() {
       </Card>
 
       <div className="mt-8 grid gap-5">
-        <TreasuryCard />
         <WalletSafety />
       </div>
 

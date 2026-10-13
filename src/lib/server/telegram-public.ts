@@ -718,3 +718,21 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   if (q) return doScan(chat, q);
   send(chat, "Send me a token address, a DexScreener / pump.fun link or a $TICKER and I'll check it. Need help? /support");
 }
+
+// Напоминание команде: каждые 12 часов (00:00 и 12:00 UTC) — пора выкупить и сжечь токен на деньги казны.
+// Один раз на окно; без адреса токена молчим.
+export async function buybackReminder() {
+  const { tokenConfig, nextBuybackAt, treasurySol } = await import("./buyback");
+  if (!tokenConfig().mint) return;
+  const slot = nextBuybackAt() - 12 * 3600_000; // начало текущего окна
+  if (Date.now() - slot > 30 * 60_000 || getMeta("buybackRemind") === String(slot)) return;
+  setMeta("buybackRemind", String(slot));
+  const sol = await treasurySol(true).catch(() => null);
+  const spendable = sol == null ? null : Math.max(0, sol - 0.05);
+  for (const a of adminChats())
+    send(
+      a,
+      `🔥 <b>Buyback time</b>\n\nTreasury: <b>${sol == null ? "—" : sol.toFixed(3)} SOL</b>${spendable ? ` · ${spendable.toFixed(3)} SOL to spend` : ""}.\nOpen the site with the treasury wallet in Phantom and press <b>Buy back &amp; burn</b>.`,
+      [[{ text: "🔥 Open buyback", url: `${siteUrl()}/#treasury` }]],
+    );
+}

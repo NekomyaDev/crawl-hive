@@ -1087,6 +1087,29 @@ export function getMeta(key: string): string | undefined {
   return state().meta[key];
 }
 
+// Проверенные исходы сигналов живых краулеров за окно [from, to) по времени проверки — для «Crawler of the day»
+// (rewards.ts). Владелец — тот, кому принадлежал сигнал, иначе текущий хозяин краулера.
+export function settledSignals(from: number, to: number) {
+  const s = state();
+  return s.liveSignals
+    .filter((x) => x.outcome && (x.outcome.status === "hit" || x.outcome.status === "miss") && x.token)
+    .map((x) => ({ x, at: x.outcome!.checkAt ?? x.ts }))
+    .filter(({ at }) => at >= from && at < to)
+    .map(({ x, at }) => {
+      const c = s.crawlers.get(x.crawlerId);
+      return {
+        crawlerId: x.crawlerId,
+        crawlerName: c?.name ?? x.crawlerName,
+        owner: x.owner ?? c?.renter ?? c?.owner ?? "",
+        status: x.outcome!.status as "hit" | "miss",
+        peakPct: x.outcome!.peakPct ?? x.outcome!.changePct ?? 0,
+        changePct: x.outcome!.changePct ?? 0,
+        lowPct: x.outcome!.lowPct ?? x.outcome!.changePct ?? 0,
+        at,
+      };
+    });
+}
+
 // Живые краулеры, у которых оплаченный срок кончается в ближайшие withinMs (и ещё не кончился).
 export function expiringCrawlers(withinMs: number) {
   const now = Date.now();

@@ -1,5 +1,5 @@
 "use client";
-// Счётчик казны на главной: сколько SOL и ETH (Robinhood Chain) собрано за спавны и продления и куда это пойдёт.
+// Счётчик казны на главной (внутри блока токена, якорь #treasury теперь у него): сколько SOL и ETH (Robinhood Chain) собрано за спавны и продления и куда это пойдёт.
 // Цифры с сервера: сумма проверенных on-chain платежей и живой баланс кошелька казны.
 import { ExternalLink, Flame, Landmark } from "lucide-react";
 import { useApi } from "@/lib/client/use-api";
@@ -46,7 +46,7 @@ export function TreasuryCard({ className }: { className?: string }) {
   const eth = t?.ethAddress ? buybackEth(t) : null;
   const total = t ? buybackUsd(t) : null;
   return (
-    <div id="treasury" className={cn("ring-gradient scroll-mt-6 overflow-hidden rounded-2xl bg-panel/80", className)}>
+    <div id="buyback-fund" className={cn("ring-gradient scroll-mt-6 overflow-hidden rounded-2xl bg-panel/80", className)}>
       <div className="relative flex flex-col gap-5 p-5 md:flex-row md:items-center md:justify-between lg:p-6">
         <div
           aria-hidden
@@ -70,7 +70,7 @@ export function TreasuryCard({ className }: { className?: string }) {
           </div>
           <p className="mt-1 max-w-md text-sm text-muted">
             Every SOL{eth !== null ? " and every ETH on Robinhood Chain" : ""} paid for spawns and renewals goes to the project treasury and{" "}
-            <span className="text-fg">will be spent on buying back the project token</span> once it launches. The balance is live from the chain.
+            <span className="text-fg">buys back $CRAWLHIVE every 12 hours, and every bought token is burned</span>. The balance is live from the chain.
           </p>
         </div>
         <div className="relative flex shrink-0 flex-col gap-2 md:items-end">
