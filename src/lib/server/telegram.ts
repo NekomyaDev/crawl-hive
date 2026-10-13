@@ -236,6 +236,12 @@ export function startTelegram() {
       console.log(`[telegram] delivering signals as @${me.username}`);
     })
     .catch((e) => console.error("[telegram] getMe failed:", (e as Error).message));
+  // Main Mini App включают в BotFather в любой момент — перепроверяем раз в 30 минут, без перезапуска.
+  setInterval(() => {
+    call<{ has_main_web_app?: boolean }>("getMe", {})
+      .then((me) => (st.mainApp = !!me.has_main_web_app))
+      .catch(() => {});
+  }, 30 * 60_000);
   // Вебхук мешает long polling — снимаем его, если когда-то ставили.
   call("deleteWebhook", {}).catch(() => {});
   void poll();
