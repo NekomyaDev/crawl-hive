@@ -21,7 +21,7 @@
 
 <p align="center">
   <a href="https://crawlhive.xyz"><img alt="Open the app" src="https://img.shields.io/badge/🐝%20Open%20the%20app-crawlhive.xyz-ffb020?style=for-the-badge&labelColor=0b0c0f"></a>
-  <a href="https://t.me/crawlhivebot?startapp"><img alt="Telegram app" src="https://img.shields.io/badge/📱%20Telegram%20app-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
+  <a href="https://t.me/crawlhivebot?start=app"><img alt="Telegram app" src="https://img.shields.io/badge/📱%20Telegram%20app-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
 </p>
 <p align="center">
   <a href="https://crawlhive.xyz/track"><img alt="Track Record" src="https://img.shields.io/badge/🎯%20Track%20Record-hits%20and%20misses-b6f23a?style=for-the-badge&labelColor=0b0c0f"></a>
@@ -217,7 +217,7 @@ Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. T
 | Inline | `@crawlhivebot <address>` in any chat drops the verdict into the conversation. |
 | `/track` | Track Record numbers in the chat. |
 
-Commands: `/scan`, `/radar`, `/alerts`, `/watchlist`, `/unwatch`, `/track`, `/settings`, `/followups`, `/status`, `/stop`.
+The menu keeps only two commands: `/start` (a banner and "send me a token") and `/support`, which forwards your message to the team; answers arrive in the same chat. Everything else still works: `/scan`, `/radar`, `/alerts`, `/watchlist`, `/unwatch`, `/track`, `/settings`, `/followups`, `/status`, `/stop`.
 
 ### Grok Bots (optional)
 

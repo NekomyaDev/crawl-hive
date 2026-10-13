@@ -3,8 +3,9 @@ import { Bell, Radar, ScanSearch, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BOT_URL = "https://t.me/crawlhivebot";
-// Открывает мини-апп сразу (Main Mini App в BotFather); без него Telegram открывает чат с кнопкой «Open app».
-export const APP_URL = "https://t.me/crawlhivebot?startapp";
+// Открывает чат с ботом, и он сразу присылает кнопку «Open the app». Работает всегда, даже без Main Mini App
+// в BotFather (с ним можно перейти на ?startapp — откроет приложение без чата).
+export const APP_URL = "https://t.me/crawlhivebot?start=app";
 const TG = "#229ED9";
 
 export function TelegramIcon({ className = "" }: { className?: string }) {

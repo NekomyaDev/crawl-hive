@@ -3,6 +3,7 @@
 import type { NextRequest } from "next/server";
 import { handle } from "@/lib/server/http";
 import { tgUserFrom, walletsOf } from "@/lib/server/tg-webapp";
+import { seenTgUser } from "@/lib/server/admin";
 import { prefs, watchList } from "@/lib/server/telegram-public";
 import { bestPairs } from "@/lib/server/crawl/dexscreener";
 import { listCrawlers, mySignals } from "@/lib/server/store";
@@ -10,6 +11,7 @@ import { listCrawlers, mySignals } from "@/lib/server/store";
 export async function GET(req: NextRequest) {
   return handle(async () => {
     const u = tgUserFrom(req);
+    seenTgUser(u, "app");
     const chat = String(u.id);
     const list = watchList(chat);
     // Живая цена наблюдаемых токенов: не больше 5 штук, по одному запросу на сеть.

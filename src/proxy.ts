@@ -8,6 +8,7 @@
 import { appendFile, stat, truncate } from "node:fs/promises";
 import path from "node:path";
 import { isIP } from "node:net";
+import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 const RATE = Number(process.env.RATE_LIMIT_RPS ?? 10); // токенов в секунду
@@ -18,8 +19,19 @@ interface Bucket {
   tokens: number;
   at: number;
 }
-const g = globalThis as unknown as { __crawlhiveRate?: { buckets: Map<string, Bucket>; sweptAt: number; blocked: number; logged: Map<string, number> } };
-const st = () => (g.__crawlhiveRate ??= { buckets: new Map(), sweptAt: Date.now(), blocked: 0, logged: new Map() });
+const g = globalThis as unknown as {
+  __crawlhiveRate?: { buckets: Map<string, Bucket>; sweptAt: number; blocked: number; logged: Map<string, number>; day: string; uniq: Set<string>; reqs: number };
+};
+const st = () => (g.__crawlhiveRate ??= { buckets: new Map(), sweptAt: Date.now(), blocked: 0, logged: new Map(), day: "", uniq: new Set(), reqs: 0 });
+
+// Посетители за сутки для админки: только хэш IP с суточной солью и только в памяти.
+function countVisit(ip: string) {
+  const s = st();
+  const day = new Date().toISOString().slice(0, 10);
+  if (s.day !== day) Object.assign(s, { day, uniq: new Set(), reqs: 0 });
+  s.reqs++;
+  if (s.uniq.size < 200_000) s.uniq.add(createHash("sha256").update(day + ip).digest("base64url").slice(0, 16));
+}
 
 const LOG = path.join(process.env.DATA_DIR?.trim() || path.join(process.cwd(), ".data"), "ratelimit.log");
 const LOG_MAX = 5 * 1024 * 1024;
@@ -63,6 +75,7 @@ export function proxy(req: NextRequest) {
     s.sweptAt = now;
   }
   const ip = clientIp(req);
+  if (req.method === "GET" && !req.nextUrl.pathname.startsWith("/api/")) countVisit(ip);
   const key = bucketKey(ip);
   const b = s.buckets.get(key) ?? { tokens: BURST, at: now };
   b.tokens = Math.min(BURST, b.tokens + ((now - b.at) / 1000) * RATE);

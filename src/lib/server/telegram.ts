@@ -16,6 +16,7 @@ const WARN_BEFORE_MS = 3 * 86400_000;
 
 interface TgState {
   bot?: string; // username, известен после getMe
+  mainApp?: boolean; // включён ли Main Mini App в BotFather: без него ссылки ?startapp не открываются
   codes: Map<string, { wallet: string; exp: number }>;
   queue: Promise<unknown>;
   started: boolean;
@@ -29,6 +30,7 @@ function tg(): TgState {
 
 const token = () => process.env.TELEGRAM_BOT_TOKEN?.trim() || "";
 export const telegramEnabled = () => !!token();
+export const telegramMainApp = () => !!tg().mainApp;
 export const telegramBotName = () => (telegramEnabled() ? (tg().bot ?? process.env.TELEGRAM_BOT_USERNAME?.trim() ?? null) : null);
 export const siteUrl = () => (process.env.PUBLIC_URL?.trim() || "https://crawlhive.xyz").replace(/\/$/, "");
 
@@ -135,7 +137,7 @@ function signalMessage(sig: Signal) {
 
 // Сообщение: привязка кошелька (/start <код>, /stop, /status) — здесь, остальное — в telegram-public.ts.
 async function handleUpdate(u: {
-  message?: { chat: { id: number; type: string }; text?: string; message_id: number; from?: { id: number } };
+  message?: { chat: { id: number; type: string }; text?: string; message_id: number; from?: { id: number; first_name?: string; username?: string } };
   callback_query?: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } };
   inline_query?: { id: string; query: string };
 }) {
@@ -147,7 +149,7 @@ async function handleUpdate(u: {
   const chatId = String(m.chat.id);
   const [cmd0, arg] = m.text.trim().split(/\s+/, 2);
   const cmd = cmd0.replace(/@\w+$/, "");
-  if (m.chat.type === "private" && cmd === "/start" && arg && arg !== "inline" && arg !== "scan") {
+  if (m.chat.type === "private" && cmd === "/start" && arg && !["inline", "scan", "app"].includes(arg)) {
     const st = tg();
     const link = st.codes.get(arg);
     if (!link || link.exp < Date.now()) {
@@ -227,9 +229,10 @@ export function startTelegram() {
     const chat = sig.owner && chatFor(sig.owner);
     if (chat) send(chat, signalMessage(sig));
   });
-  call<{ username: string }>("getMe", {})
+  call<{ username: string; has_main_web_app?: boolean }>("getMe", {})
     .then((me) => {
       st.bot = me.username;
+      st.mainApp = !!me.has_main_web_app;
       console.log(`[telegram] delivering signals as @${me.username}`);
     })
     .catch((e) => console.error("[telegram] getMe failed:", (e as Error).message));
@@ -243,16 +246,11 @@ export function startTelegram() {
   setInterval(() => pub().then((p) => p.checkWatches()).catch((e) => console.warn("[telegram] watchlist", (e as Error).message)), 10 * 60_000);
   setInterval(() => pub().then((p) => p.sendFollowups()).catch((e) => console.warn("[telegram] follow-ups", (e as Error).message)), 30 * 60_000);
   setInterval(() => pub().then((p) => p.pushRadar()).catch((e) => console.warn("[telegram] radar", (e as Error).message)), 60_000);
+  // В меню только главное: проверка токена и поддержка. Остальные команды работают, просто не мешают.
   call("setMyCommands", {
     commands: [
-      { command: "scan", description: "Scan a token on Solana or Robinhood Chain" },
-      { command: "radar", description: "Fresh launches the swarm scanned" },
-      { command: "alerts", description: "Launch Radar alerts with filters" },
-      { command: "watchlist", description: "Tokens you watch" },
-      { command: "track", description: "Did our verdicts come true?" },
-      { command: "settings", description: "Follow-ups and alerts" },
-      { command: "status", description: "Wallet linked for crawler signals" },
-      { command: "help", description: "What I can do" },
+      { command: "start", description: "Check a token: send an address, link or $TICKER" },
+      { command: "support", description: "Write to the CrawlHive team" },
     ],
   }).catch(() => {});
   // Кнопка меню чата открывает мини-апп.

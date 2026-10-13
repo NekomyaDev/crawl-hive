@@ -7,8 +7,9 @@
 // - inline-режим (@bot <адрес> в любом чате) и /track — точность сканера.
 import "server-only";
 import type { ScanResult } from "./scan";
-import { call, esc, send, sendPhoto, siteUrl, telegramBotName, type Keyboard } from "./telegram";
+import { call, esc, send, sendPhoto, siteUrl, telegramBotName, telegramMainApp, type Keyboard } from "./telegram";
 import { getMeta, listCrawlers, metaEntries, setMeta } from "./store";
+import { addSupport, adminChats, adminStats, isAdmin as isProjectAdmin, markAnswered, rememberAdminChat, seenTgUser, supportList } from "./admin";
 
 const SCANS_PER_HOUR = 10; // на личный чат: скан без X, но ходит в RPC
 const GROUP_SCANS_PER_HOUR = 20;
@@ -169,7 +170,9 @@ function keyboard(r: ScanResult, compact = false): Keyboard {
     rows.push([{ text: "📱 Open in the app", web_app: { url: `${siteUrl()}/tg?scan=${r.id}` } }]);
   } else {
     const bot = telegramBotName();
-    if (bot) rows[0].push({ text: "📱 App", url: `https://t.me/${bot}?startapp=scan_${r.id.slice(0, 50)}` });
+    // Прямо в мини-апп ведёт только ?startapp, а он работает лишь с включённым Main Mini App;
+    // иначе ведём в личку бота, где он отвечает кнопкой «Open the app».
+    if (bot) rows[0].push({ text: "📱 App", url: telegramMainApp() ? `https://t.me/${bot}?startapp=scan_${r.id.slice(0, 50)}` : `https://t.me/${bot}?start=app` });
   }
   return rows;
 }
@@ -192,6 +195,7 @@ async function doScan(chat: string, q: string, chain?: string) {
   call("sendChatAction", { chat_id: chat, action: "typing" }).catch(() => {});
   try {
     const r = await runFor(q, chain);
+    if (!chat.startsWith("-")) seenTgUser({ id: Number(chat) }, "scan");
     await scanCard(chat, r);
     rememberForFollowup(chat, r);
     // По тикеру ищем на Solana — предлагаем ту же монету на Robinhood Chain.
@@ -567,38 +571,66 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
 
 // ---------- сообщения ----------
 
+// Приветствие: баннер приложения и коротко — что умеет бот. Остальные команды работают, но в меню их нет.
 function welcome(chat: string) {
   const bot = telegramBotName();
-  send(
+  sendPhoto(
     chat,
+    `${siteUrl()}/tg/hero.jpg`,
     [
       "🐝 <b>CrawlHive</b>: memecoin crawlers that never sleep.",
       "",
-      "Send me a token and I scan it in seconds: holders, bundles, dev history, copycats, plus a ⚡ Jev take.",
-      "• <b>Solana</b>: mint address, pump.fun or DexScreener link",
-      "• <b>Robinhood Chain</b> and <b>BNB Chain</b>: 0x… address (the chain is found by itself) or a DexScreener / GeckoTerminal link",
-      "• launchpads: pump.fun, Meteora, Raydium LaunchLab, four.meme",
-      "• or a <b>$TICKER</b> (Solana first, one tap for Robinhood Chain)",
+      "🔎 <b>Send me a token</b> (address, link or $TICKER) and I check it in seconds: holders, bundles, dev wallet, copycats, plus a ⚡ Jev take.",
+      "Solana · Robinhood Chain · BNB Chain · pump.fun · Meteora · four.meme",
       "",
-      "👁 Watch a token for 7 days: I ping you on a rug, a −50% dump or a DANGER verdict.",
-      "🎯 24 hours after your scan I tell you if the verdict came true.",
-      "👥 Add me to a group: I answer every contract address posted there.",
-      bot ? `💬 Inline anywhere: <code>@${bot} &lt;address&gt;</code>` : "",
-      "",
-      "/radar · /alerts · /watchlist · /track · /settings",
-    ]
-      .filter((x) => x !== "")
-      .join("\n"),
+      "🆘 Need help? /support",
+    ].join("\n"),
     [
       [{ text: "📱 Open the CrawlHive app", web_app: { url: `${siteUrl()}/tg` } }],
-      [{ text: "📡 Radar alerts", callback_data: "a:menu" }, ...(bot ? [{ text: "👥 Add to a group", url: `https://t.me/${bot}?startgroup=scan` }] : [])],
-      [{ text: "🌐 crawlhive.xyz", url: siteUrl() }],
+      [...(bot ? [{ text: "👥 Add to a group", url: `https://t.me/${bot}?startgroup=scan` }] : []), { text: "🌐 crawlhive.xyz", url: siteUrl() }],
     ],
   );
 }
 
-export async function handlePublic(m: { chat: { id: number; type: string }; text: string; message_id: number; from?: { id: number } }) {
+// ---------- поддержка и админка ----------
+
+const waitingSupport = new Map<string, number>(); // чат → до какого времени ждём текст обращения
+
+async function submitSupport(chat: string, from: { id: number; first_name?: string; username?: string }, text: string) {
+  waitingSupport.delete(chat);
+  addSupport({ from: from.id, name: from.first_name ?? "", username: from.username, text: text.slice(0, 2000), at: Date.now() });
+  const who = `${esc(from.first_name ?? "")}${from.username ? ` (@${esc(from.username)})` : ""} · id <code>${from.id}</code>`;
+  for (const a of adminChats()) send(a, `🆘 <b>Support</b> from ${who}\n\n${esc(text.slice(0, 2000))}\n\nReply: <code>/reply ${from.id} your answer</code>`);
+  send(chat, "✅ Thanks! Your message reached the team. We'll answer right here.");
+}
+
+async function adminMessage(chat: string) {
+  const st = await adminStats();
+  const v = st.scans.verdicts24h;
+  const usd = (n?: number) => (n == null ? "—" : `$${Math.round(n).toLocaleString("en-US")}`);
+  send(
+    chat,
+    [
+      "📊 <b>CrawlHive dashboard</b>",
+      "",
+      `👥 Telegram users: <b>${st.users.telegram}</b> (24h active ${st.users.telegram24h}, new ${st.users.new24h}, app ${st.users.app24h})`,
+      `🌐 Site today: <b>${st.traffic.visitorsToday ?? "—"}</b> visitors, ${st.traffic.requestsToday ?? "—"} page views, ${st.traffic.blocked} blocked`,
+      `🔎 Verdicts 24h: scans ${v.scan ?? 0} · crawlers ${v.crawler ?? 0} · radar ${v.radar ?? 0} · agents ${v.agent ?? 0}`,
+      `🐝 Crawlers: <b>${st.crawlers.live}</b> live (${st.crawlers.active} active) · signals 24h ${st.crawlers.signals24h} · hit ${st.crawlers.scored ? Math.round((st.crawlers.hits / st.crawlers.scored) * 100) : 0}%`,
+      `💰 Payments: ${st.money.payments} · ${st.money.sol.toFixed(3)} SOL + ${st.money.eth.toFixed(4)} ETH · treasury ${st.money.treasury.sol != null ? `${st.money.treasury.sol.toFixed(3)} SOL` : "—"} (${usd(st.money.treasury.sol != null && st.money.treasury.solUsd ? st.money.treasury.sol * st.money.treasury.solUsd : undefined)})`,
+      `🤖 AI today: Grok ${st.ai.grok.calls}/${st.ai.grok.limit} · Jev ${st.ai.jev.calls} calls, $${st.ai.jev.cost.toFixed(4)}`,
+      `🔌 Agents: ${st.agents.bots} bots (${st.agents.botsLive} live), ${st.agents.oauthApps} connected apps, ${st.agents.dutyCrawlers} Grok duty`,
+      `👁 Watchlists ${st.telegram.watchers} · alert subs ${st.telegram.alertSubs} · groups ${st.telegram.groups}`,
+      `🆘 Support: <b>${st.support.open}</b> open`,
+      st.crawlers.failing.length ? `⚠️ Failing crawlers: ${st.crawlers.failing.map((c) => esc(c.name)).join(", ")}` : "✅ No failing crawlers",
+    ].join("\n"),
+    [[{ text: "📊 Open the full dashboard", web_app: { url: `${siteUrl()}/tg/admin` } }]],
+  );
+}
+
+export async function handlePublic(m: { chat: { id: number; type: string }; text: string; message_id: number; from?: { id: number; first_name?: string; username?: string } }) {
   const chat = String(m.chat.id);
+  if (m.from) seenTgUser(m.from);
   const [cmd0, ...rest] = m.text.trim().split(/\s+/);
   const cmd = cmd0.startsWith("/") ? cmd0.replace(/@\w+$/, "").toLowerCase() : "";
   const arg = rest.join(" ");
@@ -623,6 +655,28 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
     return;
   }
 
+  // Поддержка: /support текст — сразу; /support без текста — ждём следующее сообщение 10 минут.
+  if (cmd === "/support") {
+    if (!m.from) return;
+    if (arg.trim()) return submitSupport(chat, m.from, arg);
+    waitingSupport.set(chat, Date.now() + 10 * 60_000);
+    return send(chat, "🆘 Tell us what happened in one message: what you tried, the token address if there is one. The team answers right here.");
+  }
+  if (!cmd && (waitingSupport.get(chat) ?? 0) > Date.now() && m.from) return submitSupport(chat, m.from, m.text);
+  // Админка владельца проекта.
+  if (cmd === "/admin") {
+    if (!m.from || !isProjectAdmin(m.from)) return send(chat, `This command is for the CrawlHive team. Your Telegram id: <code>${m.from?.id ?? "?"}</code>`);
+    rememberAdminChat(chat);
+    return adminMessage(chat);
+  }
+  if (cmd === "/reply") {
+    if (!m.from || !isProjectAdmin(m.from)) return;
+    const [to, ...words] = arg.split(/\s+/);
+    if (!/^\d+$/.test(to ?? "") || !words.length) return send(chat, "Usage: /reply &lt;user id&gt; &lt;text&gt;");
+    send(to, `💬 <b>CrawlHive support</b>\n\n${esc(words.join(" "))}\n\nAnything else? /support`);
+    markAnswered(Number(to));
+    return send(chat, "✅ Sent.");
+  }
   if (cmd === "/alerts") return alertsMenu(chat);
   if (cmd === "/watchlist") {
     const mine = (watches()[chat] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
@@ -652,5 +706,5 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   if (cmd === "/start" || cmd === "/help") return welcome(chat);
   const q = scanQuery(m.text);
   if (q) return doScan(chat, q);
-  welcome(chat);
+  send(chat, "Send me a token address, a DexScreener / pump.fun link or a $TICKER and I'll check it. Need help? /support");
 }
