@@ -392,9 +392,12 @@ export async function runScan(
   let score = 100;
   const p = market?.pair;
   const liq = p?.liquidity?.usd ?? 0;
-  const onCurve = !!p && p.liquidity?.usd === undefined && /pump/i.test(p.dexId ?? p.url ?? "");
+  // Пара без ликвидности — токен ещё на bonding curve лаунчпада (pump.fun, Meteora DBC, Raydium LaunchLab,
+  // Moonshot, Boop…): у кривой нет пула, и «$0 ликвидности» здесь неправда.
+  const onCurve = !!p && p.liquidity?.usd === undefined;
+  const launchpad = !p ? "" : /pump/i.test(p.dexId ?? "") ? "pump.fun" : /dbc|meteora/i.test(p.dexId ?? "") ? "Meteora DBC" : /launchlab/i.test(p.dexId ?? "") ? "Raydium LaunchLab" : p.dexId ?? "launchpad";
   if (!p) hit("No market", -35, "no trading pair found");
-  else if (onCurve) hit("Bonding curve", -10, "still on the pump.fun curve, not graduated to a pool");
+  else if (onCurve) hit("Bonding curve", -10, `still on the ${launchpad} curve, not graduated to a pool`);
   else if (liq < 5_000) hit("Thin liquidity", -25, `only ${usd(liq)} in the pool`);
   else if (liq < 20_000) hit("Low liquidity", -10, `${usd(liq)} in the pool`);
   if (holders?.mintAuthority) hit("Mint open", -30, "the creator can still mint new tokens");
@@ -443,7 +446,11 @@ export async function runScan(
     score = 59;
   }
 
-  const tooEarly = !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot;
+  // «Слишком рано» — только если явных красных флагов нет: связанные кошельки или серийного создателя видно
+  // уже в первые минуты, и молчать о них нельзя.
+  const SERIOUS = ["Bundled", "Linked wallets", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
+  const tooEarly =
+    !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !factors.some((f) => SERIOUS.includes(f.label));
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";
   const worst = [...factors].sort((a, b) => a.impact - b.impact)[0];
   const reason = tooEarly
@@ -467,7 +474,8 @@ export async function runScan(
       ? {
           priceUsd: p.priceUsd ? Number(p.priceUsd) : undefined,
           liquidityUsd: p.liquidity?.usd,
-          fdv: p.fdv,
+          // На кривой DexScreener часто отдаёт FDV в центах — такое не показываем.
+          fdv: onCurve && (p.fdv ?? 0) < 1_000 ? undefined : p.fdv,
           volume1h: p.volume?.h1,
           volume24h: p.volume?.h24,
           change1h: p.priceChange?.h1,
