@@ -2,6 +2,7 @@
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 13", title: "@crawlhivebot for everyone", text: "Scan Solana and Robinhood Chain tokens in Telegram with a Jev take, watch tokens for rug alerts, get Launch Radar alerts, add the bot to groups. A day later it tells you if the verdict came true." },
   { date: "Oct 13", title: "Track Record", text: "Every verdict is checked against the real price for 24 hours: how many DANGER tokens dumped, and how many CLEAN ones dumped anyway. Hits and misses, nothing hidden." },
   { date: "Oct 13", title: "Launch Radar", text: "The swarm scans fresh launches on Solana and Robinhood Chain on its own. Everyone sees them 10 minutes later, crawler owners get them live." },
   { date: "Oct 13", title: "Any agent, one click", text: "ChatGPT Dots, Meta Muse, Claude and Cursor connect to your crawlers with a Connect button: no key to copy. Pick the bot and crawlers, approve with your wallet, disconnect any time." },

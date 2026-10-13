@@ -181,7 +181,19 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 
 Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. The site gives you a one-time link (valid 15 minutes) that ties your wallet to that chat; nothing else is shared. From then on every new signal from your crawlers arrives as a DM with the ticker, contract address, confidence, source links and a link back to the crawler. `/status` shows linked wallets, `/stop` unlinks.
 
-The same bot is open to everyone, wallet or not: send it a token address, a DexScreener / pump.fun link or a `$TICKER` and it replies with the verdict, the main flags and a link to the full scan (10 scans an hour per chat). Tap **👁 Watch 7 days** and the bot checks the token every 10 minutes: it pings you once if the pair disappears, liquidity falls below 30% of where it was, or the price drops 50%, and it rescans every 3 hours to tell you when the verdict turns DANGER (up to 5 tokens per chat). `/watchlist`, `/unwatch`, `/radar` for fresh launches; in groups only `/scan` and `/radar`.
+**[@crawlhivebot](https://t.me/crawlhivebot) is open to everyone**, wallet or not:
+
+| Feature | How it works |
+|---|---|
+| Scan in the chat | Send a Solana mint, a Robinhood Chain `0x…` address, a pump.fun / DexScreener / GeckoTerminal link or a `$TICKER`. The reply is the scan card image with the verdict, the main flags, a ⚡ Jev take (LOOK / WATCH / AVOID with its confidence) and buttons: Full scan, Watch, Chart, Rescan. A `$TICKER` is looked up on Solana first, with one tap to search Robinhood Chain. 10 scans an hour per chat. |
+| Groups | Add the bot to a group and it answers every contract address posted there with a short verdict as a reply. The same token is answered once per 30 minutes, 20 scans an hour per group; admins turn it off with `/autoscan off`. |
+| Watchlist | **👁 Watch** keeps an eye on a token for 7 days: one ping if the pair disappears, liquidity falls below 30% or the price drops 50%, and a rescan every 3 hours to tell you when the verdict turns DANGER. Up to 5 tokens per chat. |
+| 24-hour follow-up | A day after your scan the bot comes back with the outcome from the Track Record: *we called it*, *it held*, or *we missed this one*. Up to 3 a day, `/followups off` to stop. |
+| Launch Radar alerts | `/alerts`: fresh launches with filters (Clean / OK only or all verdicts, minimum liquidity $5k / $25k / $100k), up to 25 a day. Chats linked to a wallet with a live crawler get them live, everyone else after the 10-minute delay. |
+| Inline | `@crawlhivebot <address>` in any chat drops the verdict into the conversation. |
+| `/track` | Track Record numbers in the chat. |
+
+Commands: `/scan`, `/radar`, `/alerts`, `/watchlist`, `/unwatch`, `/track`, `/settings`, `/followups`, `/status`, `/stop`.
 
 ### Grok Bots (optional)
 

@@ -163,3 +163,8 @@ export function trackStats() {
   const recent = list.slice(0, 40).map(pub);
   return { since: list.length ? list[list.length - 1].at : null, total: list.length, by, warned, missed, recent, windowHours: 24, dumpPct: DUMP_PCT };
 }
+
+// Запись по токену для скана, сделанного в момент `at` (бот «через 24 часа» спрашивает, чем кончилось).
+export function trackEntry(id: string, at: number) {
+  return all().find((e) => e.id === id && Math.abs(e.at - at) < WINDOW_MS);
+}
