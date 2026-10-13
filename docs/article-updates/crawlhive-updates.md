@@ -1,6 +1,6 @@
 # CrawlHive update: the swarm got smarter, cheaper and louder
 
-Three days ago CrawlHive was a scanner with crawlers behind it. Since then we shipped a decision model on every signal, a way for any AI agent to run your crawlers, a public record of every verdict, a radar that scans launches on its own, BNB Chain and Meteora, and a full app inside Telegram. Here is what changed and what it gave us, with real numbers.
+Three days ago CrawlHive was a scanner with crawlers behind it. Since then we shipped a decision model on every signal, a way for any AI agent to run your crawlers, a public record of every verdict, a radar that scans launches on its own, BNB Chain and Meteora, a full app inside Telegram, and a security audit of the whole codebase. Here is what changed and what it gave us, with real numbers.
 
 [ COVER: images/00-cover.png ]
 
@@ -9,10 +9,11 @@ Three days ago CrawlHive was a scanner with crawlers behind it. Since then we sh
 - ⚡ Jev rates every crawler find in half a second for $0.00002.
 - 🐙 A Grok Bot can sit on duty over any crawler, and any agent can plug in with one click: Grok Bot, ChatGPT Dots, Meta Muse, Claude, Cursor.
 - 🎯 Every verdict is checked against the real price for 24 hours, in public, misses included.
-- 📡 The swarm scans fresh launches on Solana and Robinhood Chain on its own.
+- 📡 The swarm scans fresh launches on Solana, Robinhood Chain and BNB Chain on its own.
 - 📱 CrawlHive is now an app inside Telegram: scan, Launch Radar, watchlist and your crawlers, one tap from @crawlhivebot.
-- 🤖 The bot scans any token in chat, watches it for rugs and answers contract addresses in groups.
+- 🤖 The bot scans any token in chat, watches it for rugs, answers contract addresses in groups and works inline in any chat.
 - 🟡 Scans now cover BNB Chain and every Solana launchpad, Meteora included.
+- 🔐 We audited our own code and closed more than a dozen holes before anyone else found them.
 - 💸 The same product costs 8 to 50 times less to run, with a hard ceiling of $1.25 a day on AI.
 
 [ IMAGE 01: images/01-home-telegram.png ]
@@ -76,7 +77,7 @@ That's the point of a public record. It tells us where the scanner is weak befor
 
 ## 📡 Launch Radar
 
-You don't have to paste anything to find something. Every 3 minutes the swarm takes new launches on Solana and Robinhood Chain, keeps the ones between 36 minutes and 24 hours old with at least $5k of liquidity, and runs the full scan on them: holders, bundles, dev history, copycats.
+You don't have to paste anything to find something. Every 3 minutes the swarm takes new launches on Solana, Robinhood Chain and BNB Chain, keeps the ones between 36 minutes and 24 hours old with at least $5k of liquidity, and runs the full scan on them: holders, bundles, dev history, copycats.
 
 Everyone sees the verdicts 10 minutes later. Crawler owners get launches like these the second they appear, filtered to their own rules. Every radar verdict also goes into the Track Record.
 
@@ -100,13 +101,16 @@ The app and the bot share everything: add a token to the watchlist in the app an
 
 ## 🤖 The bot, for chats and groups
 
-The bot is the part of the app that lives in your chats.
+The bot is the part of the app that lives in your chats. It greets you with a banner and keeps the menu to two commands: /start, then just send a token, and /support, which goes straight to the team. Answers come back in the same chat.
+
+[ IMAGE 11: images/11-bot-welcome.png ]
 
 - Scan in the chat. Send a Solana mint, a Robinhood Chain 0x address, a pump.fun or DexScreener link, or a $TICKER. You get the scan card with the verdict, the main flags, a Jev take and buttons: Full scan, Watch, Chart, Rescan, Open in the app.
-- Groups. Add the bot to a group and it answers every contract address posted there with a short verdict. Admins switch it off with /autoscan off.
+- Groups. Add the bot to a group and it answers every contract address posted there with a short verdict, no command needed. Only group admins can change its settings or switch it off with /autoscan off.
 - 👁 Watch for 7 days. One ping if the pair disappears, liquidity falls below 30%, the price drops 50%, or the verdict turns DANGER.
 - 24 hours later. The bot comes back and tells you whether the verdict came true: we called it, it held, or we missed this one.
-- Launch Radar alerts with filters, inline mode (@crawlhivebot <address> in any chat) and /track.
+- Inline in any chat. Type @crawlhivebot and a token address or $TICKER in any conversation, and the verdict drops right into it. No need to add the bot anywhere.
+- Launch Radar alerts with filters and /track.
 
 [ IMAGE 08: images/08-telegram-bot.png ]
 
@@ -132,13 +136,24 @@ On top of that there are hard daily limits: at most 20 X checks and 60 Grok call
 
 [ IMAGE 09: images/09-costs.png ]
 
-## 🛡 Built to take a hit
+## 🛡 Built to take a hit, and audited
 
 - Every IP is limited to 10 requests a second, with room for a burst. Past that it gets 429.
 - An IP that keeps hitting the limit for about a minute is banned at the firewall for an hour, so its requests don't even reach the web server.
 - SSH takes keys only, brute force is banned automatically, and repeat offenders are banned for a week.
 - Only the web ports and SSH are open.
 - Bot keys and agent tokens are stored as hashes and shown once.
+
+Then we turned on ourselves. Several agents went through the whole codebase at once, looking for the holes an attacker would look for, and every finding was checked by hand. What we closed:
+
+- A crawler that reads project docs can't be pointed at our own server or the cloud's internal addresses anymore. The check happens at the moment of connection, so swapping DNS halfway doesn't help.
+- A crafted text can't freeze the scanner with a slow pattern match.
+- Scan limits count the real visitor, not a header anyone can fake.
+- A post written to fool the AI can't turn a DANGER token into LOOK. The verdict has a floor that no signal text can lift.
+- Wallet sign-in names our domain, so a signature phishing site can't reuse it, and logging out ends every session of that wallet.
+- Agent connections show the exact address the app returns to, never preselect a bot, and their tokens can't be reused by another app.
+- Anonymous Telegram scans have their own AI budget, so a flood of throwaway accounts can't leave paying crawler owners without Jev.
+- The server runs without root and without system privileges, and the site can't be framed by other pages.
 
 ## What's next
 

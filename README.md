@@ -46,10 +46,12 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 **Latest (Oct 13):**
+- 🔐 **Security audit.** Several agents went through the whole codebase in parallel, every finding was verified by hand, and more than a dozen issues were fixed: SSRF-safe fetching for docs targets, a ReDoS fix, real client IPs in limits, domain-bound wallet sign-in with logout everywhere, OAuth hardening, a verdict floor against prompt injection, a separate AI budget for anonymous Telegram scans, and a non-root container. Details in [Trust & safety](#trust--safety).
+- 💬 **Bot: welcome banner, inline and support.** `/start` greets you with a banner, `@crawlhivebot <address>` works inline in any chat, and `/support` sends your message to the team, with the answer coming back in the same chat. Group settings can be changed by group admins only.
 - 🟡 **BNB Chain and Meteora.** Scans now cover BNB Chain tokens (holders, honeypot, contract owner, four.meme bonding curve) and every Solana launchpad: pump.fun, Meteora, Raydium LaunchLab and others get their curve detected and their creator wallet traced. A `0x` address finds its chain by itself.
 - 📱 **CrawlHive is now an app inside Telegram.** Open [@crawlhivebot](https://t.me/crawlhivebot) and press **Open app**: scan tokens, browse Launch Radar, manage your watchlist and alerts, and see your crawlers and their signals, with no install and no sign-up.
 - 🎯 **Track Record.** Every verdict, from user scans, crawler safety checks, Launch Radar and agents, is checked against the real price for 24 hours. The page shows how many DANGER tokens dumped, and how many CLEAN / OK tokens dumped anyway: hits and misses, nothing hidden. [crawlhive.xyz/track](https://crawlhive.xyz/track)
-- 📡 **Launch Radar.** The swarm scans fresh launches on Solana and Robinhood Chain on its own and publishes the verdicts with a 10-minute delay; crawler owners get them live. [crawlhive.xyz/radar](https://crawlhive.xyz/radar)
+- 📡 **Launch Radar.** The swarm scans fresh launches on Solana, Robinhood Chain and BNB Chain on its own and publishes the verdicts with a 10-minute delay; crawler owners get them live. [crawlhive.xyz/radar](https://crawlhive.xyz/radar)
 - 🤖 **Telegram bot for everyone.** Send a token address, link or `$TICKER` and get the scan in the chat. Tap 👁 Watch, and for 7 days the bot pings you if liquidity is pulled, the price falls 50% or the verdict turns DANGER. `/radar` shows fresh launches.
 - 🤝 **Any agent, one click.** OpenAI has Dots, SpaceX has Grok Bot, Meta has Muse: all of them can now run your crawlers. ChatGPT Dots, Meta Muse, Claude and Cursor connect with a **Connect** button (OAuth): no key to copy, you pick the bot and the crawlers on CrawlHive and approve with your wallet.
 
@@ -193,7 +195,7 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 
 **Track Record** ([/track](https://crawlhive.xyz/track)) answers the only question that matters about a scanner: did the verdict come true? Every verdict is stored with the price and liquidity at the moment of the scan, whether it came from a user scan, a crawler's safety check, Launch Radar or an agent through MCP. For the next 24 hours the price is sampled every 10 minutes. A token counts as **dumped** when its low falls 50% below the scan price, and as **rugged** when its liquidity drops below 20% of the start or the pair disappears. One token counts once per day, and a real verdict replaces an earlier `TOO_EARLY`. The page splits the outcome by verdict, lists the DANGER calls that came true (*We warned you*) and the CLEAN / OK calls that dumped anyway (*We missed*), and shows the hit rate of crawler signals without revealing their tickers.
 
-**Launch Radar** ([/radar](https://crawlhive.xyz/radar)) is the swarm scanning on its own. Every 3 minutes it takes new DexScreener profiles and boosts on Solana and Robinhood Chain, keeps launches between 36 minutes and 24 hours old with at least $5k liquidity, and runs the full Instant Crawl scan on up to four of them (no X search, so no Grok cost; 500 scans a day at most). Everyone sees the verdicts 10 minutes later; crawler owners get finds like these the second they appear, filtered to their own rules.
+**Launch Radar** ([/radar](https://crawlhive.xyz/radar)) is the swarm scanning on its own. Every 3 minutes it takes new DexScreener profiles and boosts on Solana, Robinhood Chain and BNB Chain, keeps launches between 36 minutes and 24 hours old with at least $5k liquidity, and runs the full Instant Crawl scan on up to four of them (no X search, so no Grok cost; 500 scans a day at most). Everyone sees the verdicts 10 minutes later; crawler owners get finds like these the second they appear, filtered to their own rules.
 
 ### Signals in Telegram
 
@@ -210,7 +212,7 @@ Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. T
 | Feature | How it works |
 |---|---|
 | Scan in the chat | Send a Solana mint, a Robinhood Chain `0x…` address, a pump.fun / DexScreener / GeckoTerminal link or a `$TICKER`. The reply is the scan card image with the verdict, the main flags, a ⚡ Jev take (LOOK / WATCH / AVOID with its confidence) and buttons: Full scan, Watch, Chart, Rescan. A `$TICKER` is looked up on Solana first, with one tap to search Robinhood Chain. 10 scans an hour per chat. |
-| Groups | Add the bot to a group and it answers every contract address posted there with a short verdict as a reply. The same token is answered once per 30 minutes, 20 scans an hour per group; admins turn it off with `/autoscan off`. |
+| Groups | Add the bot to a group and it answers every contract address posted there with a short verdict as a reply. The same token is answered once per 30 minutes, 20 scans an hour per group; only group admins can change the settings or turn it off with `/autoscan off`. |
 | Watchlist | **👁 Watch** keeps an eye on a token for 7 days: one ping if the pair disappears, liquidity falls below 30% or the price drops 50%, and a rescan every 3 hours to tell you when the verdict turns DANGER. Up to 5 tokens per chat. |
 | 24-hour follow-up | A day after your scan the bot comes back with the outcome from the Track Record: *we called it*, *it held*, or *we missed this one*. Up to 3 a day, `/followups off` to stop. |
 | Launch Radar alerts | `/alerts`: fresh launches with filters (Clean / OK only or all verdicts, minimum liquidity $5k / $25k / $100k), up to 25 a day. Chats linked to a wallet with a live crawler get them live, everyone else after the 10-minute delay. |
@@ -218,6 +220,8 @@ Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. T
 | `/track` | Track Record numbers in the chat. |
 
 The menu keeps only two commands: `/start` (a banner and "send me a token") and `/support`, which forwards your message to the team; answers arrive in the same chat. Everything else still works: `/scan`, `/radar`, `/alerts`, `/watchlist`, `/unwatch`, `/track`, `/settings`, `/followups`, `/status`, `/stop`.
+
+**Admin dashboard.** For the team, `/admin` in the bot opens a dashboard inside the Mini App (`/tg/admin`): Telegram users (total, active and new in 24 hours, app opens, scans, linked wallets), site traffic and blocked requests, verdicts by source and radar scans, crawlers (live, active, failing with the last error), payments and both treasuries, Grok and Jev spend against their daily limits, connected agents, watchlists and alert subscriptions, and the open support inbox. `/reply <user id> <text>` answers a support message. Access is checked on the server against `TELEGRAM_ADMIN_IDS` / `TELEGRAM_ADMIN_USERNAMES` using the signed `initData`; everyone else gets 403.
 
 ### Grok Bots (optional)
 
@@ -472,6 +476,8 @@ XAI_API_KEY=...                                # enables X crawlers and AI readi
 # DEMO_NETWORK=0                               # production: real crawlers only
 # CRAWLER_TERM_DAYS=30                         # days per spawn / renewal
 # TELEGRAM_BOT_TOKEN=...  PUBLIC_URL=https://crawlhive.xyz   # signal delivery
+# TELEGRAM_ADMIN_IDS=123456  TELEGRAM_ADMIN_USERNAMES=name  # who can open /admin
+# JEV_PUBLIC_DAILY=600                         # Jev budget for anonymous Telegram scans
 # SESSION_SECRET=...                           # optional, otherwise generated and stored in .data/
 ```
 
