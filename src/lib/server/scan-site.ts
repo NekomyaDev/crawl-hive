@@ -6,6 +6,7 @@
 // на сочетании сигналов. Лучше промолчать о слабом сигнале, чем зря пугать.
 import "server-only";
 import { checkPublicUrl, fetchPublicText } from "./safe-fetch";
+import { astScan } from "./scan-site-ast";
 
 export interface SiteFinding { key: string; label: string; note: string; severity: "high" | "medium" | "low"; evidence: string }
 export interface SiteReport { url: string; host: string; scripts: number; bytes: number; findings: SiteFinding[]; wallet: boolean; error?: string }
@@ -49,6 +50,14 @@ const KNOWN_ADDR = new Set(
     "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", // WETH
     "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // USDC
     "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", // «нативная монета» в агрегаторах
+    "0x10ed43c718714eb63d5aa57b78b54704e256024e", // PancakeSwap V2 Router
+    "0x13f4ea83d0bd40e75c8222255bc855a974568dd4", // PancakeSwap Smart Router
+    "0x1b81d678ffb9c0263b24a97847620c99d213eb14", // PancakeSwap V3 Router
+    "0x1a0a18ac4becddbd6389559687d1a73d8927e416", // PancakeSwap Universal Router
+    "0x111111125421ca6dc452d289314280a0f8842a65", // 1inch v6
+    "0x1111111254eeb25477b68fb85ed929f73a960582", // 1inch v5
+    "0xdef1c0ded9bec7f1a1670819833240f027b25eff", // 0x Exchange Proxy
+    "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", // WBNB
   ].map((a) => a.toLowerCase()),
 );
 
@@ -199,14 +208,32 @@ function hidden(b: Bundle): SiteFinding | undefined {
   return undefined;
 }
 
+// Есть ли в бандле что разбирать деревом: без этих слов разбор впустую тратит время.
+const AST_HINT = /approve|setApprovalForAll|095ea7b3|Instruction|SystemProgram/;
+const AST_BUDGET_MS = 5_000;
+
 // Чистый анализ без сети: html страницы и тексты внешних скриптов. Экспортирован ради тестов.
 export function analyzeCode(html: string, scripts: string[]): { wallet: boolean; findings: SiteFinding[] } {
   const bundles: Bundle[] = [{ name: "page", code: html }, ...scripts.map((code, i) => ({ name: `script${i}`, code }))];
   const wallet = bundles.some((b) => WALLET.test(b.code));
   const found = new Map<string, SiteFinding>();
   const add = (f?: SiteFinding) => { if (f && !found.has(f.key)) found.set(f.key, f); };
+  const t0 = Date.now();
   for (const b of bundles) {
     add(knownKit(b));
+    // Сначала точный разбор по дереву; не разобрался (большой или битый файл, кончился бюджет) — регулярки.
+    const ast = AST_HINT.test(b.code) && Date.now() - t0 < AST_BUDGET_MS ? astScan(b.code, KNOWN_ADDR) : { ok: false, findings: [] };
+    if (ast.ok) {
+      for (const f of ast.findings) {
+        // Перевод на зашитый адрес бывает и честным (комиссия dapp-а), дрейнер же просит подписать всё сразу.
+        if (f.key === "sol-drain" && !/signAllTransactions/.test(b.code)) continue;
+        if (f.key === "evm-approval" && !wallet) continue;
+        add({ key: f.key, label: f.key === "evm-approval" ? "Asks for unlimited approvals" : "Signs away Solana tokens", note: f.note, severity: "high", evidence: f.evidence });
+      }
+      // Обфусцированный бандл дерево не прочтёт по смыслу (имена спрятаны) — для него остаётся правило регулярок.
+      if (countMatches(b.code, OBF, 201) > 200) add(solanaDrain(b));
+      continue;
+    }
     add(solanaDrain(b));
     // Апрув без подключения кошелька ничего не сделает — без wallet не поднимаем.
     if (wallet) add(evmApproval(b));
