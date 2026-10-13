@@ -10,6 +10,8 @@ const COMMON = [
 ];
 
 const nextConfig: NextConfig = {
+  // evmole — WASM-движок разбора байткода: грузим из node_modules как есть, без бандлинга.
+  serverExternalPackages: ["evmole"],
   async headers() {
     return [
       { source: "/((?!tg).*)", headers: [...COMMON, { key: "X-Frame-Options", value: "DENY" }, { key: "Content-Security-Policy", value: "frame-ancestors 'none'" }] },

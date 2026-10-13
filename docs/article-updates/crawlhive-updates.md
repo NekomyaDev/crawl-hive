@@ -76,6 +76,7 @@ The token, its live chart, the countdown to the next buyback and today's crawler
 AI agents are learning to take apart closed-source software. We pointed the same idea at the place memecoin traps actually hide: the token contract.
 
 - On BNB Chain and Robinhood Chain the scanner reads the contract's bytecode straight from the chain, even when the team never published the source. It lists what the team can still do to you: mint new tokens, blacklist your wallet, raise the sell tax, stop trading, cap how much you can sell, or swap the whole contract through a proxy. If ownership is renounced, those powers are shown as dead.
+- Scammers rename their functions, so reading names isn't enough. We run the bytecode through evmole, the EVM engine inside the REA "reverse engineer anything" toolkit, and trace which function writes what. That catches what a name list can't: a function called something harmless that flags your wallet on every transfer, or a fake `Approve` that is really a switch for who can sell. On a fresh BNB launch it caught exactly that: `Approve(address[])` controlling who can trade.
 - On Solana it reads Token-2022 extensions, the newer token standard that can carry nasty switches: a permanent delegate that can take tokens from any wallet, a transfer hook that can block sells, a transfer tax, wallets frozen by default.
 - And it opens the project's website and checks the code for wallet drainers: hidden unlimited approvals, transfers to a hard-coded wallet, known drainer kits.
 

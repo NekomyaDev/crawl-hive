@@ -13,6 +13,7 @@
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
     "clsx": "^2.1.1",
+    "evmole": "0.9.3",
     "lucide-react": "^1.55.0",
     "next": "16.4.0",
     "react": "19.3.0",

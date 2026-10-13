@@ -5,6 +5,7 @@
 import "server-only";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { bytesToHex } from "@noble/hashes/utils";
+import { contractInfo } from "evmole";
 import { chainRpc } from "./scan-evm";
 
 export interface XRayPower {
@@ -13,6 +14,7 @@ export interface XRayPower {
   note: string;
   severity: "high" | "medium" | "low";
   fns: string[]; // найденные сигнатуры, напр. "setTaxFee(uint256)"
+  inferred?: boolean; // найдено по поведению (evmole: кто что пишет в хранилище), а не по имени функции
 }
 
 export interface XRayReport {
@@ -24,6 +26,7 @@ export interface XRayReport {
   selfdestruct: boolean;
   delegatecall: boolean;
   roles: boolean; // AccessControl/Auth: права раздаются ролями, отказ от owner() их не снимает
+  engine?: "evmole"; // поведенческий разбор сработал
 }
 
 type Group = { label: string; note: string; severity: XRayPower["severity"]; sigs: string[] };
@@ -206,6 +209,92 @@ export function scanCode(hex: string): { selectors: Set<string>; selfdestruct: b
   return { selectors, selfdestruct, delegatecall };
 }
 
+// Поведенческий разбор (evmole, движок EVM-модуля REA): функции, их аргументы и раскладка хранилища —
+// какие селекторы читают и пишут каждый слот. Так ловим опасные функции с незнакомыми именами:
+// таблица сигнатур видит только известные имена, а скамеры свои функции переименовывают.
+// По одному хранилищу блэклист не отличить от списка пулов (setAutomatedMarketMakerPair устроен так же),
+// поэтому имя кандидата сначала ищем в открытой базе сигнатур и решаем по нему; без имени — только «возможно».
+const TRANSFER = new Set(["a9059cbb", "23b872dd"]); // transfer, transferFrom
+const TOTAL_SUPPLY = "18160ddd";
+type Candidate = { sel: string; args: string; shape: "flag" | "number" | "supply" };
+
+export function behaviour(code: string, skip: Set<string>): { cands: Candidate[]; ok: boolean } {
+  let info;
+  try {
+    info = contractInfo(code, { selectors: true, arguments: true, stateMutability: true, storage: true });
+  } catch {
+    return { cands: [], ok: false };
+  }
+  const fns = new Map((info.functions ?? []).map((f) => [f.selector, f]));
+  const out = new Map<string, Candidate>();
+  for (const r of info.storage ?? []) {
+    const readByTransfer = r.reads.some((x) => TRANSFER.has(x));
+    for (const w of r.writes) {
+      const f = fns.get(w);
+      if (!f || skip.has(w) || TRANSFER.has(w) || f.stateMutability === "view" || f.stateMutability === "pure") continue;
+      const args = f.arguments ?? "";
+      // Инициализаторы (строки, структуры, длинные списки) пишут всё подряд один раз при создании — не рычаг.
+      if (/string|\(/.test(args) || args.split(",").length > 4) continue;
+      if (readByTransfer && /^mapping\(address => (bool|uint8)\)$/.test(r.type) && /address/.test(args)) out.set(w, { sel: w, args, shape: "flag" });
+      else if (r.reads.includes(TOTAL_SUPPLY) && args) out.set(w, { sel: w, args, shape: "supply" });
+      else if (readByTransfer && /^uint\d+$/.test(r.type) && /^uint\d+(,uint\d+)*$/.test(args) && !out.has(w)) out.set(w, { sel: w, args, shape: "number" });
+    }
+  }
+  return { cands: [...out.values()], ok: true };
+}
+
+// Имена селекторов из открытой базы сигнатур (openchain): кэш на процесс, сбой — просто без имён.
+const names = new Map<string, string | null>();
+async function lookupNames(sels: string[]): Promise<void> {
+  const need = sels.filter((x) => !names.has(x)).slice(0, 60);
+  if (!need.length) return;
+  try {
+    const r = await fetch(`https://api.openchain.xyz/signature-database/v1/lookup?filter=true&function=${need.map((x) => `0x${x}`).join(",")}`, { signal: AbortSignal.timeout(3_000) });
+    const j = (await r.json()) as { result?: { function?: Record<string, { name: string }[] | null> } };
+    for (const x of need) names.set(x, j.result?.function?.[`0x${x}`]?.[0]?.name ?? null);
+    if (names.size > 20_000) names.clear();
+  } catch {}
+}
+
+const NAME_BLACKLIST = /black|bot|ban|block|frozen|freeze|deny|sniper|jail|restrict|isbad/i;
+const NAME_BENIGN = /pair|pool|amm|market|exclude|exempt|whitelist|fee|reward|dividend|limit|wallet|router|migrat/i;
+const NAME_MINT = /mint|issue|airdrop|reward|supply|inflat/i;
+const NAME_INIT = /^(init|initialize|setup|configure)/i;
+// Имя стандартной функции ERC-20 с другими аргументами или регистром (Approve(address[]) вместо approve):
+// так прячут рычаг от глаз в эксплорере — частый приём honeypot-контрактов.
+const STD_NAMES = new Set(["approve", "transfer", "transferfrom", "allowance", "balanceof", "increaseallowance", "decreaseallowance", "totalsupply"]);
+const disguised = (name: string) => STD_NAMES.has(name.split("(")[0].toLowerCase());
+
+async function inferPowers(code: string, skip: Set<string>): Promise<{ powers: { key: string; fns: string[] }[]; ok: boolean }> {
+  const { cands, ok } = behaviour(code, skip);
+  await lookupNames(cands.map((c) => c.sel));
+  const found = new Map<string, string[]>();
+  const add = (key: string, fn: string) => found.set(key, [...(found.get(key) ?? []), fn]);
+  for (const c of cands) {
+    const name = names.get(c.sel) ?? null;
+    const fn = name ?? `0x${c.sel}(${c.args})`;
+    if (name && NAME_INIT.test(name)) continue;
+    if (name && disguised(name)) add("disguised", fn);
+    else if (c.shape === "flag") {
+      if (name ? NAME_BLACKLIST.test(name) : false) add("named-blacklist", fn);
+      else if (!name) add("hidden-blacklist", fn);
+      else if (!NAME_BENIGN.test(name)) add("hidden-flag", fn);
+    } else if (c.shape === "supply") {
+      if (!name || NAME_MINT.test(name)) add("hidden-supply", fn);
+    } else add("hidden-setting", fn);
+  }
+  return { powers: [...found.entries()].map(([key, fns]) => ({ key, fns: fns.sort() })), ok };
+}
+
+const INFERRED: Record<string, Omit<XRayPower, "key" | "fns">> = {
+  "named-blacklist": { label: "Can blacklist", note: "a function that flags wallets checked on every transfer (found by behaviour, name from the signature database)", severity: "high", inferred: true },
+  "hidden-blacklist": { label: "Possible hidden blacklist", note: "an unnamed function sets a per-wallet flag that every transfer checks; could also be a list of pools", severity: "medium", inferred: true },
+  disguised: { label: "Disguised function", note: "a function named like a standard ERC-20 call changes what transfers check: a classic honeypot trick", severity: "high", inferred: true },
+  "hidden-flag": { label: "Per-wallet switch", note: "a function toggles a per-wallet flag that every transfer checks (whitelist, exemption or block list)", severity: "medium", inferred: true },
+  "hidden-supply": { label: "Hidden supply control", note: "a function outside the known mint/burn writes the total supply (inferred from storage use)", severity: "medium", inferred: true },
+  "hidden-setting": { label: "Hidden transfer setting", note: "a setter changes a number every transfer reads: tax, limit or threshold (inferred)", severity: "low", inferred: true },
+};
+
 const SLOT_IMPL = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 const SLOT_ADMIN = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
 const SLOT_BEACON = "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50";
@@ -246,13 +335,15 @@ async function analyze(token: string, chain: string): Promise<XRayReport | undef
   } else if (asAddr(zosImpl)) proxy = { kind: "other", impl: asAddr(zosImpl)!, admin: asAddr(zosAdmin) };
 
   const own = scanCode(lower);
+  let logic = lower;
   const selectors = new Set(own.selectors);
   let { selfdestruct, delegatecall } = own;
   if (proxy?.impl) {
     // Один уровень вглубь: у прокси свои функции — пара админских, вся логика токена в реализации.
     const implCode = await chainRpc<string>(chain, "eth_getCode", [proxy.impl, "latest"]).catch(() => null);
     if (implCode && implCode !== "0x") {
-      const s = scanCode(implCode.toLowerCase());
+      logic = implCode.toLowerCase();
+      const s = scanCode(logic);
       for (const x of s.selectors) selectors.add(x);
       selfdestruct ||= s.selfdestruct;
       delegatecall ||= s.delegatecall;
@@ -269,6 +360,8 @@ async function analyze(token: string, chain: string): Promise<XRayReport | undef
   // Прокси с адресом реализации — апгрейд возможен, даже если upgradeTo спрятан в ProxyAdmin.
   if (proxy && !found.has("upgrade")) found.set("upgrade", []);
 
+  // Поведенческий разбор кода логики: известные по имени функции уже учтены, ищем остальные.
+  const inf = await inferPowers(logic, KNOWN);
   const order = Object.keys(GROUPS);
   const powers: XRayPower[] = [...found.entries()]
     .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
@@ -278,6 +371,11 @@ async function analyze(token: string, chain: string): Promise<XRayReport | undef
       if (key === "upgrade" && proxy) note += proxy.admin ? ` (upgrade admin ${proxy.admin})` : proxy.kind === "eip1167" ? " (minimal clone: only if the implementation allows it)" : "";
       return { key, label: gr.label, note, severity: gr.severity, fns: fns.sort() };
     });
+  for (const p of inf.powers) {
+    // Если по имени уже нашли блэклист или mint, поведенческая находка того же рода ничего не добавляет.
+    if ((/blacklist/.test(p.key) && found.has("blacklist")) || (p.key === "hidden-supply" && found.has("mint"))) continue;
+    powers.push({ key: p.key, ...INFERRED[p.key], fns: p.fns.slice(0, 4) });
+  }
   // Клон EIP-1167 сам по себе не обновляется: убираем ложный «Upgradeable», если в реализации нет upgradeTo.
   const fixed = proxy?.kind === "eip1167" ? powers.filter((p) => p.key !== "upgrade" || p.fns.length) : powers;
 
@@ -290,6 +388,7 @@ async function analyze(token: string, chain: string): Promise<XRayReport | undef
     selfdestruct,
     delegatecall,
     roles: [...selectors].some((s) => ROLE_SELS.has(s)),
+    ...(inf.ok ? { engine: "evmole" as const } : {}),
   };
 }
 
@@ -323,7 +422,7 @@ export function xrayLive(x: XRayReport, ownerActive: boolean): XRayPower[] {
   return out;
 }
 
-const IMPACT: Record<string, number> = { upgrade: -20, mint: -25, blacklist: -25, fees: -15, balance: -30, pause: -10, limits: -6, selfdestruct: -15 };
+const IMPACT: Record<string, number> = { disguised: -30, "named-blacklist": -25, "hidden-blacklist": -8, "hidden-supply": -10, upgrade: -20, mint: -25, blacklist: -25, fees: -15, balance: -30, pause: -10, limits: -6, selfdestruct: -15 };
 
 // Факторы для оценки сканера. Низкая серьёзность не штрафуется: это обычные механики запуска.
 export function xrayFactors(x: XRayReport, ownerActive = true): { label: string; impact: number; note: string }[] {

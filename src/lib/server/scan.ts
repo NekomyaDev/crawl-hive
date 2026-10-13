@@ -578,7 +578,7 @@ function xrayViewEvm(x: XRayReport, ownerActive: boolean): XRayView {
   const proxy = x.proxy ? ` · proxy (${x.proxy.kind})` : "";
   return {
     kind: "evm",
-    summary: `read ${x.selectors} functions from the bytecode${x.unknown ? `, ${x.unknown} unknown` : ""}${proxy}${dead > 0 ? ` · ${dead} owner power${dead > 1 ? "s" : ""} dead (ownership renounced)` : ""}`,
+    summary: `read ${x.selectors} functions from the bytecode${x.unknown ? `, ${x.unknown} unknown` : ""}${x.engine ? " · storage traced (evmole)" : ""}${proxy}${dead > 0 ? ` · ${dead} owner power${dead > 1 ? "s" : ""} dead (ownership renounced)` : ""}`,
     findings: live.map((p) => ({ label: p.label, note: p.note, severity: p.severity, detail: p.fns.length ? p.fns.slice(0, 4).join(", ") : undefined })),
   };
 }
