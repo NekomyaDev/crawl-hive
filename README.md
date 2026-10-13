@@ -12,11 +12,24 @@
   <img alt="Wallet: Phantom" src="https://img.shields.io/badge/wallet-Phantom-ab9ff2?style=flat-square">
   <img alt="Wallet: MetaMask / Rabby" src="https://img.shields.io/badge/wallet-MetaMask%20%7C%20Rabby-f6851b?style=flat-square">
   <img alt="Grok Bots via MCP" src="https://img.shields.io/badge/Grok%20Bots-MCP-e8eaed?style=flat-square">
+  <img alt="Jev decisions" src="https://img.shields.io/badge/Jev-decision%20layer-ff4fa3?style=flat-square">
+  <img alt="Agents via OAuth" src="https://img.shields.io/badge/Dots%20%7C%20Muse%20%7C%20Claude-OAuth-60a5fa?style=flat-square">
+  <img alt="Telegram bot" src="https://img.shields.io/badge/Telegram-@crawlhivebot-229ED9?style=flat-square&logo=telegram&logoColor=white">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square">
 </p>
 
 <p align="center">
-  <a href="https://crawlhive.xyz"><b>🐝 Open the live app: crawlhive.xyz →</b></a>
+  <a href="https://crawlhive.xyz"><img alt="Open the app" src="https://img.shields.io/badge/🐝%20Open%20the%20app-crawlhive.xyz-ffb020?style=for-the-badge&labelColor=0b0c0f"></a>
+  <a href="https://t.me/crawlhivebot"><img alt="Telegram bot" src="https://img.shields.io/badge/Scan%20in%20Telegram-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
+</p>
+<p align="center">
+  <a href="https://crawlhive.xyz/track"><img alt="Track Record" src="https://img.shields.io/badge/🎯%20Track%20Record-hits%20and%20misses-b6f23a?style=for-the-badge&labelColor=0b0c0f"></a>
+  <a href="https://crawlhive.xyz/radar"><img alt="Launch Radar" src="https://img.shields.io/badge/📡%20Launch%20Radar-live-5eead4?style=for-the-badge&labelColor=0b0c0f"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/home-oct13.png" alt="The CrawlHive home page: Instant Crawl, the Telegram bot and live tiles for Launch Radar, Track Record, agents and Jev" width="100%">
+  <br><sub>The home page on Oct 13: paste any token, or scan it in Telegram; below, live tiles for Launch Radar, Track Record, AI agents and Jev.</sub>
 </p>
 
 ---
