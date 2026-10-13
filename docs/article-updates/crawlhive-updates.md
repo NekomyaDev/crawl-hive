@@ -1,0 +1,129 @@
+# CrawlHive update: the swarm got smarter, cheaper and louder
+
+Three days ago CrawlHive was a scanner with crawlers behind it. Since then we shipped a decision model on every signal, a way for any AI agent to run your crawlers, a public record of every verdict, a radar that scans launches on its own, and a Telegram bot anyone can use. Here is what changed and what it gave us, with real numbers.
+
+[ COVER: images/00-cover.png ]
+
+## The short version
+
+- ⚡ Jev rates every crawler find in half a second for $0.00002.
+- 🐙 A Grok Bot can sit on duty over any crawler, and any agent can plug in with one click: Grok Bot, ChatGPT Dots, Meta Muse, Claude, Cursor.
+- 🎯 Every verdict is checked against the real price for 24 hours, in public, misses included.
+- 📡 The swarm scans fresh launches on Solana and Robinhood Chain on its own.
+- 🤖 @crawlhivebot scans any token in Telegram, watches it for rugs and answers contract addresses in groups.
+- 💸 The same product costs 8 to 50 times less to run, with a hard ceiling of $1.25 a day on AI.
+
+[ IMAGE 01: images/01-home-telegram.png ]
+
+## ⚡ Jev decides, Grok researches
+
+Most of what a crawler does is small decisions. Is this post a real call or a giveaway? Is this token worth a look or noise? Asking a big language model each time is slow and expensive.
+
+Jev is a decision model from TypeSafe. It doesn't write text. It picks an answer from options we define and says how sure it is. We use it in two places:
+
+- Every crawler find. Jev answers "is this worth a trader's attention right now?" with a probability. Pure noise is dropped before the safety scan, and the rest is scanned most promising first. Every signal shows its rating: ⚡ Jev 74%.
+- The Grok Bot's verdict. When Jev is at least 70% sure of LOOK, WATCH or AVOID, its answer is final. Grok is asked only about the doubtful ones, in one call.
+
+Measured on production: 0.4–0.7 seconds and about $0.00002 per decision. In its first hour Jev rated 29 real signals for $0.0008 in total. On the 15 latest real signals, the tokens that went on to pump scored 66–83% and the ones that dumped 49–55%, and it dropped none of them. A "FREE AIRDROP, connect wallet" spam post scored 3%.
+
+[ IMAGE 02: images/02-jev-octo.png ]
+
+A crawler running Jev turns pink at the tips and wears the spark. Live on a real crawler, it looks like this:
+
+[ IMAGE 03: images/03-jev-live.png ]
+
+## 🐙 Grok Bot on duty
+
+One switch under any live crawler. Turn it on and our Grok Bot reads every new signal from that crawler: it waits 20 seconds to batch what arrived together, scans the tokens, and writes one line under each signal: LOOK, WATCH or AVOID, with the reason and a link to the scan. The same line follows the signal to Telegram.
+
+It never polls. No signals, no calls, nothing spent. No $200 subscription either: it's a switch.
+
+[ IMAGE 04: images/04-grok-duty.png ]
+
+## 🤝 Any AI agent, one click
+
+OpenAI has Dots. SpaceX has Grok Bot. Meta has Muse. All of them can now run your crawlers.
+
+CrawlHive speaks MCP, the protocol AI agents use to talk to tools. Grok Bot connects with a bot key. ChatGPT Dots, Meta Muse, Claude and Cursor connect with a button:
+
+1. Paste crawlhive.xyz/mcp into your agent and press Connect.
+2. CrawlHive opens. Pick an existing bot or create a new one over the crawlers you choose.
+3. Approve with your wallet.
+
+The agent gets read access to those crawlers and free token scans, nothing more. It can't change crawlers, spend credits or move funds. Every connected app shows on its bot card and can be disconnected on its own.
+
+Why it matters: an agent that wakes up every few minutes to check a feed burns credits on runs where nothing happened. Your crawlers already watch X, Telegram and the chain around the clock, so the agent asks "anything new?" first and goes back to sleep when the answer is no. Tested live through the Grok API: $0.0006 for a quiet run, $0.006 when there were signals.
+
+[ IMAGE 05: images/05-agents.png ]
+
+## 🎯 Track Record: we publish our misses
+
+Every scanner says "trust me". We'd rather show the receipts.
+
+Every verdict, from user scans, crawler safety checks, Launch Radar and agents, is stored with the price and liquidity at the moment of the scan. For the next 24 hours the price is sampled every 10 minutes. A token counts as dumped when it falls 50% below the scan price, and as rugged when its liquidity is pulled.
+
+The page shows the outcome per verdict, a "We warned you" list (DANGER or RISKY, and then it dumped) and a "We missed" list (CLEAN or OK, and it dumped anyway). The misses are shown on purpose.
+
+[ IMAGE 06: images/06-track-record.png ]
+
+It paid off within three hours. The "We missed" list filled up with one pattern: tokens under a day old, rated OK because each flag alone cost only a few points, that had linked wallets or a creator wallet only hours old. $SUKI had 12 linked wallets and a creator wallet under an hour old: rated OK, rugged. $WAIFU, with 11 linked wallets and a fresh dev, went the same way.
+
+So we changed the rule the same day. A token under 24 hours old with linked wallets, a fresh dev wallet, fresh holder wallets, an active contract owner or a dev holding a lot can't score above RISKY anymore, however many points it collects. $WALTJR, which was 95 CLEAN before it fell 64%, now scans as 59 RISKY: "Young and linked".
+
+That's the point of a public record. It tells us where the scanner is weak before the market does.
+
+## 📡 Launch Radar
+
+You don't have to paste anything to find something. Every 3 minutes the swarm takes new launches on Solana and Robinhood Chain, keeps the ones between 36 minutes and 24 hours old with at least $5k of liquidity, and runs the full scan on them: holders, bundles, dev history, copycats.
+
+Everyone sees the verdicts 10 minutes later. Crawler owners get launches like these the second they appear, filtered to their own rules. Every radar verdict also goes into the Track Record.
+
+[ IMAGE 07: images/07-launch-radar.png ]
+
+## 🤖 @crawlhivebot, for everyone
+
+The scanner now lives where traders already are.
+
+- Scan in the chat. Send a Solana mint, a Robinhood Chain 0x address, a pump.fun or DexScreener link, or a $TICKER. You get the scan card with the verdict, the main flags, a Jev take and buttons: Full scan, Watch, Chart, Rescan.
+- Groups. Add the bot to a group and it answers every contract address posted there with a short verdict. Admins switch it off with /autoscan off.
+- 👁 Watch for 7 days. One ping if the pair disappears, liquidity falls below 30%, the price drops 50%, or the verdict turns DANGER.
+- 24 hours later. The bot comes back and tells you whether the verdict came true: we called it, it held, or we missed this one.
+- Launch Radar alerts with filters, inline mode (@crawlhivebot <address> in any chat) and /track.
+
+[ IMAGE 08: images/08-telegram-bot.png ]
+
+## 💸 A fraction of the bill
+
+Three days ago a dollar of AI credits could disappear in minutes: every scan ran an X search on a large model with three search rounds. Now:
+
+- A token scan costs $0. The X check runs only when you press the button.
+- An X check went from about $0.40 to $0.05, and a repeat within 6 hours is free.
+- An X crawler run went from about $0.07 to $0.004.
+- A bot verdict went from $0.001 to $0.00002 when Jev decides.
+
+On top of that there are hard daily limits: at most 20 X checks and 60 Grok calls a day. AI spend stays under about $1.25 a day, however much traffic comes in.
+
+[ IMAGE 09: images/09-costs.png ]
+
+## 🛡 Built to take a hit
+
+- Every IP is limited to 10 requests a second, with room for a burst. Past that it gets 429.
+- An IP that keeps hitting the limit for about a minute is banned at the firewall for an hour, so its requests don't even reach the web server.
+- SSH takes keys only, brute force is banned automatically, and repeat offenders are banned for a week.
+- Only the web ports and SSH are open.
+- Bot keys and agent tokens are stored as hashes and shown once.
+
+## What's next
+
+Track Record showed us exactly where to dig. Next we go deeper on holders: wallets that act as one operator (shared buys, shared funders, wallets that enter in the same block), the first buyers and what they did since, and a memory of operators across launches, so wallets that rugged before are recognised the next time they show up.
+
+## Step inside
+
+Paste a token. Watch the swarm work. Or just open the bot.
+
+🐝 crawlhive.xyz
+🤖 t.me/crawlhivebot
+🎯 crawlhive.xyz/track
+📖 github.com/h100envy/crawl-hive
+
+Not financial advice. Crawlers find signals; you make the calls.
