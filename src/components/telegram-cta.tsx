@@ -55,7 +55,7 @@ export function TelegramCta({ className }: { className?: string }) {
             CrawlHive is now <span style={{ color: "#5bc4f5" }}>an app in Telegram</span>
           </h2>
           <p className="mt-2 text-sm text-fg/80">
-            Scan any token, browse Launch Radar, watch tokens for rug alerts and check your crawlers, without leaving Telegram. No install, no sign-up: one tap opens it. The bot answers contract addresses in your groups and tells you 24 hours later if the verdict came true. Solana and Robinhood Chain.
+            Scan any token, browse Launch Radar, watch tokens for rug alerts and check your crawlers, without leaving Telegram. No install, no sign-up: one tap opens it. The bot answers contract addresses in your groups and tells you 24 hours later if the verdict came true. Solana, Robinhood Chain and BNB Chain.
           </p>
           <div className="mt-4 flex flex-wrap gap-1.5">
             {FEATURES.map(({ icon: Icon, text }) => (

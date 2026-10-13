@@ -10,7 +10,7 @@ import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceDev, type DevReport } from "./scan-dev";
-import { traceEvm, type EvmReport } from "./scan-evm";
+import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
@@ -76,9 +76,14 @@ const CORE: Record<string, string> = {
   "0x0bd7d308f8e1639fab988df18a8011f41eacad73": "Wrapped ETH",
   "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "USDG",
   "0x80e0e24718dbfcad49ecaa6f1e6c89a190586ca8": "USDC",
+  // BNB Chain
+  "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "Wrapped BNB",
+  "0x55d398326f99059ff775485246999027b3197955": "USDT",
+  "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d": "USDC",
+  "0xe9e7cea3dedca5984780bafc599bd69add087d56": "BUSD",
 };
-// Сети, которые умеет сканер: Solana и Robinhood Chain. Ключ — chainId DexScreener.
-export const SCAN_CHAINS: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain" };
+// Сети, которые умеет сканер. Ключ — chainId DexScreener.
+export const SCAN_CHAINS: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain" };
 const chainName = (c: string) => SCAN_CHAINS[c] ?? c;
 const RECENT_KEY = "recentScans";
 const SAVED_KEY = "scanResults";
@@ -142,10 +147,12 @@ async function resolve(q: string, log: (l: ScanLog) => void, hint = "solana"): P
   if (/^https?:\/\//i.test(s)) s = s.match(/0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/g)?.pop() ?? s;
   if (isSolanaMint(s)) return { chain: "solana", address: s };
   if (/^0x[a-fA-F0-9]{40}$/.test(s)) {
-    const pairs = (await searchPairs(s)) as PairX[];
-    // Один адрес бывает в нескольких EVM-сетях: сначала Robinhood Chain, потом самая ликвидная пара где угодно.
-    pairs.sort((a, b) => Number(b.chainId === "robinhood") - Number(a.chainId === "robinhood") || (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
-    const best = pairs.find((p) => p.baseToken.address.toLowerCase() === s.toLowerCase()) ?? pairs[0];
+    const pairs = ((await searchPairs(s)) as PairX[]).filter((p) => p.baseToken.address.toLowerCase() === s.toLowerCase());
+    // Один адрес бывает в нескольких EVM-сетях: сначала сеть, выбранная пользователем, потом поддерживаемые
+    // сканером (Robinhood Chain, BNB Chain), внутри — самая ликвидная пара.
+    const rank = (p: PairX) => (p.chainId === hint ? 2 : SCAN_CHAINS[p.chainId] ? 1 : 0);
+    pairs.sort((a, b) => rank(b) - rank(a) || (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+    const best = pairs[0];
     if (!best) throw new Error("No trading pair found for this address");
     return { chain: best.chainId, address: best.baseToken.address, pair: best };
   }
@@ -214,7 +221,7 @@ export async function runScan(
   if (core) log({ crawler: "resolver", text: `${core} is a core ${chainName(chain)} asset: memecoin checks are skipped`, tone: "info" });
 
   // Краулеры работают параллельно, каждый пишет в лог по готовности.
-  log({ crawler: "swarm", text: `${core ? 2 : chain === "solana" ? 6 : chain === "robinhood" ? 4 : 3} crawlers dispatched to ${address.slice(0, 6)}…${address.slice(-4)} on ${chainName(chain)}` });
+  log({ crawler: "swarm", text: `${core ? 2 : chain === "solana" ? 6 : EVM_SCAN[chain] ? 4 : 3} crawlers dispatched to ${address.slice(0, 6)}…${address.slice(-4)} on ${chainName(chain)}` });
 
   const marketP = (async () => {
     const pair = (pre ?? (await bestPairs(chain, [address])).get(address)) as PairX | undefined;
@@ -225,7 +232,7 @@ export async function runScan(
     const ageHours = pair.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 3600_000 : undefined;
     log({
       crawler: "crawler_market",
-      text: `$${sym(pair.baseToken.symbol)} · ${pair.liquidity?.usd === undefined ? "no pool yet (bonding curve)" : `liquidity ${usd(pair.liquidity.usd)}`} · FDV ${usd(pair.fdv)} · ${ageHours !== undefined ? `${ageHours < 48 ? `${ageHours.toFixed(1)}h` : `${Math.round(ageHours / 24)}d`} old` : "age unknown"}`,
+      text: `$${sym(pair.baseToken.symbol)} · ${pair.liquidity?.usd === undefined ? "no pool yet (bonding curve)" : `liquidity ${usd(pair.liquidity.usd)}`}${pair.liquidity?.usd === undefined && (pair.fdv ?? 0) < 1_000 ? "" : ` · FDV ${usd(pair.fdv)}`} · ${ageHours !== undefined ? `${ageHours < 48 ? `${ageHours.toFixed(1)}h` : `${Math.round(ageHours / 24)}d`} old` : "age unknown"}`,
       tone: (pair.liquidity?.usd ?? 0) < 10_000 ? "warn" : "ok",
     });
     return { pair, ageHours };
@@ -255,8 +262,8 @@ export async function runScan(
 
   // Robinhood Chain: держатели и honeypot (GeckoTerminal), владелец контракта (RPC).
   const evmP: Promise<EvmReport | undefined> =
-    chain === "robinhood" && !core
-      ? withTimeout(traceEvm(address), 15_000)
+    EVM_SCAN[chain] && !core
+      ? withTimeout(traceEvm(address, chain), 15_000)
           .then((e) => {
             log({
               crawler: "crawler_holders",
@@ -301,14 +308,14 @@ export async function runScan(
           withTimeout(traceDev(rpcConnection(), address, h?.supplyRaw), 15_000)
             .then((d) => {
               if (!d) {
-                log({ crawler: "crawler_dev", text: "not a pump.fun launch: creator history not traced", tone: "info" });
+                log({ crawler: "crawler_dev", text: "creator not found: an old token or one minted outside launchpads", tone: "info" });
                 return undefined;
               }
               const age = d.walletAgeHours === undefined ? `${d.walletTxs}+ txs` : d.walletAgeHours < 48 ? `wallet ${d.walletAgeHours.toFixed(1)}h old` : `wallet ${Math.round(d.walletAgeHours / 24)}d old`;
               const others = d.launched - 1;
               log({
                 crawler: "crawler_dev",
-                text: `creator ${d.creator.slice(0, 4)}…${d.creator.slice(-4)} · ${others ? `${others} earlier pump.fun launch${others > 1 ? "es" : ""}, ${d.graduated} graduated` : "first launch"} · ${age}${d.holdsPct !== undefined ? ` · holds ${pct(d.holdsPct)}` : ""}`,
+                text: `creator ${d.creator.slice(0, 4)}…${d.creator.slice(-4)} · ${d.platform === "other" ? "found from the first transaction" : others ? `${others} earlier pump.fun launch${others > 1 ? "es" : ""}, ${d.graduated} graduated` : "first launch"} · ${age}${d.holdsPct !== undefined ? ` · holds ${pct(d.holdsPct)}` : ""}`,
                 tone: devTone(d),
               });
               return d;
@@ -395,7 +402,7 @@ export async function runScan(
   // Пара без ликвидности — токен ещё на bonding curve лаунчпада (pump.fun, Meteora DBC, Raydium LaunchLab,
   // Moonshot, Boop…): у кривой нет пула, и «$0 ликвидности» здесь неправда.
   const onCurve = !!p && p.liquidity?.usd === undefined;
-  const launchpad = !p ? "" : /pump/i.test(p.dexId ?? "") ? "pump.fun" : /dbc|meteora/i.test(p.dexId ?? "") ? "Meteora DBC" : /launchlab/i.test(p.dexId ?? "") ? "Raydium LaunchLab" : p.dexId ?? "launchpad";
+  const launchpad = !p ? "" : /pump/i.test(p.dexId ?? "") ? "pump.fun" : /dbc|meteora/i.test(p.dexId ?? "") ? "Meteora DBC" : /launchlab/i.test(p.dexId ?? "") ? "Raydium LaunchLab" : /four/i.test(p.dexId ?? "") ? "four.meme" : p.dexId ?? "launchpad";
   if (!p) hit("No market", -35, "no trading pair found");
   else if (onCurve) hit("Bonding curve", -10, `still on the ${launchpad} curve, not graduated to a pool`);
   else if (liq < 5_000) hit("Thin liquidity", -25, `only ${usd(liq)} in the pool`);

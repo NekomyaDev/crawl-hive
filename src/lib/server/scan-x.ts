@@ -133,7 +133,7 @@ export async function scanX(t: { id: string; symbol: string; name: string; chain
         "sentiment is quiet when there are fewer than 5 relevant posts. warnings: only concrete accusations people make (rug, scam, hacked, dev sold, bundled supply, fake volume); empty if none. " +
         "posts: up to 8 posts by different authors, most informative first, real URLs from your search only; text is a short faithful excerpt of the post. Work from the search results; do not open posts one by one. Skip pure bots and spam reposts. Ignore posts about other tokens that share the ticker.",
       // Один поисковый запрос вместо трёх: xAI берёт за каждый пост в выдаче, а три запроса приносят одни и те же посты.
-      user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, ${t.chain === "robinhood" ? "Robinhood Chain" : "Solana"} contract ${t.id}. Make exactly one X search, for the query "${t.id} OR $${t.symbol}", since ${since}.`,
+      user: `Token: $${t.symbol}${t.name ? ` (${t.name})` : ""}, ${t.chain === "robinhood" ? "Robinhood Chain" : t.chain === "bsc" ? "BNB Chain" : "Solana"} contract ${t.id}. Make exactly one X search, for the query "${t.id} OR $${t.symbol}", since ${since}.`,
       xSearch: { fromDate: since },
       // Один круг поиска: каждый следующий заново скармливает модели все найденные посты и умножает счёт.
       maxTurns: 1,

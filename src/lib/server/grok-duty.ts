@@ -82,7 +82,7 @@ async function run(crawlerId: string, signals: Signal[]) {
   const tokens = [...new Map(signals.filter((s) => s.token?.address && !s.safety).map((s) => [s.token!.address, s.token!])).values()].slice(0, SCANS_PER_RUN);
   for (const t of tokens) {
     try {
-      scans.set(t.address, await runScan(t.address, () => {}, t.chain === "robinhood" ? "robinhood" : undefined, { record: false }));
+      scans.set(t.address, await runScan(t.address, () => {}, t.chain === "solana" ? undefined : t.chain, { record: false }));
     } catch (e) {
       console.warn("[grok-duty] scan failed", t.address, (e as Error).message);
     }

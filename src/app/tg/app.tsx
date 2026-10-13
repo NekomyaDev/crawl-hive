@@ -74,7 +74,7 @@ interface Me {
 }
 type Tab = "scan" | "radar" | "watch" | "crawlers" | "track";
 
-const CHAIN: Record<string, string> = { solana: "SOL", robinhood: "RH" };
+const CHAIN: Record<string, string> = { solana: "SOL", robinhood: "RH", bsc: "BNB" };
 const RING: Record<string, string> = { CLEAN: "#b6f23a", OK: "#b6f23a", RISKY: "#ffb020", DANGER: "#ef4444", TOO_EARLY: "#8a9099" };
 
 // ---------- скан ----------
@@ -96,7 +96,7 @@ function ScoreRing({ score, verdict }: { score: number | null; verdict: string }
 
 function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: boolean; onWatched: () => void }) {
   const [q, setQ] = useState("");
-  const [net, setNet] = useState<"solana" | "robinhood">("solana");
+  const [net, setNet] = useState<"solana" | "robinhood" | "bsc">("solana");
   const [logs, setLogs] = useState<string[]>([]);
   const [res, setRes] = useState<ScanRes | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -116,7 +116,8 @@ function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: 
       setLogs(["crawl " + (v.length > 20 ? short(v) : v)]);
       setBusy(true);
       haptic("tap");
-      const src = new EventSource(`/api/scan?q=${encodeURIComponent(v)}&chain=${v.startsWith("0x") ? "robinhood" : net}`);
+      // 0x-адрес сам находит сеть (Robinhood или BNB), если пользователь не выбрал её явно.
+      const src = new EventSource(`/api/scan?q=${encodeURIComponent(v)}&chain=${v.startsWith("0x") && net === "solana" ? "" : net}`);
       es.current = src;
       src.onmessage = (m) => {
         const e = JSON.parse(m.data);
@@ -189,7 +190,7 @@ function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: 
             <div className="text-lg font-bold leading-tight">
               Send the <span className="text-gradient">swarm</span> after any memecoin
             </div>
-            <div className="text-[11px] text-fg/70">Holders, bundles, dev history, copycats. Solana and Robinhood Chain.</div>
+            <div className="text-[11px] text-fg/70">Holders, bundles, dev history, copycats. Solana, Robinhood, BNB.</div>
           </div>
         </div>
       )}
@@ -210,9 +211,9 @@ function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: 
           </button>
         </div>
         <div className="mt-2 flex items-center gap-2">
-          {(["solana", "robinhood"] as const).map((n) => (
-            <button key={n} onClick={() => setNet(n)} className={cn("rounded-lg border px-2.5 py-1 text-xs", net === n ? "border-honey/60 bg-honey/10 text-honey" : "border-line text-muted")}>
-              {n === "solana" ? "Solana" : "Robinhood Chain"}
+          {(["solana", "robinhood", "bsc"] as const).map((n) => (
+            <button key={n} onClick={() => setNet(n)} className={cn("rounded-lg border px-2 py-1 text-xs", net === n ? "border-honey/60 bg-honey/10 text-honey" : "border-line text-muted")}>
+              {n === "solana" ? "Solana" : n === "robinhood" ? "Robinhood" : "BNB"}
             </button>
           ))}
           <button onClick={() => scan(q)} disabled={busy || !q.trim()} className="ml-auto rounded-xl bg-honey px-5 py-2 text-sm font-semibold text-black disabled:opacity-50">

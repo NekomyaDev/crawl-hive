@@ -1,6 +1,6 @@
 # CrawlHive update: the swarm got smarter, cheaper and louder
 
-Three days ago CrawlHive was a scanner with crawlers behind it. Since then we shipped a decision model on every signal, a way for any AI agent to run your crawlers, a public record of every verdict, a radar that scans launches on its own, and a full app inside Telegram. Here is what changed and what it gave us, with real numbers.
+Three days ago CrawlHive was a scanner with crawlers behind it. Since then we shipped a decision model on every signal, a way for any AI agent to run your crawlers, a public record of every verdict, a radar that scans launches on its own, BNB Chain and Meteora, and a full app inside Telegram. Here is what changed and what it gave us, with real numbers.
 
 [ COVER: images/00-cover.png ]
 
@@ -12,6 +12,7 @@ Three days ago CrawlHive was a scanner with crawlers behind it. Since then we sh
 - 📡 The swarm scans fresh launches on Solana and Robinhood Chain on its own.
 - 📱 CrawlHive is now an app inside Telegram: scan, Launch Radar, watchlist and your crawlers, one tap from @crawlhivebot.
 - 🤖 The bot scans any token in chat, watches it for rugs and answers contract addresses in groups.
+- 🟡 Scans now cover BNB Chain and every Solana launchpad, Meteora included.
 - 💸 The same product costs 8 to 50 times less to run, with a hard ceiling of $1.25 a day on AI.
 
 [ IMAGE 01: images/01-home-telegram.png ]
@@ -108,6 +109,15 @@ The bot is the part of the app that lives in your chats.
 - Launch Radar alerts with filters, inline mode (@crawlhivebot <address> in any chat) and /track.
 
 [ IMAGE 08: images/08-telegram-bot.png ]
+
+## 🟡 BNB Chain and Meteora
+
+Memecoins don't live on one chain or one launchpad, so neither does the scanner anymore.
+
+- BNB Chain. Paste a 0x address and the scanner finds the chain by itself: holders, the top-10 share, a honeypot check and whether the deployer still controls the contract. Tokens still on the four.meme curve are recognised as such.
+- Every Solana launchpad. Before, only pump.fun tokens got their curve and creator checked. Now Meteora, Raydium LaunchLab, Moonshot and the rest do too: a token on a curve is reported as on the curve, not as a pool with $0, and the creator is the wallet that paid for the token's very first transaction. On a fresh token that can mean digging through 6,000 bot trades from the first few minutes, so the scanner reads up to 25 pages of history.
+
+A Meteora token four minutes old used to come back as "too early to judge". Now it reads: on the Meteora curve, 12 linked wallets, a creator wallet 12 minutes old. 45 RISKY.
 
 ## 💸 A fraction of the bill
 

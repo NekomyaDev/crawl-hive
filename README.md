@@ -6,6 +6,7 @@
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-ffb020?style=flat-square">
   <img alt="Solana" src="https://img.shields.io/badge/Solana-mainnet%20%7C%20devnet-9945FF?style=flat-square&logo=solana&logoColor=white">
   <img alt="Robinhood Chain" src="https://img.shields.io/badge/Robinhood%20Chain-ETH-b6f23a?style=flat-square">
+  <img alt="BNB Chain" src="https://img.shields.io/badge/BNB%20Chain-scans-F0B90B?style=flat-square&logo=bnbchain&logoColor=white">
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs">
   <img alt="React 19" src="https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white">
@@ -45,6 +46,7 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 **Latest (Oct 13):**
+- 🟡 **BNB Chain and Meteora.** Scans now cover BNB Chain tokens (holders, honeypot, contract owner, four.meme bonding curve) and every Solana launchpad: pump.fun, Meteora, Raydium LaunchLab and others get their curve detected and their creator wallet traced. A `0x` address finds its chain by itself.
 - 📱 **CrawlHive is now an app inside Telegram.** Open [@crawlhivebot](https://t.me/crawlhivebot) and press **Open app**: scan tokens, browse Launch Radar, manage your watchlist and alerts, and see your crawlers and their signals, with no install and no sign-up.
 - 🎯 **Track Record.** Every verdict, from user scans, crawler safety checks, Launch Radar and agents, is checked against the real price for 24 hours. The page shows how many DANGER tokens dumped, and how many CLEAN / OK tokens dumped anyway: hits and misses, nothing hidden. [crawlhive.xyz/track](https://crawlhive.xyz/track)
 - 📡 **Launch Radar.** The swarm scans fresh launches on Solana and Robinhood Chain on its own and publishes the verdicts with a 10-minute delay; crawler owners get them live. [crawlhive.xyz/radar](https://crawlhive.xyz/radar)
@@ -62,6 +64,8 @@ In one line: *you bring the edge, your crawler does the watching, the scoreboard
 ## Try it in 10 seconds: Instant Crawl
 
 No wallet, no sign-up. Paste a token address, a DexScreener / pump.fun link or a `$TICKER` on [crawlhive.xyz](https://crawlhive.xyz) and press **crawl**. Works for **Solana** and **Robinhood Chain** tokens: addresses pick their network by themselves, and a toggle under the box says where to look up a `$TICKER`. The crawlers run in parallel and you watch them work in a live `tail -f crawler.log`:
+
+**Chains and launchpads.** Solana (pump.fun, Meteora DBC, Raydium LaunchLab, Moonshot and any other curve), Robinhood Chain and BNB Chain (including four.meme). A token still on a launchpad curve is reported as *on the curve*, not as a pool with $0. On Solana the creator comes from the pump.fun curve when there is one; for every other launchpad it is the wallet that paid for the token's very first transaction (up to 25 pages of history, 9 seconds). On the EVM chains holders, top-10 share and the honeypot flag come from GeckoTerminal and the contract owner from the chain's RPC (`BSC_RPC_URL` overrides the public BNB endpoint). A `0x` address is looked up on every supported EVM chain and the most liquid pair wins, unless you picked a chain.
 
 | Crawler | What it checks |
 |---|---|

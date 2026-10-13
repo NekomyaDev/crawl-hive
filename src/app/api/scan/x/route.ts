@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       }, 15_000);
       try {
         const r = savedScan(id);
-        if (!r || (r.chain !== "solana" && r.chain !== "robinhood")) throw new Error("Scan the token first");
+        if (!r || !["solana", "robinhood", "bsc"].includes(r.chain)) throw new Error("Scan the token first");
         if (!scanXEnabled()) throw new Error("X check is off right now");
         if (!savedBuzz(r.id)) log({ crawler: "crawler_x", text: `Grok is reading X for $${r.symbol}: who is talking about it, about half a minute…`, tone: "info" });
         const x = savedBuzz(r.id) ?? (await scanX(r, ip));

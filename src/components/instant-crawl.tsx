@@ -78,10 +78,12 @@ interface Recent {
 
 const SAMPLE = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"; // BONK
 const SAMPLE_RH = "0x500CeE0c4184faF3B3d0Cf8c0380B57B2dE44607"; // ROBINHOOD на Robinhood Chain
-// Где искать $ТИКЕР. Адреса сеть определяют сами: base58 — Solana, 0x — Robinhood Chain.
+const SAMPLE_BSC = "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"; // CAKE на BNB Chain
+// Где искать $ТИКЕР. Адреса сеть определяют сами: base58 — Solana, 0x — та EVM-сеть, где у токена есть пара.
 const NETS = [
   { id: "solana", label: "Solana" },
   { id: "robinhood", label: "Robinhood Chain" },
+  { id: "bsc", label: "BNB Chain" },
 ] as const;
 type Net = (typeof NETS)[number]["id"];
 
@@ -229,7 +231,7 @@ export function InstantCrawl() {
             Send the <span className="text-gradient">swarm</span> after any memecoin
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted lg:text-base">
-            Paste a contract address or a $ticker, on Solana or Robinhood Chain. Crawlers check the market, the mint, who funded the top wallets, copycat tickers, Telegram and X, then return a verdict.
+            Paste a contract address or a $ticker, on Solana, Robinhood Chain or BNB Chain. Works for pump.fun, Meteora, Raydium LaunchLab and four.meme launches. Crawlers check the market, the mint, who funded the top wallets, copycat tickers, Telegram and X, then return a verdict.
           </p>
           <form
             className="mt-5 flex max-w-3xl flex-col gap-2 sm:flex-row"
@@ -267,7 +269,7 @@ export function InstantCrawl() {
                 </button>
               ))}
             </span>
-            <button type="button" onClick={() => scan(net === "robinhood" ? SAMPLE_RH : SAMPLE)} className="text-honey hover:underline" disabled={running}>
+            <button type="button" onClick={() => scan(net === "robinhood" ? SAMPLE_RH : net === "bsc" ? SAMPLE_BSC : SAMPLE)} className="text-honey hover:underline" disabled={running}>
               try a sample →
             </button>
             <span className="inline-flex items-center gap-1">

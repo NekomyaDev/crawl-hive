@@ -23,7 +23,7 @@ const ADDR_RE = /\b(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/;
 const TICKER_RE = /^\$?([A-Za-z][A-Za-z0-9]{1,11})$/;
 
 const VERDICT_ICON: Record<string, string> = { CLEAN: "🟢", OK: "🟢", RISKY: "🟠", DANGER: "🔴", TOO_EARLY: "⚪️" };
-const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain" };
+const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain" };
 const fmtUsd = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`);
 const pct = (n: number | null | undefined) => (n == null ? "—" : `${n > 0 ? "+" : ""}${Math.round(n)}%`);
 const day = () => new Date().toISOString().slice(0, 10);
@@ -172,7 +172,7 @@ async function scanCard(chat: string, r: ScanResult, opts: { compact?: boolean; 
 
 async function runFor(q: string, chain?: string) {
   const { runScan } = await import("./scan");
-  return runScan(q, () => {}, chain ?? (q.startsWith("0x") ? "robinhood" : undefined));
+  return runScan(q, () => {}, chain);
 }
 
 async function doScan(chat: string, q: string, chain?: string) {
@@ -185,10 +185,23 @@ async function doScan(chat: string, q: string, chain?: string) {
     // По тикеру ищем на Solana — предлагаем ту же монету на Robinhood Chain.
     const t = q.match(TICKER_RE);
     if (q.startsWith("$") && t && r.chain === "solana")
-      send(chat, `Looking for $${esc(t[1].toUpperCase())} on Robinhood Chain instead?`, [[{ text: "Search Robinhood Chain", callback_data: `t:rh:${t[1].slice(0, 12)}` }]]);
+      send(chat, `Looking for $${esc(t[1].toUpperCase())} on another chain?`, [
+        [
+          { text: "Robinhood Chain", callback_data: `t:rh:${t[1].slice(0, 12)}` },
+          { text: "BNB Chain", callback_data: `t:bsc:${t[1].slice(0, 12)}` },
+        ],
+      ]);
   } catch (e) {
     const msg = (e as Error).message;
-    send(chat, `Could not scan that: ${esc(msg).slice(0, 160)}`, q.startsWith("$") && !chain ? [[{ text: "Try Robinhood Chain", callback_data: `t:rh:${q.slice(1, 13)}` }]] : undefined);
+    send(chat, `Could not scan that: ${esc(msg).slice(0, 160)}`, q.startsWith("$") && !chain
+        ? [
+            [
+              { text: "Try Robinhood Chain", callback_data: `t:rh:${q.slice(1, 13)}` },
+              { text: "Try BNB Chain", callback_data: `t:bsc:${q.slice(1, 13)}` },
+            ],
+          ]
+        : undefined,
+    );
   }
 }
 
@@ -250,7 +263,7 @@ export async function watchAdd(chat: string, id: string): Promise<{ ok: true; wa
   if (had) return { ok: true, watch: had };
   if (mine.length >= WATCH_MAX) return { ok: false, error: `Your watchlist is full (${WATCH_MAX}). Remove one first.` };
   const { savedScan, runScan } = await import("./scan");
-  const r = savedScan(id) ?? (await runScan(id, () => {}, id.startsWith("0x") ? "robinhood" : undefined, { record: false }).catch(() => undefined));
+  const r = savedScan(id) ?? (await runScan(id, () => {}, undefined, { record: false }).catch(() => undefined));
   if (!r?.market?.priceUsd) return { ok: false, error: "This token has no tradable pair yet, nothing to watch." };
   const now = Date.now();
   const w: Watch = { id, chain: r.chain, symbol: r.symbol, verdict: r.verdict, price0: r.market.priceUsd, liq0: r.market.liquidityUsd ?? 0, at: now, rescanAt: now + WATCH_RESCAN_MS, alerted: [] };
@@ -312,7 +325,7 @@ export async function checkWatches() {
     for (const w of list) {
       if (w.rescanAt > now || w.alerted.includes("danger")) continue;
       w.rescanAt = now + WATCH_RESCAN_MS;
-      const r = await runScan(w.id, () => {}, w.chain === "robinhood" ? "robinhood" : undefined, { record: false }).catch(() => null);
+      const r = await runScan(w.id, () => {}, w.chain, { record: false }).catch(() => null);
       if (r && r.verdict === "DANGER" && w.verdict !== "DANGER") {
         w.alerted.push("danger");
         send(chat, `🔴 <b>$${esc(w.symbol)}</b> turned <b>DANGER</b> (${r.score ?? "—"}): ${esc(r.reason)}`, [[{ text: "🔎 Open scan", url: `${siteUrl()}/scan/${w.id}` }]]);
@@ -432,7 +445,7 @@ function alertsMenu(chat: string) {
   const mark = (b: boolean) => (b ? "● " : "○ ");
   send(
     chat,
-    `📡 <b>Launch Radar alerts</b>: ${a.on ? "on" : "off"}\nFresh launches on Solana and Robinhood Chain, scanned by the swarm. Up to ${ALERTS_PER_DAY} a day. Crawler owners get them live, everyone else 10 minutes later.`,
+    `📡 <b>Launch Radar alerts</b>: ${a.on ? "on" : "off"}\nFresh launches on Solana, Robinhood Chain and BNB Chain, scanned by the swarm. Up to ${ALERTS_PER_DAY} a day. Crawler owners get them live, everyone else 10 minutes later.`,
     [
       [{ text: a.on ? "🔕 Turn off" : "🔔 Turn on", callback_data: a.on ? "a:off" : "a:on" }],
       [
@@ -457,7 +470,7 @@ async function radarMessage(chat: string) {
     chat,
     [
       `📡 <b>Launch Radar</b> · last ${Math.min(8, f.items.length)} launches (${f.delayMin} min delay)`,
-      ...f.items.slice(0, 8).map((e) => `${VERDICT_ICON[e.verdict] ?? "⚪️"} <a href="${siteUrl()}/scan/${e.id}">$${esc(e.symbol)}</a> · ${e.score ?? "—"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · ${e.chain === "robinhood" ? "RH" : "SOL"}`),
+      ...f.items.slice(0, 8).map((e) => `${VERDICT_ICON[e.verdict] ?? "⚪️"} <a href="${siteUrl()}/scan/${e.id}">$${esc(e.symbol)}</a> · ${e.score ?? "—"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · ${e.chain === "robinhood" ? "RH" : e.chain === "bsc" ? "BNB" : "SOL"}`),
     ].join("\n"),
     [[{ text: "🔔 Get these as alerts", callback_data: "a:menu" }, { text: "🐝 Live with a crawler", url: `${siteUrl()}/spawn` }]],
   );
@@ -520,6 +533,7 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
   if (d.startsWith("w:")) return addWatch(chat, d.slice(2));
   if (d.startsWith("r:")) return doScan(chat, d.slice(2));
   if (d.startsWith("t:rh:")) return doScan(chat, `$${d.slice(5)}`, "robinhood");
+  if (d.startsWith("t:bsc:")) return doScan(chat, `$${d.slice(6)}`, "bsc");
   if (d === "a:menu") return alertsMenu(chat);
   if (d === "a:on" || d === "a:off") {
     setAlerts(chat, { on: d === "a:on" });
@@ -546,7 +560,8 @@ function welcome(chat: string) {
       "",
       "Send me a token and I scan it in seconds: holders, bundles, dev history, copycats, plus a ⚡ Jev take.",
       "• <b>Solana</b>: mint address, pump.fun or DexScreener link",
-      "• <b>Robinhood Chain</b>: 0x… address or DexScreener / GeckoTerminal link",
+      "• <b>Robinhood Chain</b> and <b>BNB Chain</b>: 0x… address (the chain is found by itself) or a DexScreener / GeckoTerminal link",
+      "• launchpads: pump.fun, Meteora, Raydium LaunchLab, four.meme",
       "• or a <b>$TICKER</b> (Solana first, one tap for Robinhood Chain)",
       "",
       "👁 Watch a token for 7 days: I ping you on a rug, a −50% dump or a DANGER verdict.",
@@ -584,7 +599,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
       return send(chat, on ? "✅ I will answer contract addresses posted here." : "Autoscan is off. /scan still works.");
     }
     if (cmd === "/start" || cmd === "/help")
-      return send(chat, "🐝 Post any Solana or Robinhood Chain contract address and I reply with a quick verdict.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track");
+      return send(chat, "🐝 Post any Solana, Robinhood Chain or BNB Chain contract address and I reply with a quick verdict.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track");
     if (!cmd) {
       const q = m.text.match(ADDR_RE)?.[1] ?? scanQuery(m.text);
       if (q && !q.startsWith("$")) return groupAutoscan(chat, m.message_id, q);

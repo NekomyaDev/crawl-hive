@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 13", title: "BNB Chain and Meteora", text: "Instant Crawl, the bot, the app and Launch Radar now scan BNB Chain tokens (holders, honeypot, contract owner, four.meme curve). Meteora and other launchpads on Solana get their bonding curve and creator wallet checked too." },
   { date: "Oct 13", title: "CrawlHive app in Telegram", text: "A real app inside Telegram: scan tokens, browse Launch Radar, manage your watchlist and alerts, see your crawlers and their signals. One tap from @crawlhivebot, no install." },
   { date: "Oct 13", title: "Stricter on fresh launches", text: "Track Record showed young tokens with linked or fresh wallets dumping within hours while rated OK. Such tokens are now capped at RISKY." },
   { date: "Oct 13", title: "@crawlhivebot for everyone", text: "Scan Solana and Robinhood Chain tokens in Telegram with a Jev take, watch tokens for rug alerts, get Launch Radar alerts, add the bot to groups. A day later it tells you if the verdict came true." },

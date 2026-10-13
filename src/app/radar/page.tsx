@@ -32,7 +32,7 @@ interface Feed {
   day: { scanned: number; danger: number; clean: number };
 }
 
-const CHAIN = { solana: { t: "Solana", c: "text-violet border-violet/40" }, robinhood: { t: "Robinhood", c: "text-lime border-lime/40" } } as Record<string, { t: string; c: string }>;
+const CHAIN = { solana: { t: "Solana", c: "text-violet border-violet/40" }, robinhood: { t: "Robinhood", c: "text-lime border-lime/40" }, bsc: { t: "BNB", c: "text-honey border-honey/40" } } as Record<string, { t: string; c: string }>;
 
 export default function RadarPage() {
   const { data } = useApi<Feed>("/api/radar", 30000);
@@ -41,7 +41,7 @@ export default function RadarPage() {
     <>
       <PageHeader
         title="Launch Radar"
-        sub="Fresh launches on Solana and Robinhood Chain, scanned by the swarm on its own: holders, bundles, dev history, copycats. No one asked for these scans."
+        sub="Fresh launches on Solana, Robinhood Chain and BNB Chain, scanned by the swarm on its own: holders, bundles, dev history, copycats. No one asked for these scans."
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Stat label="Scanned, 24h" value={d ? fmt(d.scanned) : "—"} tone="lime" icon={<Radar className="size-4" />} />

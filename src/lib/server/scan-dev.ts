@@ -2,6 +2,8 @@
 // токенов pump.fun: аккаунт кривой (bonding curve, PDA от минта) хранит адрес создателя, а одним запросом
 // getProgramAccounts по этому адресу находятся все кривые, которые он создал, с флагом «дошёл до пула».
 // Плюс возраст кошелька создателя и сколько этого токена у него осталось.
+// Для остальных лаунчпадов (Meteora DBC, Raydium LaunchLab, Moonshot…) создатель — тот, кто оплатил самую первую
+// транзакцию с минтом: истории его запусков у нас нет, но возраст кошелька и доля считаются так же.
 import "server-only";
 import { PublicKey, type Connection } from "@solana/web3.js";
 
@@ -15,6 +17,7 @@ const CACHE_MS = 30 * 60_000;
 
 export interface DevReport {
   creator: string;
+  platform: "pump.fun" | "other"; // other — создатель найден по первой транзакции, историю запусков не знаем
   launched: number; // токенов через pump.fun, включая этот
   graduated: number; // сколько ПРОШЛЫХ запусков (без этого токена) дошли до пула
   walletAgeHours?: number; // возраст кошелька создателя, если у него меньше 1000 транзакций
@@ -55,17 +58,41 @@ async function launchesOf(endpoint: string, creator: string) {
   return { launched: list.length, graduated };
 }
 
+// Самая первая транзакция с минтом: идём по подписям назад страницами по 1000. У свежего токена боты за минуты
+// набивают тысячи сделок, поэтому до 25 страниц, но не дольше 9 секунд — у старых токенов просто не ищем.
+async function firstPayer(conn: Connection, mint: PublicKey): Promise<string | null> {
+  let before: string | undefined;
+  let oldest: string | undefined;
+  const deadline = Date.now() + 9_000;
+  for (let page = 0; ; page++) {
+    if (page >= 25 || Date.now() > deadline) return null;
+    const sigs = await conn.getSignaturesForAddress(mint, { limit: 1000, before });
+    if (!sigs.length) break;
+    oldest = sigs[sigs.length - 1].signature;
+    if (sigs.length < 1000) break;
+    before = oldest;
+  }
+  if (!oldest) return null;
+  // Сырой getTransaction: web3.js не разбирает транзакции версии 1.
+  const tx = await rpc<{ transaction?: { message?: { accountKeys?: (string | { pubkey: string })[] } } } | null>(conn.rpcEndpoint, "getTransaction", [
+    oldest,
+    { encoding: "json", maxSupportedTransactionVersion: 1, commitment: "confirmed" },
+  ]);
+  const k = tx?.transaction?.message?.accountKeys?.[0];
+  return typeof k === "string" ? k : (k?.pubkey ?? null);
+}
+
 export async function traceDev(conn: Connection, mint: string, supplyRaw?: number): Promise<DevReport | null> {
   const hit = cache().get(mint);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.report;
   const key = new PublicKey(mint);
   const curve = await creatorOf(conn, key);
-  if (!curve) return null;
-  const { creator } = curve;
+  const creator = curve?.creator ?? (await firstPayer(conn, key).catch(() => null));
+  if (!creator) return null;
   const owner = new PublicKey(creator);
 
   const [launches, sigs, held] = await Promise.all([
-    launchesOf(conn.rpcEndpoint, creator).catch(() => launchesOf(PUBLIC_RPC, creator)),
+    curve ? launchesOf(conn.rpcEndpoint, creator).catch(() => launchesOf(PUBLIC_RPC, creator)) : Promise.resolve({ launched: 1, graduated: 0 }),
     conn.getSignaturesForAddress(owner, { limit: 1000 }).catch(() => []),
     conn.getTokenAccountsByOwner(owner, { mint: key }).catch(() => null),
   ]);
@@ -79,8 +106,9 @@ export async function traceDev(conn: Connection, mint: string, supplyRaw?: numbe
   const oldest = sigs.length && sigs.length < 1000 ? sigs[sigs.length - 1].blockTime : undefined;
   const report: DevReport = {
     creator,
+    platform: curve ? "pump.fun" : "other",
     launched: Math.max(1, launches.launched),
-    graduated: Math.max(0, launches.graduated - (curve.complete ? 1 : 0)),
+    graduated: Math.max(0, launches.graduated - (curve?.complete ? 1 : 0)),
     walletTxs: sigs.length,
     walletAgeHours: oldest ? (Date.now() / 1000 - oldest) / 3600 : undefined,
     holdsPct,
