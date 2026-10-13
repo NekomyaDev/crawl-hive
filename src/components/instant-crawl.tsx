@@ -2,6 +2,7 @@
 // Instant Crawl на главной: вставь адрес токена или $тикер — краулеры сканируют его за секунды, без кошелька.
 // Ход работы виден в живом логе, результат — оценка 0–100 с причиной. Под ним кнопка «следить постоянно»:
 // спавн краулера-наблюдателя за этим токеном. ?scan=<адрес> в URL запускает скан сразу (для ссылок).
+import { BOT_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -272,6 +273,15 @@ export function InstantCrawl() {
             <span className="inline-flex items-center gap-1">
               <ShieldCheck className="size-3.5 text-lime" /> read-only, nothing to sign
             </span>
+            <a
+              href={BOT_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="tg-shine relative inline-flex items-center gap-1.5 overflow-hidden rounded-lg px-2.5 py-1 font-semibold text-white"
+              style={{ background: "linear-gradient(135deg, #2AABEE, #229ED9)" }}
+            >
+              <TelegramIcon className="size-3.5" /> or scan in Telegram
+            </a>
           </div>
 
           {active && (
@@ -567,7 +577,7 @@ function RecentScans({ rows, onOpen }: { rows: Recent[]; onOpen: (id: string) =>
         <span className="text-muted">click to open</span>
       </div>
       <div className="divide-y divide-line">
-        {rows.slice(0, 8).map((r) => {
+        {rows.slice(0, 5).map((r) => {
           const st = VERDICT_STYLE[r.verdict];
           return (
             <button
