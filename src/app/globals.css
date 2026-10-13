@@ -192,3 +192,7 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .tg-shine::after { animation: none; }
 }
+
+/* Telegram Mini App (/tg): прячем навигацию и подвал сайта, приложение рисует свои. */
+body:has([data-tg-app]) [data-chrome] { display: none !important; }
+body:has([data-tg-app]) main { padding: 0 !important; }

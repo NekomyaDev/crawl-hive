@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
-import { BOT_URL, TelegramIcon } from "./telegram-cta";
+import { APP_URL, TelegramIcon } from "./telegram-cta";
 import { useWallet } from "./wallet-provider";
 import { Button } from "./ui/button";
 
@@ -84,7 +84,7 @@ export function NavShell({ path }: { path: string }) {
   return (
     <>
       {/* десктоп: боковая панель */}
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-line bg-panel/60 p-3 lg:flex">
+      <aside data-chrome className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-line bg-panel/60 p-3 lg:flex">
         <Link href="/" className="mb-6 flex items-center gap-2 px-2 pt-1">
           <Logo size={34} />
           <span className="text-lg font-bold tracking-tight">
@@ -108,13 +108,13 @@ export function NavShell({ path }: { path: string }) {
           ))}
         </nav>
         <a
-          href={BOT_URL}
+          href={APP_URL}
           target="_blank"
           rel="noreferrer"
           className="mt-4 flex items-center gap-2.5 rounded-lg border border-[#229ED9]/50 bg-[#229ED9]/15 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#229ED9]/25"
         >
           <TelegramIcon className="size-4 text-[#5bc4f5]" />
-          Telegram bot
+          Telegram app
           <span className="ml-auto rounded bg-[#229ED9] px-1.5 py-px text-[9px] font-bold tracking-wide">NEW</span>
         </a>
         <div className="mt-auto">
@@ -123,7 +123,7 @@ export function NavShell({ path }: { path: string }) {
       </aside>
 
       {/* мобильный: верхняя полоса + горизонтальные вкладки */}
-      <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur lg:hidden">
+      <header data-chrome className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-2.5">
           <Link href="/" className="flex items-center gap-2">
             <Logo size={30} />

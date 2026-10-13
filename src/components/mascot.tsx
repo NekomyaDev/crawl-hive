@@ -324,8 +324,9 @@ export function Mascot() {
   if (off === null) return null;
   return (
     <>
-      {!off && <canvas ref={ref} aria-hidden className="pointer-events-none fixed inset-0 z-40 h-full w-full" />}
+      {!off && <canvas data-chrome ref={ref} aria-hidden className="pointer-events-none fixed inset-0 z-40 h-full w-full" />}
       <button
+        data-chrome
         type="button"
         onClick={toggle}
         title={off ? "Let the crawler out" : "Put the crawler away"}

@@ -52,7 +52,7 @@ export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 // Сообщения шлём по одному: так не упираемся в лимиты Telegram и сохраняем порядок.
-export type Keyboard = { text: string; url?: string; callback_data?: string }[][];
+export type Keyboard = { text: string; url?: string; callback_data?: string; web_app?: { url: string } }[][];
 
 export function send(chatId: string, html: string, keyboard?: Keyboard, extra: Record<string, unknown> = {}) {
   enqueue(chatId, () =>
@@ -255,6 +255,8 @@ export function startTelegram() {
       { command: "help", description: "What I can do" },
     ],
   }).catch(() => {});
+  // Кнопка меню чата открывает мини-апп.
+  call("setChatMenuButton", { menu_button: { type: "web_app", text: "Open app", web_app: { url: `${siteUrl()}/tg` } } }).catch((e) => console.warn("[telegram] menu button", (e as Error).message));
   call("setMyDescription", {
     description: "Memecoin safety scans for Solana and Robinhood Chain: holders, bundles, dev history, copycats, plus a Jev take. Watch tokens, get rug alerts, add me to groups.",
   }).catch(() => {});

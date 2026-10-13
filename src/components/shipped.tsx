@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 13", title: "CrawlHive app in Telegram", text: "A real app inside Telegram: scan tokens, browse Launch Radar, manage your watchlist and alerts, see your crawlers and their signals. One tap from @crawlhivebot, no install." },
   { date: "Oct 13", title: "Stricter on fresh launches", text: "Track Record showed young tokens with linked or fresh wallets dumping within hours while rated OK. Such tokens are now capped at RISKY." },
   { date: "Oct 13", title: "@crawlhivebot for everyone", text: "Scan Solana and Robinhood Chain tokens in Telegram with a Jev take, watch tokens for rug alerts, get Launch Radar alerts, add the bot to groups. A day later it tells you if the verdict came true." },
   { date: "Oct 13", title: "Track Record", text: "Every verdict is checked against the real price for 24 hours: how many DANGER tokens dumped, and how many CLEAN ones dumped anyway. Hits and misses, nothing hidden." },

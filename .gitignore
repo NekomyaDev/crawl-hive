@@ -51,3 +51,4 @@ next-env.d.ts
 # состояние сервера (живые краулеры, сигналы)
 .data/
 /data/
+docs/brand/tg-raw/

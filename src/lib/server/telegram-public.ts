@@ -46,8 +46,8 @@ function prefsAll(): Record<string, ChatPrefs> {
     return {};
   }
 }
-const prefs = (chat: string) => prefsAll()[chat] ?? {};
-function setPrefs(chat: string, patch: Partial<ChatPrefs>) {
+export const prefs = (chat: string) => prefsAll()[chat] ?? {};
+export function setPrefs(chat: string, patch: Partial<ChatPrefs>) {
   const all = prefsAll();
   all[chat] = { ...all[chat], ...patch };
   setMeta("tgprefs", JSON.stringify(all));
@@ -151,7 +151,14 @@ function keyboard(r: ScanResult, compact = false): Keyboard {
       { text: "👁 Watch", callback_data: `w:${r.id}` },
     ],
   ];
-  if (!compact) rows.push([{ text: "📈 Chart", url: chartUrl(r) }, { text: "🔄 Rescan", callback_data: `r:${r.id}` }]);
+  if (!compact) {
+    rows.push([{ text: "📈 Chart", url: chartUrl(r) }, { text: "🔄 Rescan", callback_data: `r:${r.id}` }]);
+    // Кнопка web_app работает только в личке; в группах ведём ссылкой t.me/<bot>?startapp.
+    rows.push([{ text: "📱 Open in the app", web_app: { url: `${siteUrl()}/tg?scan=${r.id}` } }]);
+  } else {
+    const bot = telegramBotName();
+    if (bot) rows[0].push({ text: "📱 App", url: `https://t.me/${bot}?startapp=scan_${r.id.slice(0, 50)}` });
+  }
   return rows;
 }
 
@@ -231,19 +238,38 @@ function watches(): Record<string, Watch[]> {
 }
 const saveWatches = (w: Record<string, Watch[]>) => setMeta("tgwatch", JSON.stringify(w));
 
-async function addWatch(chat: string, id: string) {
+// Общие для бота и мини-аппа операции со списком наблюдения.
+export function watchList(chat: string) {
+  return (watches()[chat] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
+}
+
+export async function watchAdd(chat: string, id: string): Promise<{ ok: true; watch: Watch } | { ok: false; error: string }> {
   const all = watches();
   const mine = (all[chat] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
-  if (mine.some((w) => w.id === id)) return send(chat, "Already on your watchlist. /watchlist");
-  if (mine.length >= WATCH_MAX) return send(chat, `Your watchlist is full (${WATCH_MAX}). Remove one with /unwatch.`);
+  const had = mine.find((w) => w.id === id);
+  if (had) return { ok: true, watch: had };
+  if (mine.length >= WATCH_MAX) return { ok: false, error: `Your watchlist is full (${WATCH_MAX}). Remove one first.` };
   const { savedScan, runScan } = await import("./scan");
   const r = savedScan(id) ?? (await runScan(id, () => {}, id.startsWith("0x") ? "robinhood" : undefined, { record: false }).catch(() => undefined));
-  if (!r?.market?.priceUsd) return send(chat, "This token has no tradable pair yet, nothing to watch.");
+  if (!r?.market?.priceUsd) return { ok: false, error: "This token has no tradable pair yet, nothing to watch." };
   const now = Date.now();
-  mine.push({ id, chain: r.chain, symbol: r.symbol, verdict: r.verdict, price0: r.market.priceUsd, liq0: r.market.liquidityUsd ?? 0, at: now, rescanAt: now + WATCH_RESCAN_MS, alerted: [] });
-  all[chat] = mine;
+  const w: Watch = { id, chain: r.chain, symbol: r.symbol, verdict: r.verdict, price0: r.market.priceUsd, liq0: r.market.liquidityUsd ?? 0, at: now, rescanAt: now + WATCH_RESCAN_MS, alerted: [] };
+  all[chat] = [...mine, w];
   saveWatches(all);
-  send(chat, `👁 Watching <b>$${esc(r.symbol)}</b> for 7 days. I ping you if liquidity is pulled, the price falls 50% or the verdict turns DANGER.`);
+  return { ok: true, watch: w };
+}
+
+export function watchRemove(chat: string, id: string) {
+  const all = watches();
+  all[chat] = (all[chat] ?? []).filter((w) => w.id !== id);
+  saveWatches(all);
+  return watchList(chat);
+}
+
+async function addWatch(chat: string, id: string) {
+  const r = await watchAdd(chat, id);
+  if (!r.ok) return send(chat, r.error);
+  send(chat, `👁 Watching <b>$${esc(r.watch.symbol)}</b> for 7 days. I ping you if liquidity is pulled, the price falls 50% or the verdict turns DANGER.`);
 }
 
 export async function checkWatches() {
@@ -418,7 +444,7 @@ function alertsMenu(chat: string) {
   );
 }
 
-function setAlerts(chat: string, patch: Partial<NonNullable<ChatPrefs["alerts"]>>) {
+export function setAlerts(chat: string, patch: Partial<NonNullable<ChatPrefs["alerts"]>>) {
   const cur = prefs(chat).alerts ?? { on: false, mode: "clean" as const, minLiq: 10_000 };
   setPrefs(chat, { alerts: { ...cur, ...patch } });
 }
@@ -533,6 +559,7 @@ function welcome(chat: string) {
       .filter((x) => x !== "")
       .join("\n"),
     [
+      [{ text: "📱 Open the CrawlHive app", web_app: { url: `${siteUrl()}/tg` } }],
       [{ text: "📡 Radar alerts", callback_data: "a:menu" }, ...(bot ? [{ text: "👥 Add to a group", url: `https://t.me/${bot}?startgroup=scan` }] : [])],
       [{ text: "🌐 crawlhive.xyz", url: siteUrl() }],
     ],

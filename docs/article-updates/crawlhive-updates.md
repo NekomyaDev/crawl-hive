@@ -1,6 +1,6 @@
 # CrawlHive update: the swarm got smarter, cheaper and louder
 
-Three days ago CrawlHive was a scanner with crawlers behind it. Since then we shipped a decision model on every signal, a way for any AI agent to run your crawlers, a public record of every verdict, a radar that scans launches on its own, and a Telegram bot anyone can use. Here is what changed and what it gave us, with real numbers.
+Three days ago CrawlHive was a scanner with crawlers behind it. Since then we shipped a decision model on every signal, a way for any AI agent to run your crawlers, a public record of every verdict, a radar that scans launches on its own, and a full app inside Telegram. Here is what changed and what it gave us, with real numbers.
 
 [ COVER: images/00-cover.png ]
 
@@ -10,7 +10,8 @@ Three days ago CrawlHive was a scanner with crawlers behind it. Since then we sh
 - 🐙 A Grok Bot can sit on duty over any crawler, and any agent can plug in with one click: Grok Bot, ChatGPT Dots, Meta Muse, Claude, Cursor.
 - 🎯 Every verdict is checked against the real price for 24 hours, in public, misses included.
 - 📡 The swarm scans fresh launches on Solana and Robinhood Chain on its own.
-- 🤖 @crawlhivebot scans any token in Telegram, watches it for rugs and answers contract addresses in groups.
+- 📱 CrawlHive is now an app inside Telegram: scan, Launch Radar, watchlist and your crawlers, one tap from @crawlhivebot.
+- 🤖 The bot scans any token in chat, watches it for rugs and answers contract addresses in groups.
 - 💸 The same product costs 8 to 50 times less to run, with a hard ceiling of $1.25 a day on AI.
 
 [ IMAGE 01: images/01-home-telegram.png ]
@@ -80,11 +81,27 @@ Everyone sees the verdicts 10 minutes later. Crawler owners get launches like th
 
 [ IMAGE 07: images/07-launch-radar.png ]
 
-## 🤖 @crawlhivebot, for everyone
+## 📱 CrawlHive is now an app inside Telegram
 
-The scanner now lives where traders already are.
+Open @crawlhivebot and press Open app. That's it: no App Store, no sign-up, no wallet popup. Telegram tells the app who you are, signed with the bot's key, and the server checks that signature on every request.
 
-- Scan in the chat. Send a Solana mint, a Robinhood Chain 0x address, a pump.fun or DexScreener link, or a $TICKER. You get the scan card with the verdict, the main flags, a Jev take and buttons: Full scan, Watch, Chart, Rescan.
+Five tabs, built for a phone:
+
+- Scan. Paste or tap the clipboard button. You watch the crawlers work, then get the score ring, the verdict, every flag with its weight, liquidity, FDV and age. Watch it, share it to any chat, or open the full report.
+- Radar. Fresh launches the swarm scanned on its own, newest first. Tap one to scan it.
+- Watch. Your watchlist with the live price since you started watching, plus switches for Launch Radar alerts and the 24-hour follow-ups.
+- Crawlers. Link your wallet once on the site and your crawlers and their private signals show up here, with Jev ratings, Grok Bot takes and outcomes.
+- Track. How our verdicts played out.
+
+The app and the bot share everything: add a token to the watchlist in the app and the alert arrives in the chat; tap a button under a scan in the chat and it opens in the app. It follows Telegram's look, vibrates on a verdict (a soft tap for CLEAN, a buzz for DANGER) and uses Telegram's own back button.
+
+[ IMAGE 10: images/10-telegram-app.png ]
+
+## 🤖 The bot, for chats and groups
+
+The bot is the part of the app that lives in your chats.
+
+- Scan in the chat. Send a Solana mint, a Robinhood Chain 0x address, a pump.fun or DexScreener link, or a $TICKER. You get the scan card with the verdict, the main flags, a Jev take and buttons: Full scan, Watch, Chart, Rescan, Open in the app.
 - Groups. Add the bot to a group and it answers every contract address posted there with a short verdict. Admins switch it off with /autoscan off.
 - 👁 Watch for 7 days. One ping if the pair disappears, liquidity falls below 30%, the price drops 50%, or the verdict turns DANGER.
 - 24 hours later. The bot comes back and tells you whether the verdict came true: we called it, it held, or we missed this one.
@@ -119,10 +136,10 @@ Track Record showed us exactly where to dig. Next we go deeper on holders: walle
 
 ## Step inside
 
-Paste a token. Watch the swarm work. Or just open the bot.
+Paste a token. Watch the swarm work. Or open the app in Telegram.
 
 🐝 crawlhive.xyz
-🤖 t.me/crawlhivebot
+📱 t.me/crawlhivebot (press Open app)
 🎯 crawlhive.xyz/track
 📖 github.com/h100envy/crawl-hive
 

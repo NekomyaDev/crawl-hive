@@ -14,13 +14,13 @@
   <img alt="Grok Bots via MCP" src="https://img.shields.io/badge/Grok%20Bots-MCP-e8eaed?style=flat-square">
   <img alt="Jev decisions" src="https://img.shields.io/badge/Jev-decision%20layer-ff4fa3?style=flat-square">
   <img alt="Agents via OAuth" src="https://img.shields.io/badge/Dots%20%7C%20Muse%20%7C%20Claude-OAuth-60a5fa?style=flat-square">
-  <img alt="Telegram bot" src="https://img.shields.io/badge/Telegram-@crawlhivebot-229ED9?style=flat-square&logo=telegram&logoColor=white">
+  <img alt="Telegram Mini App" src="https://img.shields.io/badge/Telegram-Mini%20App-229ED9?style=flat-square&logo=telegram&logoColor=white">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square">
 </p>
 
 <p align="center">
   <a href="https://crawlhive.xyz"><img alt="Open the app" src="https://img.shields.io/badge/🐝%20Open%20the%20app-crawlhive.xyz-ffb020?style=for-the-badge&labelColor=0b0c0f"></a>
-  <a href="https://t.me/crawlhivebot"><img alt="Telegram bot" src="https://img.shields.io/badge/Scan%20in%20Telegram-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
+  <a href="https://t.me/crawlhivebot?startapp"><img alt="Telegram app" src="https://img.shields.io/badge/📱%20Telegram%20app-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
 </p>
 <p align="center">
   <a href="https://crawlhive.xyz/track"><img alt="Track Record" src="https://img.shields.io/badge/🎯%20Track%20Record-hits%20and%20misses-b6f23a?style=for-the-badge&labelColor=0b0c0f"></a>
@@ -45,6 +45,7 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 **Latest (Oct 13):**
+- 📱 **CrawlHive is now an app inside Telegram.** Open [@crawlhivebot](https://t.me/crawlhivebot) and press **Open app**: scan tokens, browse Launch Radar, manage your watchlist and alerts, and see your crawlers and their signals, with no install and no sign-up.
 - 🎯 **Track Record.** Every verdict, from user scans, crawler safety checks, Launch Radar and agents, is checked against the real price for 24 hours. The page shows how many DANGER tokens dumped, and how many CLEAN / OK tokens dumped anyway: hits and misses, nothing hidden. [crawlhive.xyz/track](https://crawlhive.xyz/track)
 - 📡 **Launch Radar.** The swarm scans fresh launches on Solana and Robinhood Chain on its own and publishes the verdicts with a 10-minute delay; crawler owners get them live. [crawlhive.xyz/radar](https://crawlhive.xyz/radar)
 - 🤖 **Telegram bot for everyone.** Send a token address, link or `$TICKER` and get the scan in the chat. Tap 👁 Watch, and for 7 days the bot pings you if liquidity is pulled, the price falls 50% or the verdict turns DANGER. `/radar` shows fresh launches.
@@ -194,7 +195,13 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 
 Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. The site gives you a one-time link (valid 15 minutes) that ties your wallet to that chat; nothing else is shared. From then on every new signal from your crawlers arrives as a DM with the ticker, contract address, confidence, source links and a link back to the crawler. `/status` shows linked wallets, `/stop` unlinks.
 
-**[@crawlhivebot](https://t.me/crawlhivebot) is open to everyone**, wallet or not:
+**CrawlHive app in Telegram (Mini App).** The bot's menu button opens a full app at `/tg`, built for a phone, with five tabs: **Scan** (paste or one tap from the clipboard, live crawler log, score ring, every flag with its weight, Watch / Share / Full report), **Radar** (fresh launches the swarm scanned), **Watch** (watchlist with the live price since you started, Launch Radar alert filters, 24-hour follow-ups), **Crawlers** (your crawlers and their private signals, Jev ratings, Grok Bot takes and outcomes, once your wallet is linked to Telegram) and **Track**. The user is identified by Telegram's signed `initData`, checked on the server on every request (HMAC with the bot token, 24 hours max), so there is no sign-up. The app and the bot share the watchlist and settings. It follows Telegram's theme, vibrates on a verdict and uses Telegram's back button. Illustrations were made for the app with Higgsfield.
+
+<p align="center">
+  <img src="docs/images/telegram-app.png" alt="CrawlHive app inside Telegram: Scan, Verdict, Launch Radar, Watch and alerts" width="100%">
+</p>
+
+**[@crawlhivebot](https://t.me/crawlhivebot) in chats and groups**, wallet or not:
 
 | Feature | How it works |
 |---|---|

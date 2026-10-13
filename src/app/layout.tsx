@@ -28,7 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Nav />
               <main className="flex min-w-0 flex-1 flex-col px-4 py-5 lg:px-8 lg:py-7">
                 <div className="flex-1">{children}</div>
-                <footer className="mt-10 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4 text-[11px] text-muted">
+                <footer data-chrome className="mt-10 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4 text-[11px] text-muted">
                   <span>Signals are information, not financial advice.</span>
                   <Link href="/terms" className="hover:text-fg">
                     Terms &amp; risks
