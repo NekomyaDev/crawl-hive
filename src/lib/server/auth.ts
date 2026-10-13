@@ -5,13 +5,14 @@ import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { ed25519 } from "@noble/curves/ed25519";
 import { PublicKey } from "@solana/web3.js";
-import { ApiError, metaValue } from "./store";
+import { ApiError, getMeta, metaValue, setMeta } from "./store";
 import { isEvmAddress, recoverEvmSigner } from "./robinhood";
 
 const NONCE_TTL_MS = 5 * 60_000;
 const SESSION_TTL_MS = 7 * 86400_000;
 
-const g = globalThis as unknown as { __crawlhiveNonces?: Map<string, { address: string; exp: number }> };
+const g = globalThis as unknown as { __crawlhiveNonces?: Map<string, { address: string; exp: number; issuedAt: string }> };
+const SITE = () => (process.env.PUBLIC_URL?.trim() || "https://crawlhive.xyz").replace(/\/$/, "");
 const nonces = () => (g.__crawlhiveNonces ??= new Map());
 
 function secret(): string {
@@ -19,8 +20,11 @@ function secret(): string {
   return process.env.SESSION_SECRET?.trim() || metaValue("sessionSecret", () => randomBytes(32).toString("hex"));
 }
 
+// В сообщении домен и адрес сайта (как в SIWS / EIP-4361): кошелёк и человек видят, куда входят,
+// а подпись, выманенная фишинговым сайтом под видом «входа», не подходит к чужому домену.
 export function signInMessage(address: string, nonce: string, issuedAt: string) {
-  return `CrawlHive sign-in\n\nWallet: ${address}\nNonce: ${nonce}\nIssued: ${issuedAt}\n\nThis signature only proves you own the wallet. It does not send a transaction or cost anything.`;
+  const site = SITE();
+  return `${new URL(site).host} wants you to sign in with your wallet:\n${address}\n\nCrawlHive sign-in. This signature only proves you own the wallet. It does not send a transaction or cost anything.\n\nURI: ${site}\nNonce: ${nonce}\nIssued At: ${issuedAt}`;
 }
 
 export function issueNonce(address: string) {
@@ -29,7 +33,7 @@ export function issueNonce(address: string) {
   for (const [k, v] of nonces()) if (v.exp < now) nonces().delete(k);
   const nonce = randomBytes(12).toString("base64url");
   const issuedAt = new Date(now).toISOString();
-  nonces().set(nonce, { address, exp: now + NONCE_TTL_MS });
+  nonces().set(nonce, { address, exp: now + NONCE_TTL_MS, issuedAt });
   return { nonce, issuedAt, message: signInMessage(address, nonce, issuedAt) };
 }
 
@@ -37,11 +41,12 @@ function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
-export function verifySignIn(address: string, nonce: string, issuedAt: string, signatureB64: string) {
+export function verifySignIn(address: string, nonce: string, _clientIssuedAt: string, signatureB64: string) {
   const n = nonces().get(nonce);
   if (!n || n.address !== address || n.exp < Date.now()) throw new ApiError("Sign-in expired, try again", 401);
   nonces().delete(nonce);
-  const text = signInMessage(address, nonce, issuedAt);
+  // Время берём своё, сохранённое вместе с nonce: присланное клиентом позволяло вписать в сообщение что угодно.
+  const text = signInMessage(address, nonce, n.issuedAt);
   const sig = Buffer.from(signatureB64, "base64");
   let ok = false;
   try {
@@ -52,7 +57,7 @@ export function verifySignIn(address: string, nonce: string, issuedAt: string, s
     ok = false;
   }
   if (!ok) throw new ApiError("Signature does not match the wallet", 401);
-  const payload = Buffer.from(JSON.stringify({ w: address, exp: Date.now() + SESSION_TTL_MS })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ w: address, exp: Date.now() + SESSION_TTL_MS, v: sessionVersion(address) })).toString("base64url");
   return { token: `${payload}.${sign(payload)}` };
 }
 
@@ -66,9 +71,16 @@ export function sessionWallet(req: Request): string | null {
   const got = Buffer.from(mac);
   if (expected.length !== got.length || !timingSafeEqual(expected, got)) return null;
   try {
-    const { w, exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
-    return typeof w === "string" && exp > Date.now() ? w : null;
+    const { w, exp, v } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    return typeof w === "string" && exp > Date.now() && (v ?? 0) === sessionVersion(w) ? w : null;
   } catch {
     return null;
   }
+}
+
+// Версия сессий кошелька: «выйти везде» поднимает её, и все выданные токены перестают работать.
+const sessionVersion = (wallet: string) => Number(getMeta(`sessv:${wallet}`) ?? 0);
+export function revokeSessions(wallet: string) {
+  setMeta(`sessv:${wallet}`, String(sessionVersion(wallet) + 1));
+  return { ok: true };
 }

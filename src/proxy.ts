@@ -7,6 +7,7 @@
 // Объёмные атаки (гигабиты трафика) так не остановить: это задача CDN перед сервером, см. README.
 import { appendFile, stat, truncate } from "node:fs/promises";
 import path from "node:path";
+import { isIP } from "node:net";
 import { NextResponse, type NextRequest } from "next/server";
 
 const RATE = Number(process.env.RATE_LIMIT_RPS ?? 10); // токенов в секунду
@@ -41,8 +42,15 @@ function logBlocked(ip: string, now: number) {
 
 function clientIp(req: NextRequest) {
   const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",").at(-1)!.trim();
-  return req.headers.get("x-real-ip") ?? "local";
+  const ip = (xff ? xff.split(",").at(-1)!.trim() : req.headers.get("x-real-ip")) ?? "";
+  return isIP(ip) ? ip : "unknown";
+}
+
+// IPv6: у одного абонента обычно целая сеть /64 — считаем её одним клиентом, иначе лимит обходится сменой адреса.
+function bucketKey(ip: string) {
+  if (isIP(ip) !== 6) return ip;
+  const full = ip.includes("::") ? ip.replace("::", ":" + "0:".repeat(Math.max(0, 8 - ip.split(":").filter(Boolean).length))).replace(/^:|:$/g, "") : ip;
+  return full.split(":").slice(0, 4).join(":") + "::/64";
 }
 
 export function proxy(req: NextRequest) {
@@ -55,13 +63,14 @@ export function proxy(req: NextRequest) {
     s.sweptAt = now;
   }
   const ip = clientIp(req);
-  const b = s.buckets.get(ip) ?? { tokens: BURST, at: now };
+  const key = bucketKey(ip);
+  const b = s.buckets.get(key) ?? { tokens: BURST, at: now };
   b.tokens = Math.min(BURST, b.tokens + ((now - b.at) / 1000) * RATE);
   b.at = now;
   if (b.tokens < 1) {
-    s.buckets.set(ip, b);
+    s.buckets.set(key, b);
     if (++s.blocked % 100 === 1) console.warn(`[rate] 429 for ${ip} (${s.blocked} blocked since start)`);
-    logBlocked(ip, now);
+    if (ip !== "unknown") logBlocked(ip, now); // в журнал fail2ban — только настоящий IP
     const retry = Math.ceil((1 - b.tokens) / RATE);
     return new NextResponse(JSON.stringify({ error: "Too many requests, slow down" }), {
       status: 429,
@@ -69,7 +78,7 @@ export function proxy(req: NextRequest) {
     });
   }
   b.tokens -= 1;
-  s.buckets.set(ip, b);
+  s.buckets.set(key, b);
   return NextResponse.next();
 }
 

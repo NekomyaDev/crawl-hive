@@ -30,10 +30,24 @@ export async function handle<T>(fn: () => T | Promise<T>): Promise<Response> {
   }
 }
 
+// Настоящий IP клиента: ПОСЛЕДНЕЕ значение X-Forwarded-For — его дописывает наш Caddy. Первое значение
+// задаёт сам клиент, по нему лимиты обходились подменой заголовка.
+export function clientIp(req: Request) {
+  const xff = req.headers.get("x-forwarded-for");
+  return (xff ? xff.split(",").at(-1)!.trim() : req.headers.get("x-real-ip")) || "local";
+}
+
+// Тела запросов у нас маленькие (спецификации, id): больше 64 КБ — отказ до разбора JSON.
+const MAX_BODY = 64 * 1024;
+
 export async function body<T>(req: Request): Promise<T> {
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) throw new ApiError("Request body too large", 413);
   try {
-    return (await req.json()) as T;
-  } catch {
+    const text = await req.text();
+    if (text.length > MAX_BODY) throw new ApiError("Request body too large", 413);
+    return JSON.parse(text) as T;
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
     throw new ApiError("Body must be JSON");
   }
 }

@@ -95,6 +95,7 @@ function admit(ip: string): string | null {
   if (m.day !== day) Object.assign(m, { day, used: 0 });
   if (m.used >= DAILY()) return "daily X budget for free scans is used up, back tomorrow";
   const now = Date.now();
+  if (m.ips.size > 20_000) for (const [k, v] of m.ips) if (!v.some((t) => now - t < 3600_000)) m.ips.delete(k);
   const list = (m.ips.get(ip) ?? []).filter((t) => now - t < 3600_000);
   if (list.length >= PER_IP_HOUR) return "X check limit for your network reached, try again within the hour";
   list.push(now);

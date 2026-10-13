@@ -118,6 +118,8 @@ function mem() {
 export function allowScan(ip: string) {
   const m = mem();
   const now = Date.now();
+  // Старые записи выбрасываем, иначе карта IP растёт без конца.
+  if (m.hits.size > 20_000) for (const [k, v] of m.hits) if (!v.some((t) => now - t < 10 * 60_000)) m.hits.delete(k);
   const list = (m.hits.get(ip) ?? []).filter((t) => now - t < 10 * 60_000);
   if (list.length >= 8) return false;
   list.push(now);
@@ -380,7 +382,15 @@ export async function runScan(
     TG_CHANNELS.map(async (ch) => {
       try {
         const msgs = await fetchChannel(ch);
-        const m = msgs.reverse().find((x) => x.text.includes(address) || (symbol && new RegExp(`\\$${symbol}\\b`, "i").test(x.text)));
+        // Символ задаёт создатель токена: регулярку из него не строим (ReDoS), ищем подстроку и проверяем границу.
+        const tag = symbol ? `$${symbol}` : "";
+        const hasTag = (t: string) => {
+          if (!tag) return false;
+          const up = t.toUpperCase();
+          for (let i = up.indexOf(tag); i >= 0; i = up.indexOf(tag, i + 1)) if (!/[A-Z0-9_]/.test(up[i + tag.length] ?? "")) return true;
+          return false;
+        };
+        const m = msgs.reverse().find((x) => x.text.includes(address) || hasTag(x.text));
         return m ? { channel: `t.me/${ch}`, url: m.url ?? `https://t.me/${ch}` } : null;
       } catch {
         return null;
@@ -508,7 +518,11 @@ export async function runScan(
     text: `${result.score ?? "—"} ${verdict.replace("_", " ")} · ${reason}`,
     tone: verdict === "CLEAN" || verdict === "OK" ? "ok" : verdict === "TOO_EARLY" ? "info" : "bad",
   });
-  mem().cache.set(address, { result, logs: logs.filter((l) => l.crawler !== "resolver") });
+  const cache = mem().cache;
+  cache.delete(address);
+  cache.set(address, { result, logs: logs.filter((l) => l.crawler !== "resolver") });
+  // Кэш свежих сканов ограничен: Map хранит порядок вставки, самые старые уходят первыми.
+  while (cache.size > 2_000) cache.delete(cache.keys().next().value!);
   if (opts.record !== false) remember(result);
   // Каждый вердикт попадает в Track Record: через сутки видно, сбылся ли он.
   trackVerdict(result, opts.src ?? (opts.record === false ? "crawler" : "scan"));

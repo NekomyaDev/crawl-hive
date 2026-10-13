@@ -1,5 +1,6 @@
 // Хранилище сети. Демо-сеть (130 краулеров) симулируется в памяти; живые краулеры пользователей,
 // их сигналы и балансы сохраняются на диск (persist.ts) и реально собирают данные (crawl/*).
+import { checkPublicUrl } from "./safe-fetch";
 import "server-only";
 import type {
   Crawler,
@@ -230,6 +231,7 @@ function tick(s: State) {
       c.status = "active";
       c.renter = undefined;
       c.rentedUntil = undefined;
+      restoreOwnerConfig(c);
       emit(s, { type: "status", id: c.id, status: c.status });
     }
   }
@@ -300,12 +302,13 @@ function tick(s: State) {
 // viewer — кошелёк, который смотрит. Спецификация и курсоры видны только владельцу и арендатору:
 // инструкции краулера — это чужое преимущество.
 export function toPublic(c: Crawler, viewer?: string): PublicCrawler {
-  const { skill: _skill, spec, run, ...rest } = c;
+  const { skill: _skill, spec, run, ownerConfig: _ownerConfig, ...rest } = c;
   const mine = !!viewer && (viewer === c.owner || viewer === c.renter);
   return {
     ...rest,
     spec: mine ? spec : undefined,
-    run: run ? { ...run, cursor: {} } : undefined,
+    // Текст ошибки обхода видит только владелец: по нему иначе можно было бы прощупывать чужие адреса.
+    run: run ? { ...run, cursor: {}, lastError: mine ? run.lastError : run.lastError ? "crawl failed" : undefined } : undefined,
     stats: { ...c.stats, items: Math.floor(c.stats.items), rewards: Math.round(c.stats.rewards) },
   };
 }
@@ -561,7 +564,7 @@ export function normalizeTargets(source: Source, raw: string[]): string[] {
     } else if (source === "docs") {
       const url = /^https?:\/\//i.test(t) ? t : `https://${t}`;
       try {
-        const u = new URL(url);
+        const u = checkPublicUrl(url); // только http(s), порты 80/443, не частные адреса
         if (!u.hostname.includes(".")) throw new Error();
         t = u.toString();
       } catch {
@@ -709,6 +712,14 @@ export function setCrawlerStatus(wallet: string, id: string, status: "active" | 
 }
 
 // Владелец или арендатор правит цели, частоту и спецификацию. Новые настройки вступают в силу со следующего прохода.
+function restoreOwnerConfig(c: Crawler) {
+  if (!c.ownerConfig) return;
+  c.targets = c.ownerConfig.targets;
+  c.frequencyMin = c.ownerConfig.frequencyMin;
+  if (c.ownerConfig.spec) c.spec = c.ownerConfig.spec;
+  c.ownerConfig = undefined;
+}
+
 export function updateCrawlerConfig(
   wallet: string,
   id: string,
@@ -718,6 +729,9 @@ export function updateCrawlerConfig(
   const c = s.crawlers.get(id);
   if (!c) throw new ApiError("Crawler not found", 404);
   if (c.owner !== wallet && c.renter !== wallet) throw new ApiError("Not your crawler", 403);
+  // Арендатор настраивает краулер под себя, но после аренды владелец получает свои настройки обратно.
+  if (c.renter === wallet && c.owner !== wallet && !c.ownerConfig)
+    c.ownerConfig = { targets: [...c.targets], frequencyMin: c.frequencyMin, spec: c.spec ? structuredClone(c.spec) : undefined };
   const tier = TIERS[c.tier];
   if (patch.targets) {
     const clean = normalizeTargets(c.source, patch.targets);
@@ -804,6 +818,7 @@ export function buyListing(wallet: string, listingId: string) {
     c.owner = wallet;
     c.renter = undefined;
     c.rentedUntil = undefined;
+    restoreOwnerConfig(c);
     if (c.status === "rented") c.status = "active";
   } else {
     c.renter = wallet;

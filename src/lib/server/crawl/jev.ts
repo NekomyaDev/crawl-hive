@@ -29,14 +29,19 @@ export interface JevResult {
 }
 
 // Дневной бюджет: решения стоят сотые доли цента, но защита от петли не помешает.
-const g = globalThis as unknown as { __crawlhiveJev?: { day: string; calls: number; cost: number } };
-function takeBudget() {
+// Два отдельных бюджета: «core» — краулеры и Grok Bot владельцев, «public» — анонимные сканы в Telegram.
+// Иначе десяток одноразовых аккаунтов мог бы сжечь общий лимит, и платящие владельцы остались бы без Jev.
+const g = globalThis as unknown as { __crawlhiveJev?: { day: string; calls: number; cost: number; pub: number } };
+function takeBudget(pool: "core" | "public") {
   const day = new Date().toISOString().slice(0, 10);
   const limit = Number(process.env.JEV_DAILY_CALLS ?? 3000);
-  const b = (g.__crawlhiveJev ??= { day, calls: 0, cost: 0 });
-  if (b.day !== day) Object.assign(b, { day, calls: 0, cost: 0 });
+  const pubLimit = Number(process.env.JEV_PUBLIC_DAILY ?? 600);
+  const b = (g.__crawlhiveJev ??= { day, calls: 0, cost: 0, pub: 0 });
+  if (b.day !== day) Object.assign(b, { day, calls: 0, cost: 0, pub: 0 });
+  if (pool === "public" && b.pub >= pubLimit) throw new Error(`Daily public Jev budget reached (${pubLimit} calls)`);
   if (b.calls >= limit) throw new Error(`Daily Jev budget reached (${limit} calls)`);
   b.calls++;
+  if (pool === "public") b.pub++;
   return b;
 }
 
@@ -44,8 +49,8 @@ export function jevUsage() {
   return { ...(g.__crawlhiveJev ?? { day: "", calls: 0, cost: 0 }), limit: Number(process.env.JEV_DAILY_CALLS ?? 3000) };
 }
 
-export async function jev(state: Record<string, unknown>, questions: Record<string, JevQuestion>, timeoutMs = 8_000): Promise<JevResult> {
-  const b = takeBudget();
+export async function jev(state: Record<string, unknown>, questions: Record<string, JevQuestion>, timeoutMs = 8_000, pool: "core" | "public" = "core"): Promise<JevResult> {
+  const b = takeBudget(pool);
   const t0 = Date.now();
   const res = await fetch(ENDPOINT, {
     method: "POST",

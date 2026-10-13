@@ -48,7 +48,7 @@ export async function call<T>(method: string, params: Record<string, unknown>, t
   return j.result as T;
 }
 
-export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 // Сообщения шлём по одному: так не упираемся в лимиты Telegram и сохраняем порядок.

@@ -5,7 +5,11 @@ import { clientFor } from "@/lib/server/oauth";
 
 export async function GET(req: NextRequest) {
   return handle(() => {
-    const c = clientFor(req.nextUrl.searchParams.get("client_id") ?? "", req.nextUrl.searchParams.get("redirect_uri") ?? "");
-    return { name: c.client_name, redirectHost: new URL(c.redirect_uris[0]).host || c.redirect_uris[0] };
+    const redirect = req.nextUrl.searchParams.get("redirect_uri") ?? "";
+    const c = clientFor(req.nextUrl.searchParams.get("client_id") ?? "", redirect);
+    // Показываем адрес, куда реально уйдёт код, а не первый из списка клиента: иначе можно было бы
+    // зарегистрировать «Claude» с чужим адресом вторым и обмануть владельца.
+    const u = new URL(redirect);
+    return { name: c.client_name, redirectHost: u.host || `${u.protocol}//`, redirectUri: redirect };
   });
 }

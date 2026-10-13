@@ -7,13 +7,28 @@ import type { LiveJob } from "../../store";
 import { contractsIn, finalize, matchesKeywords, specBrief, tickersIn, type Candidate } from "../analyze";
 import { grok, grokEnabled } from "../grok";
 import type { SourceResult } from "./types";
+import { fetchPublicText } from "../../safe-fetch";
 
 const MAX_KEEP = 12_000; // столько текста страницы храним для сравнения
 
+// Вырезаем <script> и <style> линейным проходом: ленивая регулярка на странице из тысяч
+// незакрытых <script> работает квадратично и вешает сервер.
+function stripBlocks(html: string, tag: string) {
+  const lower = html.toLowerCase();
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const open = lower.indexOf(`<${tag}`, i);
+    if (open < 0) return out + html.slice(i);
+    out += html.slice(i, open) + " ";
+    const close = lower.indexOf(`</${tag}>`, open);
+    if (close < 0) return out;
+    i = close + tag.length + 3;
+  }
+}
+
 function pageText(html: string) {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+  return stripBlocks(stripBlocks(html, "script"), "style")
     .replace(/<\/(p|div|li|h\d|tr|br)>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
@@ -30,9 +45,8 @@ export async function crawlDocs(job: LiveJob): Promise<SourceResult> {
   const errors: string[] = [];
   for (const url of job.targets) {
     try {
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; CrawlHive/1.0)" }, signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-      const text = pageText((await res.text()).slice(0, 2_000_000)).slice(0, MAX_KEEP);
+      // Только публичные адреса, проверка в самом соединении, тело не больше 1.5 МБ (safe-fetch.ts).
+      const text = pageText(await fetchPublicText(url).catch((e) => Promise.reject(new Error(`${new URL(url).hostname}: ${(e as Error).message}`)))).slice(0, MAX_KEEP);
       const hash = createHash("sha256").update(text).digest("hex").slice(0, 16);
       const prevHash = job.cursor[`doc:${url}`];
       cursor[`doc:${url}`] = hash;

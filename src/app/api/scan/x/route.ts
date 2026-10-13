@@ -1,6 +1,7 @@
 // GET /api/scan/x?id=<адрес> — поиск по X через Grok для уже просканированного токена, по нажатию кнопки.
 // Поток Server-Sent Events в том же формате, что /api/scan: строки лога, событие x, затем done.
 import type { NextRequest } from "next/server";
+import { clientIp } from "@/lib/server/http";
 import { connection } from "next/server";
 import { attachBuzz, savedBuzz, savedScan } from "@/lib/server/scan";
 import { buzzLine, scanX, scanXEnabled } from "@/lib/server/scan-x";
@@ -8,7 +9,7 @@ import { buzzLine, scanX, scanXEnabled } from "@/lib/server/scan-x";
 export async function GET(req: NextRequest) {
   await connection();
   const id = (req.nextUrl.searchParams.get("id") ?? "").slice(0, 64);
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "local";
+  const ip = clientIp(req);
   const enc = new TextEncoder();
 
   const stream = new ReadableStream({

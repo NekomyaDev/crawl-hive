@@ -36,6 +36,7 @@ export interface Crawler {
   owner: string; // адрес кошелька владельца
   renter?: string; // адрес арендатора, если сдан в аренду
   rentedUntil?: number;
+  ownerConfig?: { targets: string[]; frequencyMin: number; spec?: CrawlerSpec }; // настройки владельца до правок арендатора
   source: Source;
   chain: Chain;
   narratives: Narrative[];

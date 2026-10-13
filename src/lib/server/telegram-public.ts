@@ -87,7 +87,13 @@ export function scanQuery(text: string): string | null {
 }
 
 // Короткий вывод Jev по скану: смотреть, следить или обходить. Без ключа — молча пропускаем.
+const takeCache = new Map<string, { at: number; v: { take: string; conf: number } }>();
+
 async function jevTake(r: ScanResult): Promise<{ take: string; conf: number } | null> {
+  // Один и тот же токен в разных чатах не стоит повторных решений: кэш на 30 минут по токену и вердикту.
+  const key = `${r.id}:${r.verdict}:${r.score}`;
+  const hit = takeCache.get(key);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.v;
   try {
     const { jev, jevEnabled } = await import("./crawl/jev");
     if (!jevEnabled() || r.verdict === "TOO_EARLY") return null;
@@ -110,10 +116,16 @@ async function jevTake(r: ScanResult): Promise<{ take: string; conf: number } | 
         },
       },
       5_000,
+      "public",
     );
     const a = res.answers.take;
     if (a?.type !== "choice") return null;
-    return { take: a.choice, conf: a.probabilities?.[a.choice] ?? a.confidence ?? 0 };
+    // Та же нижняя граница, что у Grok Bot: DANGER не бывает LOOK.
+    const take = r.verdict === "DANGER" && a.choice !== "avoid" ? "avoid" : r.verdict === "RISKY" && a.choice === "look" ? "watch" : a.choice;
+    const v = { take, conf: a.probabilities?.[a.choice] ?? a.confidence ?? 0 };
+    takeCache.set(key, { at: Date.now(), v });
+    if (takeCache.size > 2_000) takeCache.delete(takeCache.keys().next().value!);
+    return v;
   } catch {
     return null;
   }
@@ -257,6 +269,8 @@ export function watchList(chat: string) {
 }
 
 export async function watchAdd(chat: string, id: string): Promise<{ ok: true; watch: Watch } | { ok: false; error: string }> {
+  // Добавление может запустить скан — лимит, как у сканов в чате.
+  if (!allow(`w:${chat}`, 15)) return { ok: false, error: "Too many watch requests, try again later." };
   const all = watches();
   const mine = (all[chat] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
   const had = mine.find((w) => w.id === id);
@@ -534,6 +548,8 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
   if (d.startsWith("r:")) return doScan(chat, d.slice(2));
   if (d.startsWith("t:rh:")) return doScan(chat, `$${d.slice(5)}`, "robinhood");
   if (d.startsWith("t:bsc:")) return doScan(chat, `$${d.slice(6)}`, "bsc");
+  // В группах настройки меняют только админы: иначе любой участник включил бы оповещения на всю группу.
+  if (d.startsWith("a:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
   if (d === "a:menu") return alertsMenu(chat);
   if (d === "a:on" || d === "a:off") {
     setAlerts(chat, { on: d === "a:on" });

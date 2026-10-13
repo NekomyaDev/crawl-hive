@@ -1,6 +1,7 @@
 // Instant Crawl: GET /api/scan?q=<адрес или $тикер> — поток Server-Sent Events: строки лога краулеров,
 // затем результат, затем сводка из X, если она уже есть в кэше (иначе xoffer — кнопка для /api/scan/x), и событие done. Без кошелька, с лимитом по IP.
 import type { NextRequest } from "next/server";
+import { clientIp } from "@/lib/server/http";
 import { connection } from "next/server";
 import { allowScan, runScan, savedBuzz, SCAN_CHAINS } from "@/lib/server/scan";
 import { buzzLine, cachedBuzz, scanXEnabled } from "@/lib/server/scan-x";
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   await connection();
   const q = (req.nextUrl.searchParams.get("q") ?? "").slice(0, 200);
   const chain = req.nextUrl.searchParams.get("chain") ?? undefined; // где искать $ТИКЕР: solana | robinhood
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "local";
+  const ip = clientIp(req);
   const enc = new TextEncoder();
 
   const stream = new ReadableStream({

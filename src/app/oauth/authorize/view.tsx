@@ -24,9 +24,9 @@ export function AuthorizeView() {
   const clientId = q.get("client_id") ?? "";
   const redirectUri = q.get("redirect_uri") ?? "";
   const state = q.get("state") ?? "";
-  const [app, setApp] = useState<{ name: string; redirectHost: string } | null>(null);
+  const [app, setApp] = useState<{ name: string; redirectHost: string; redirectUri: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pick, setPick] = useState<string>(NEW);
+  const [pick, setPick] = useState<string>(""); // ничего не выбрано заранее: владелец выбирает сам
   const [name, setName] = useState("");
   const [ids, setIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -37,7 +37,7 @@ export function AuthorizeView() {
 
   useEffect(() => {
     if (q.get("response_type") !== "code") return setError("This link is not a valid connection request. Start again from your agent.");
-    api<{ name: string; redirectHost: string }>(`/api/oauth/client?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}`)
+    api<{ name: string; redirectHost: string; redirectUri: string }>(`/api/oauth/client?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}`)
       .then((a) => {
         setApp(a);
         setName((n) => n || a.name.slice(0, 32));
@@ -45,13 +45,7 @@ export function AuthorizeView() {
       .catch((e) => setError((e as Error).message));
   }, [q, clientId, redirectUri]);
 
-  // Есть боты — по умолчанию предлагаем первого, иначе создать нового над всеми краулерами.
-  useEffect(() => {
-    if (bots?.length && pick === NEW && !ids.length) setPick(bots[0].id);
-  }, [bots]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (crawlers && !ids.length) setIds(crawlers.map((c) => c.id));
-  }, [crawlers]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ни бот, ни краулеры не выбираются сами: доступ даётся только тому, что владелец отметил руками.
 
   const deny = () => {
     const u = new URL(redirectUri);
@@ -144,14 +138,17 @@ export function AuthorizeView() {
             </ul>
 
             <div className="mt-6 flex gap-2">
-              <Button onClick={allow} disabled={busy || (pick === NEW && (!name.trim() || !ids.length))}>
+              <Button onClick={allow} disabled={busy || !pick || (pick === NEW && (!name.trim() || !ids.length))}>
                 {busy ? "Connecting…" : `Allow ${app.name}`}
               </Button>
               <Button variant="ghost" onClick={deny} disabled={busy}>
                 Cancel
               </Button>
             </div>
-            <p className="mt-3 text-xs text-muted">You will return to {app.redirectHost}.</p>
+            <p className="mt-3 rounded-lg border border-honey/30 bg-honey/[0.05] p-2 text-xs text-muted">
+              The app calls itself <b className="text-fg">{app.name}</b>, but CrawlHive can't verify that name. Approve only if you started this connection yourself.
+              Access goes to <b className="num break-all text-fg">{app.redirectHost}</b>.
+            </p>
           </>
         )}
       </Card>

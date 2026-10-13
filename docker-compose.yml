@@ -8,3 +8,8 @@ services:
       - "127.0.0.1:8796:3000"
     volumes:
       - ./data:/data
+    # Без лишних прав: процессу не нужны capabilities, и повысить привилегии он не сможет.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

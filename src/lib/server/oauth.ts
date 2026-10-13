@@ -18,7 +18,10 @@ export interface OAuthClient {
   client_name: string;
   redirect_uris: string[];
   createdAt: number;
+  usedAt?: number; // когда по нему последний раз выдали токен — неиспользованные вытесняются первыми
 }
+
+const MAX_URIS = 5;
 
 function clients(): OAuthClient[] {
   try {
@@ -43,7 +46,9 @@ function validRedirect(u: unknown): string | null {
 }
 
 export function registerClient(input: { client_name?: unknown; redirect_uris?: unknown }) {
-  const uris = (Array.isArray(input.redirect_uris) ? input.redirect_uris : []).map(validRedirect);
+  const raw = Array.isArray(input.redirect_uris) ? input.redirect_uris : [];
+  if (raw.length > MAX_URIS) throw new ApiError("invalid_redirect_uri");
+  const uris = raw.map(validRedirect);
   if (!uris.length || uris.some((u) => !u)) throw new ApiError("invalid_redirect_uri");
   const client: OAuthClient = {
     client_id: `chc_${randomBytes(12).toString("base64url")}`,
@@ -51,7 +56,13 @@ export function registerClient(input: { client_name?: unknown; redirect_uris?: u
     redirect_uris: uris as string[],
     createdAt: Date.now(),
   };
-  setMeta(CLIENTS_KEY, JSON.stringify([...clients(), client].slice(-MAX_CLIENTS)));
+  // Переполнение: сначала уходят клиенты, по которым ни разу не выдали токен, потом самые давние.
+  let list = [...clients(), client];
+  while (list.length > MAX_CLIENTS) {
+    const idx = list.findIndex((c) => !c.usedAt && c !== client);
+    list.splice(idx >= 0 ? idx : 0, 1);
+  }
+  setMeta(CLIENTS_KEY, JSON.stringify(list));
   return client;
 }
 
@@ -113,11 +124,16 @@ export function exchange(p: Record<string, string>) {
     if (!c || c.exp < Date.now()) throw new OAuthError("invalid_grant", "Code expired or already used");
     if (c.clientId !== p.client_id || c.redirectUri !== p.redirect_uri) throw new OAuthError("invalid_grant", "Code was issued to another app");
     if (!p.code_verifier || s256(p.code_verifier) !== c.challenge) throw new OAuthError("invalid_grant", "PKCE check failed");
-    const name = clients().find((x) => x.client_id === c.clientId)?.client_name ?? "AI agent";
-    return tokenResponse(attachBotToken(c.wallet, c.botId, name));
+    const all = clients();
+    const cl = all.find((x) => x.client_id === c.clientId);
+    if (cl) {
+      cl.usedAt = Date.now();
+      setMeta(CLIENTS_KEY, JSON.stringify(all));
+    }
+    return tokenResponse(attachBotToken(c.wallet, c.botId, cl?.client_name ?? "AI agent", c.clientId));
   }
   if (p.grant_type === "refresh_token") {
-    const t = refreshBotToken(p.refresh_token ?? "");
+    const t = refreshBotToken(p.refresh_token ?? "", p.client_id);
     if (!t) throw new OAuthError("invalid_grant", "Refresh token expired or revoked");
     return tokenResponse(t);
   }

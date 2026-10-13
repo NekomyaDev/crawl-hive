@@ -35,6 +35,7 @@ interface BotToken {
   exp: number; // когда истекает токен доступа
   rexp: number; // когда истекает токен обновления
   app: string; // имя приложения из регистрации: ChatGPT, Claude, Muse…
+  client?: string; // client_id OAuth: токен обновления принимаем только от того же приложения
   at: number;
 }
 
@@ -238,25 +239,25 @@ export function ownBot(wallet: string, id: string) {
   return b;
 }
 
-function mint(b: GrokBot, app: string) {
+function mint(b: GrokBot, app: string, client?: string) {
   const access = `cht_${randomBytes(24).toString("base64url")}`;
   const refresh = `chr_${randomBytes(24).toString("base64url")}`;
   const now = Date.now();
-  b.tokens = [...(b.tokens ?? []).filter((t) => t.rexp > now), { h: hash(access), rh: hash(refresh), exp: now + ACCESS_TTL_MS, rexp: now + REFRESH_TTL_MS, app, at: now }].slice(-MAX_TOKENS);
+  b.tokens = [...(b.tokens ?? []).filter((t) => t.rexp > now), { h: hash(access), rh: hash(refresh), exp: now + ACCESS_TTL_MS, rexp: now + REFRESH_TTL_MS, app, client, at: now }].slice(-MAX_TOKENS);
   return { access, refresh, expiresIn: ACCESS_TTL_MS / 1000 };
 }
 
-export function attachBotToken(wallet: string, botId: string, app: string) {
+export function attachBotToken(wallet: string, botId: string, app: string, client?: string) {
   const list = all();
   const b = list.find((x) => x.id === botId && x.wallet === wallet);
   if (!b) throw new ApiError("Bot not found", 404);
-  const t = mint(b, app);
+  const t = mint(b, app, client);
   save(list);
   return t;
 }
 
 // Обновление: старая пара токенов сгорает, выдаётся новая.
-export function refreshBotToken(refresh: string) {
+export function refreshBotToken(refresh: string, clientId?: string) {
   if (!refresh.startsWith("chr_")) return null;
   const rh = hash(refresh);
   const list = all();
@@ -264,8 +265,9 @@ export function refreshBotToken(refresh: string) {
   for (const b of list) {
     const old = b.tokens?.find((t) => t.rh === rh && t.rexp > now);
     if (!old) continue;
+    if (old.client && clientId && old.client !== clientId) return null;
     b.tokens = b.tokens!.filter((t) => t !== old);
-    const t = mint(b, old.app);
+    const t = mint(b, old.app, old.client);
     save(list);
     return t;
   }
