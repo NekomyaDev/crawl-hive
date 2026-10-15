@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 15 | **DEX fund**: chip in SOL with one click for the $CRAWLHIVE DexScreener profile; gifts are verified onchain and held apart from buybacks until the profile is paid |
 | Oct 15 | **Onchain proof**: every 15 minutes the Merkle root of all new verdicts and crawler calls is written to Solana; verify any token on [/track](https://crawlhive.xyz/track) |
 | Oct 15 | **For AI agents**: A2A agent card and live agent, official MCP Registry listing, OpenAPI, llms.txt; all on [/agents](https://crawlhive.xyz/agents) |
 | Oct 15 | **x402**: any agent buys a scan for $0.01 USDC, humans can try it with Phantom |
@@ -217,6 +218,10 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 <p align="center">
   <img src="docs/images/token-buyback.png" alt="The token block: live chart, buyback & burn with a 12-hour countdown, Crawler of the day" width="100%">
 </p>
+
+### DEX fund
+
+Under buyback & burn on the home page anyone with Phantom can chip in 0.05–0.5 SOL toward the DexScreener profile for $CRAWLHIVE (Enhanced Token Info, goal `DEX_FUND_GOAL_USD`, $299 by default). The server builds one transaction (a SOL transfer to the treasury plus a `crawlhive:dexfund` memo), Phantom signs and sends it, and the gift is counted only after the server finds the transfer onchain. Raised SOL up to the goal is held apart: the buyback button cannot spend it until the profile is paid, which is detected from DexScreener's public orders API. Anything above the goal, and everything after the profile is paid, goes to buyback & burn. Code: `src/lib/server/dexfund.ts`, `src/components/dex-fund.tsx`.
 
 ### Contract X-Ray
 

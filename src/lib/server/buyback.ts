@@ -8,6 +8,7 @@ import { getAssociatedTokenAddressSync, NATIVE_MINT, TOKEN_PROGRAM_ID } from "@s
 import { BUYBACK_TREASURY } from "../economy";
 import { ApiError, getMeta, setMeta } from "./store";
 import { publicConfig, rpcConnection } from "./solana";
+import { dexReserveSol } from "./dexfund";
 import { BuybackError, buildBurnAllTx, buildBuybackTx, parseBuybackTx, readMint, type MintInfo } from "./buyback-tx";
 
 // Сколько SOL оставляем в казне на комиссии и аренду аккаунтов, кнопка Max считает от остатка.
@@ -174,6 +175,7 @@ export async function buybackStats() {
     treasury: cfg.treasury,
     treasurySol: await treasurySol(),
     reserveSol: BUYBACK_RESERVE_SOL,
+    dexReserveSol: await dexReserveSol(),
     count: l.count,
     solSpent: l.sol,
     burned: m ? Number(burnedRaw) / scale : 0,
@@ -235,9 +237,11 @@ export async function buildBuyback(wallet: string, amountSol: unknown, slippageB
   rateLimit(`build:${wallet}`, 3000);
   const bal = await treasurySol(true);
   if (bal === null) throw new ApiError("Cannot read the treasury balance, try again", 502);
-  const max = bal - BUYBACK_RESERVE_SOL;
+  // SOL сбора на DEX не выкупаем, пока профиль не оплачен (dexfund.ts).
+  const dex = await dexReserveSol();
+  const max = bal - BUYBACK_RESERVE_SOL - dex;
   if (amount > max + 1e-9)
-    throw new ApiError(`Too much: the treasury has ${bal.toFixed(4)} SOL and keeps ${BUYBACK_RESERVE_SOL} SOL for fees, so at most ${Math.max(0, max).toFixed(4)} SOL`);
+    throw new ApiError(`Too much: the treasury has ${bal.toFixed(4)} SOL, keeps ${BUYBACK_RESERVE_SOL} SOL for fees${dex ? ` and ${dex.toFixed(4)} SOL raised for the DEX profile` : ""}, so at most ${Math.max(0, max).toFixed(4)} SOL`);
   const m = (await mintInfo(true))!;
   const lamports = BigInt(Math.round(amount * LAMPORTS_PER_SOL));
   return wrap(() => buildBuybackTx(rpcConnection(), { owner: new PublicKey(wallet), mint: new PublicKey(mint), lamports, slippageBps: slip, mintInfo: m }));

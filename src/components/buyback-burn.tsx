@@ -2,6 +2,7 @@
 // «buyback & burn · crawler rewards»: таймер байбека раз в 12 часов со статистикой сжиганий и «Crawler of the day».
 // Кнопки владельца видит только подписанный кошелёк казны (выплату — ещё и CREATOR_WALLET); сервер проверяет то же самое.
 import { useEffect, useState } from "react";
+import { DexFund } from "@/components/dex-fund";
 import { ArrowUpRight, ChevronDown, ExternalLink, Flame, Loader2, Trophy } from "lucide-react";
 import { BOT_URL } from "@/components/telegram-cta";
 import { useWallet } from "@/components/wallet-provider";
@@ -66,7 +67,7 @@ function Label({ children }: { children: React.ReactNode }) {
 
 function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () => void; due: boolean }) {
   const toast = useToast();
-  const max = Math.max(0, (stats.treasurySol ?? 0) - stats.reserveSol);
+  const max = Math.max(0, (stats.treasurySol ?? 0) - stats.reserveSol - (stats.dexReserveSol ?? 0));
   const [amount, setAmount] = useState("");
   const [slippage, setSlippage] = useState("3");
   const [step, setStep] = useState<OwnerStep | null>(null);
@@ -162,7 +163,7 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
           </button>
         ))}
         <button type="button" disabled={busy || max <= 0} onClick={() => setAmount(String(Math.floor(max * 1e4) / 1e4))} className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-honey/60 hover:text-honey disabled:opacity-40">
-          Max (−{stats.reserveSol})
+          Max (−{+(stats.reserveSol + (stats.dexReserveSol ?? 0)).toFixed(3)})
         </button>
       </div>
       <Button className="mt-3 w-full" disabled={busy || !(Number(amount) > 0)} onClick={() => run("buyback")}>
@@ -488,6 +489,7 @@ export function BuybackBurn({ token, stats, reload }: { token: TokenInfo | null;
         <BuybackCard token={token} stats={stats} reload={reload} />
         <CrawlerOfDay />
       </div>
+      <DexFund />
     </div>
   );
 }

@@ -42,6 +42,7 @@ export interface BuybackStats {
   treasury: string;
   treasurySol: number | null;
   reserveSol: number;
+  dexReserveSol?: number;
   count: number;
   solSpent: number;
   burned: number;

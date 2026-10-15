@@ -33,15 +33,30 @@ const release = () => {
   st().active--;
 };
 
+// Запасной узел, когда у основного кончился дневной лимит (QuickNode отвечает 429 «daily request limit reached»):
+// до полуночи UTC ходим туда, повторять основной бессмысленно.
+const FALLBACK = () => process.env.SOLANA_RPC_FALLBACK?.trim() || "https://api.mainnet-beta.solana.com";
+const g2 = globalThis as unknown as { __crawlhiveRpcDown?: number };
+const nextUtcMidnight = () => Math.ceil(Date.now() / 86400_000) * 86400_000;
+
 // fetch для web3.js Connection.
 export const limitedFetch: typeof fetch = async (input, init) => {
   for (let attempt = 0; ; attempt++) {
+    const down = (g2.__crawlhiveRpcDown ?? 0) > Date.now();
     await acquire();
     let res: Response;
     try {
-      res = await fetch(input, init);
+      res = await fetch(down ? FALLBACK() : input, init);
     } finally {
       release();
+    }
+    if (res.status === 429 && !down) {
+      const text = await res.clone().text().catch(() => "");
+      if (/daily request limit|credits|quota/i.test(text)) {
+        g2.__crawlhiveRpcDown = nextUtcMidnight();
+        console.warn("[rpc] primary RPC is out of its daily limit, using the fallback until 00:00 UTC");
+        continue;
+      }
     }
     if (res.status !== 429 || attempt >= RETRIES) return res;
     const retryAfter = Number(res.headers.get("retry-after"));
