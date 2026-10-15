@@ -4,6 +4,12 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 15", title: "Onchain proof", text: "Every 15 minutes all new verdicts and crawler calls are hashed into a Merkle tree and the root is written to Solana. Nothing can be quietly deleted or edited after the price moves. Check any token on Track Record." },
+  { date: "Oct 15", title: "For AI agents", text: "A2A agent card and a live agent at /a2a, the official MCP Registry listing, OpenAPI and llms.txt. Everything an agent needs to find, call and pay CrawlHive is on the new For agents page." },
+  { date: "Oct 15", title: "First buyback & burn", text: "0.3 SOL from the treasury bought 1.61M $CRAWLHIVE on the market and 1.55M was burned onchain in the same transaction. The supply dropped by 0.155%." },
+  { date: "Oct 15", title: "Pay per scan with x402", text: "Any AI agent can buy a scan for $0.01 USDC on Solana over x402: no account, no API key, charged only if the scan succeeds. Humans can try it with Phantom on the For agents page." },
+  { date: "Oct 14", title: "Contract X-Ray", text: "Every scan reads what the owner can do to holders: blacklist, pause, mint, change taxes, hidden functions in the EVM bytecode, risky Token-2022 extensions on Solana, and drainer code on the project site." },
+  { date: "Oct 13", title: "$CRAWLHIVE is live", text: "The project token launched on Solana. Treasury SOL buys it back and burns it, and the best crawler of the day earns half of the day's creator fees." },
   { date: "Oct 13", title: "BNB Chain and Meteora", text: "Instant Crawl, the bot, the app and Launch Radar now scan BNB Chain tokens (holders, honeypot, contract owner, four.meme curve). Meteora and other launchpads on Solana get their bonding curve and creator wallet checked too." },
   { date: "Oct 13", title: "CrawlHive app in Telegram", text: "A real app inside Telegram: scan tokens, browse Launch Radar, manage your watchlist and alerts, see your crawlers and their signals. One tap from @crawlhivebot, no install." },
   { date: "Oct 13", title: "Stricter on fresh launches", text: "Track Record showed young tokens with linked or fresh wallets dumping within hours while rated OK. Such tokens are now capped at RISKY." },

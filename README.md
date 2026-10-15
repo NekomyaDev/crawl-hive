@@ -38,6 +38,17 @@
 
 ---
 
+## Latest updates
+
+| Date | Update |
+| --- | --- |
+| Oct 15 | **Onchain proof**: every 15 minutes the Merkle root of all new verdicts and crawler calls is written to Solana; verify any token on [/track](https://crawlhive.xyz/track) |
+| Oct 15 | **For AI agents**: A2A agent card and live agent, official MCP Registry listing, OpenAPI, llms.txt; all on [/agents](https://crawlhive.xyz/agents) |
+| Oct 15 | **x402**: any agent buys a scan for $0.01 USDC, humans can try it with Phantom |
+| Oct 15 | **First buyback & burn**: 0.3 SOL → 1.61M $CRAWLHIVE bought, 1.55M burned ([tx](https://solscan.io/tx/67JJFamRhQyNDZ7rYyf9Q49tC3aEN8jgyeaiCKRAPECnHyEmxptaFnUPk4pJWaffbXaBseVgHc8r3bVDEt9dCY2t)) |
+| Oct 14 | **Contract X-Ray** in every scan |
+| Oct 13 | **$CRAWLHIVE** launched on Solana |
+
 ## What is CrawlHive
 
 Memecoin alpha is scattered: a KOL post on X, a coordinated call in a Telegram group, a whale wallet buying a fresh pool. Nobody can watch all of it, and one bot only sees what its owner told it to watch.
@@ -652,6 +663,11 @@ db/schema.sql                target Postgres schema
 - [x] Grok Bot on duty: one switch under a crawler, wakes only on new signals
 - [x] Safety scan of every crawler signal, peak-based hit scoring, backoff for failing sources
 - [x] Running costs cut: X check on demand, non-reasoning model, shared caches
+- [x] Contract X-Ray: owner powers from EVM bytecode, risky Token-2022 extensions, drainer code on project sites
+- [x] $CRAWLHIVE launch, buyback & burn from the treasury, Crawler of the day; first burn on Oct 15 (1.55M burned)
+- [x] Pay per call with x402 (USDC on Solana), Phantom checkout on /agents
+- [x] Onchain proof: Merkle root of every verdict and call written to Solana every 15 minutes
+- [x] A2A agent, official MCP Registry listing, OpenAPI and llms.txt
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks
