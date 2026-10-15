@@ -2,7 +2,7 @@
 // Grok Bots на странице My Crawlers: необязательное подключение своего ИИ-агента (Grok Bot, ChatGPT Dots,
 // Meta Muse, Claude, Cursor) к краулерам через MCP. Бота ставят над одним, двумя или всеми краулерами.
 // Grok Bot подключается ключом (показывается один раз), остальные — кнопкой Connect по OAuth.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, Trash2 } from "lucide-react";
 import { BotOcto } from "@/components/bot-octo";
 import { Card } from "@/components/ui/card";
@@ -26,6 +26,7 @@ export interface PublicBot {
 }
 
 const MCP_URL = "https://crawlhive.xyz/mcp";
+const X402_URL = "https://crawlhive.xyz";
 
 const ROUTINE = `Every hour: call CrawlHive whats_new.
 If changed is false, stop.
@@ -94,6 +95,49 @@ function ConnectGuide() {
       {tab !== "grok" && (
         <p className="mt-2 text-xs text-muted">No key to copy: the agent signs in with your wallet through CrawlHive and gets read access to the crawlers you pick.</p>
       )}
+    </div>
+  );
+}
+
+// Оплата за вызов по x402: агенту без аккаунта и ключа. Цены и включённость берём из /.well-known/x402,
+// поэтому блок сам прячется, пока оплата выключена на сервере.
+function X402Guide() {
+  const [prices, setPrices] = useState<{ scan: string; scanX: string } | null>(null);
+  useEffect(() => {
+    fetch("/.well-known/x402")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m: { items?: { resource: string; price?: { amount?: string } }[] } | null) => {
+        const at = (p: string) => m?.items?.find((i) => i.resource.endsWith(p))?.price?.amount;
+        const scan = at("/api/x402/scan");
+        if (scan) setPrices({ scan, scanX: at("/api/x402/scan-x") ?? "" });
+      })
+      .catch(() => {});
+  }, []);
+  if (!prices) return null;
+  return (
+    <div className="rounded-xl border border-line bg-panel-2/40 p-3">
+      <div className="mb-1 text-xs font-medium">Pay per call with x402</div>
+      <p className="text-sm text-muted">
+        No account and no key: any AI agent with a Solana wallet can buy a scan for ${prices.scan} USDC
+        {prices.scanX && <>, or ${prices.scanX} with the X check by Grok</>}. The first request answers 402 with the price; an x402 client signs the USDC
+        transfer and repeats it. You pay only when the scan succeeds.
+      </p>
+      <div className="mt-3 space-y-2">
+        <CopyBox label="Ask for the price (402)" value={`curl -i "${X402_URL}/api/x402/scan?q=%24BONK"`} />
+        <CopyBox
+          label="Pay and scan (TypeScript)"
+          value={`import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
+import { ExactSvmScheme } from "@x402/svm";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+
+const signer = await createKeyPairSignerFromBytes(secretKeyBytes);
+const pay = wrapFetchWithPaymentFromConfig(fetch, {
+  schemes: [{ network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", client: new ExactSvmScheme(signer) }],
+});
+const scan = await (await pay("${X402_URL}/api/x402/scan?q=%24BONK")).json();`}
+        />
+        <CopyBox label="Discovery" value={`${X402_URL}/.well-known/x402`} />
+      </div>
     </div>
   );
 }
@@ -244,6 +288,7 @@ export function GrokBots({ crawlers, bots, reload }: { crawlers: PublicCrawler[]
       <div className="space-y-4 p-4">
         {!crawlers.length && <p className="text-sm text-muted">Spawn a crawler first, then put a Grok Bot on duty over it.</p>}
         {crawlers.length > 0 && <ConnectGuide />}
+        <X402Guide />
 
         {open && (
           <div className="space-y-3 rounded-xl border border-honey/30 bg-panel-2/50 p-3">

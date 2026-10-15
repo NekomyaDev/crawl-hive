@@ -15,6 +15,7 @@ interface Stats {
   };
   ai: { grok: { calls: number; limit: number }; jev: { calls: number; cost: number; limit: number; pub?: number } };
   agents: { bots: number; botsLive: number; oauthApps: number; dutyCrawlers: number };
+  x402?: { enabled: boolean; calls24h: number; usdc24h: number; callsTotal: number; usdcTotal: number };
   telegram: { watchers: number; watched: number; alertSubs: number; groups: number };
   support: { open: number; latest: { from: number; name: string; username?: string; text: string; at: number; answered?: boolean }[] };
 }
@@ -161,6 +162,14 @@ export function AdminDashboard() {
         <div className="grid grid-cols-2 gap-2">
           <Card title="Grok Bots" value={s.agents.bots} sub={`${s.agents.botsLive} live · ${s.agents.oauthApps} apps · ${s.agents.dutyCrawlers} on duty`} />
           <Card title="Watchlists" value={s.telegram.watchers} sub={`${s.telegram.watched} tokens · ${s.telegram.alertSubs} alert subs · ${s.telegram.groups} groups`} />
+          {s.x402 && (
+            <Card
+              title="x402 paid calls"
+              value={s.x402.enabled ? s.x402.calls24h : "off"}
+              sub={`$${s.x402.usdc24h.toFixed(2)} USDC 24h · ${s.x402.callsTotal} calls · $${s.x402.usdcTotal.toFixed(2)} total`}
+              tone="text-lime"
+            />
+          )}
         </div>
       </Section>
 

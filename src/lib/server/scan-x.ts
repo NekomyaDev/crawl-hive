@@ -88,12 +88,24 @@ export function cachedBuzz(id: string) {
   return c && Date.now() - c.at < BUZZ_TTL_MS ? c : null;
 }
 
-// null — можно; строка — почему нельзя.
-function admit(ip: string): string | null {
+// Остался ли дневной бюджет поиска по X. Платный вызов x402 спрашивает это до оплаты, чтобы не взять деньги
+// за проверку, которую сегодня уже не запустить.
+export function xBudgetLeft() {
   const m = mem();
   const day = new Date().toISOString().slice(0, 10);
   if (m.day !== day) Object.assign(m, { day, used: 0 });
-  if (m.used >= DAILY()) return "daily X budget for free scans is used up, back tomorrow";
+  return scanXEnabled() && m.used < DAILY();
+}
+
+// null — можно; строка — почему нельзя. Оплаченный вызов (x402) не упирается в лимит на IP: частоту платных
+// запросов ограничивает x402.ts, а дневной бюджет общий для всех.
+function admit(ip: string, paid = false): string | null {
+  const m = mem();
+  if (!xBudgetLeft()) return "daily X budget for free scans is used up, back tomorrow";
+  if (paid) {
+    m.used++;
+    return null;
+  }
   const now = Date.now();
   if (m.ips.size > 20_000) for (const [k, v] of m.ips) if (!v.some((t) => now - t < 3600_000)) m.ips.delete(k);
   const list = (m.ips.get(ip) ?? []).filter((t) => now - t < 3600_000);
@@ -116,13 +128,13 @@ const cited = (real: Set<string>, url: string) => {
   return !!id && [...real].some((c) => c.includes(id));
 };
 
-export async function scanX(t: { id: string; symbol: string; name: string; chain?: string }, ip: string): Promise<XBuzz> {
+export async function scanX(t: { id: string; symbol: string; name: string; chain?: string }, ip: string, opts: { paid?: boolean } = {}): Promise<XBuzz> {
   const m = mem();
   const hit = cachedBuzz(t.id);
   if (hit) return hit;
   const running = m.inflight.get(t.id);
   if (running) return running;
-  const why = admit(ip);
+  const why = admit(ip, opts.paid);
   if (why) throw new Error(why);
 
   const p = (async () => {

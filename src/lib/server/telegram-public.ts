@@ -635,6 +635,7 @@ async function adminMessage(chat: string) {
       `💰 Payments: ${st.money.payments} · ${st.money.sol.toFixed(3)} SOL + ${st.money.eth.toFixed(4)} ETH · treasury ${st.money.treasury.sol != null ? `${st.money.treasury.sol.toFixed(3)} SOL` : "—"} (${usd(st.money.treasury.sol != null && st.money.treasury.solUsd ? st.money.treasury.sol * st.money.treasury.solUsd : undefined)})`,
       `🤖 AI today: Grok ${st.ai.grok.calls}/${st.ai.grok.limit} · Jev ${st.ai.jev.calls} calls, $${st.ai.jev.cost.toFixed(4)}`,
       `🔌 Agents: ${st.agents.bots} bots (${st.agents.botsLive} live), ${st.agents.oauthApps} connected apps, ${st.agents.dutyCrawlers} Grok duty`,
+      st.x402.enabled ? `🪙 x402: ${st.x402.calls24h} paid calls 24h, $${st.x402.usdc24h.toFixed(2)} USDC (total ${st.x402.callsTotal}, $${st.x402.usdcTotal.toFixed(2)})` : "🪙 x402: off",
       `👁 Watchlists ${st.telegram.watchers} · alert subs ${st.telegram.alertSubs} · groups ${st.telegram.groups}`,
       `🆘 Support: <b>${st.support.open}</b> open`,
       st.crawlers.failing.length ? `⚠️ Failing crawlers: ${st.crawlers.failing.map((c) => esc(c.name)).join(", ")}` : "✅ No failing crawlers",

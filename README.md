@@ -296,6 +296,36 @@ Server: `https://crawlhive.xyz/mcp` (Streamable HTTP, JSON responses). Without c
   </tr>
 </table>
 
+### Pay per call with x402
+
+No account, no bot key: any AI agent with a Solana wallet can buy a scan per call in USDC over [x402](https://github.com/x402-foundation/x402), the open HTTP 402 payment protocol (v2, with v1 clients understood too).
+
+| Endpoint | Price | Returns |
+| --- | --- | --- |
+| `GET /api/x402/scan?q=<address \| $TICKER \| link>&chain=solana\|robinhood\|bsc` | $0.01 USDC | the same JSON as MCP `scan_token`, Contract X-Ray included |
+| `GET /api/x402/scan-x?q=…` | $0.05 USDC | the scan plus the X check by Grok: sentiment, warnings, who is talking |
+| `GET /.well-known/x402` | free | the list of paid endpoints with prices and payment requirements |
+
+The first request answers `402` with the requirements in the `PAYMENT-REQUIRED` header (and the v1 object in the body): `exact` scheme on `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`, native USDC, our receiving address, the facilitator's fee payer. The agent signs the USDC transfer and repeats the request with `PAYMENT-SIGNATURE`; the answer carries `PAYMENT-RESPONSE` with the Solana transaction. The order is verify → scan → settle: the payment is checked first, the money moves only after the scan succeeds, so a failed scan costs nothing. Fees are paid by the facilitator ([PayAI](https://facilitator.payai.network), no API key); the server holds no private key and never sends funds, USDC goes straight to the receiving wallet. Amount, recipient and network are taken from our own requirements, never from the client's header; one signed transaction pays for one call; `q` and `chain` are checked before any payment is asked; paid calls are limited per wallet and per IP; the X check answers `503` before payment when today's Grok budget is used up.
+
+```bash
+curl -i "https://crawlhive.xyz/api/x402/scan?q=%24BONK"     # 402 with the price
+```
+
+```ts
+import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
+import { ExactSvmScheme } from "@x402/svm";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+
+const signer = await createKeyPairSignerFromBytes(secretKeyBytes);
+const pay = wrapFetchWithPaymentFromConfig(fetch, {
+  schemes: [{ network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", client: new ExactSvmScheme(signer) }],
+});
+const scan = await (await pay("https://crawlhive.xyz/api/x402/scan?q=%24BONK")).json();
+```
+
+Code: `src/lib/server/x402.ts`, `src/app/api/x402/`. Paid calls and USDC earned show on the admin dashboard.
+
 ### Jev: decides in half a second, Grok researches
 
 [Jev](https://openrouter.ai/typesafe/jev-1.13) is a decision model from TypeSafe. It does not write text: it picks an answer from options we define and returns a probability. We call it through OpenRouter in two places:
@@ -512,6 +542,10 @@ XAI_API_KEY=...                                # enables X crawlers and AI readi
 # TOKEN_MINT=...  TOKEN_SYMBOL=CRAWLHIVE         # project token: home block, buyback & burn, reward holder check
 # REWARD_MIN_HOLD=1  CREATOR_WALLET=...          # Crawler of the day settings
 # SESSION_SECRET=...                           # optional, otherwise generated and stored in .data/
+# X402_PAY_TO=...                              # Solana address that receives USDC for x402 calls; unset = x402 off
+# X402_PRICE_SCAN=0.01  X402_PRICE_SCAN_X=0.05 # USD per call: scan, scan + X check
+# X402_FACILITATOR=https://facilitator.payai.network
+# X402_NETWORK=solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp   # or solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1 (devnet)
 ```
 
 Default tier prices in SOL: 0.05 / 0.2 / 0.75 / 2.5. In ETH on Robinhood Chain: 0.002 / 0.008 / 0.03 / 0.1.

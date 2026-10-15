@@ -2,6 +2,7 @@
 // Админ определяется по Telegram id (TELEGRAM_ADMIN_IDS) или username (TELEGRAM_ADMIN_USERNAMES, по умолчанию h100envy).
 import "server-only";
 import { getMeta, listCrawlers, metaEntries, networkStats, paymentTotals, setMeta } from "./store";
+import { x402Stats } from "./x402";
 
 const ids = () => (process.env.TELEGRAM_ADMIN_IDS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 const names = () => (process.env.TELEGRAM_ADMIN_USERNAMES ?? "h100envy").split(",").map((x) => x.trim().toLowerCase().replace(/^@/, "")).filter(Boolean);
@@ -164,6 +165,8 @@ export async function adminStats() {
     },
     money: { ...paymentTotals(), treasury, buybacks },
     ai: { grok: grokUsage(), jev: jevUsage() },
+    // Оплата агентами за вызов (x402): вызовы и USDC за сутки и за всё время.
+    x402: x402Stats(),
     agents: {
       bots: bots.length,
       botsLive: bots.filter((b) => b.lastSeenAt && now - b.lastSeenAt < 10 * 60_000).length,

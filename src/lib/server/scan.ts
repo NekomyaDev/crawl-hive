@@ -119,18 +119,22 @@ function mem() {
   return g.__crawlhiveScan;
 }
 
-// Не больше 8 сканов за 10 минут с одного адреса: краулеры ходят во внешние API.
-export function allowScan(ip: string) {
+// Скользящее окно на ключ (IP, кошелёк плательщика): не больше max событий за windowMs.
+// Ключи разных лимитов разводятся префиксом, окно у одного ключа всегда одно и то же.
+export function allowHit(key: string, max: number, windowMs: number) {
   const m = mem();
   const now = Date.now();
-  // Старые записи выбрасываем, иначе карта IP растёт без конца.
-  if (m.hits.size > 20_000) for (const [k, v] of m.hits) if (!v.some((t) => now - t < 10 * 60_000)) m.hits.delete(k);
-  const list = (m.hits.get(ip) ?? []).filter((t) => now - t < 10 * 60_000);
-  if (list.length >= 8) return false;
+  // Старые записи выбрасываем, иначе карта ключей растёт без конца.
+  if (m.hits.size > 20_000) for (const [k, v] of m.hits) if (!v.some((t) => now - t < windowMs)) m.hits.delete(k);
+  const list = (m.hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (list.length >= max) return false;
   list.push(now);
-  m.hits.set(ip, list);
+  m.hits.set(key, list);
   return true;
 }
+
+// Не больше 8 сканов за 10 минут с одного адреса: краулеры ходят во внешние API.
+export const allowScan = (ip: string) => allowHit(ip, 8, 10 * 60_000);
 
 function isSolanaMint(s: string) {
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) return false;
