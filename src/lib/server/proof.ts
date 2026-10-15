@@ -160,8 +160,9 @@ async function send(kp: Keypair, b: ProofBatch): Promise<string> {
   const conn = rpcConnection();
   const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
   const tx = new Transaction({ feePayer: kp.publicKey, blockhash, lastValidBlockHeight }).add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 20_000 }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
+    // Memo проверяет UTF-8 побайтно: 96 байт с подписантом съедают ~49k единиц (замерено симуляцией).
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 70_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 }),
     new TransactionInstruction({ programId: MEMO_PROGRAM, keys: [{ pubkey: kp.publicKey, isSigner: true, isWritable: false }], data: Buffer.from(memoText(b)) }),
   );
   tx.sign(kp);
