@@ -196,3 +196,8 @@ body::before {
 /* Telegram Mini App (/tg): прячем навигацию и подвал сайта, приложение рисует свои. */
 body:has([data-tg-app]) [data-chrome] { display: none !important; }
 body:has([data-tg-app]) main { padding: 0 !important; }
+
+/* Кнопка сбора на DEX: мягкое свечение, без анимации для reduced motion */
+@keyframes dex-glow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.15) saturate(1.15); } }
+.dex-cta { animation: dex-glow 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .dex-cta { animation: none; } }

@@ -237,6 +237,12 @@ export function InstantCrawl() {
             >
               🔥 ${TOKEN.symbol} is live · buy
             </a>
+            <a
+              href="#dexfund"
+              className="dex-cta inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-honey to-pink px-3 py-1 text-[11px] font-extrabold text-black"
+            >
+              🚀 Help get DEX paid
+            </a>
           </div>
           <h1 className="max-w-3xl text-3xl leading-tight font-bold tracking-tight lg:text-5xl">
             Send the <span className="text-gradient">swarm</span> after any memecoin
