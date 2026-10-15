@@ -241,7 +241,7 @@ export function InstantCrawl() {
               href="#dexfund"
               className="dex-cta inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-honey to-pink px-3 py-1 text-[11px] font-extrabold text-black"
             >
-              🚀 Help get DEX paid
+              🚀 Boost us on DexScreener
             </a>
           </div>
           <h1 className="max-w-3xl text-3xl leading-tight font-bold tracking-tight lg:text-5xl">

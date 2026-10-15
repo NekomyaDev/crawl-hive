@@ -93,7 +93,10 @@ async function ladder(f: Fund) {
   const mint = process.env.TOKEN_MINT?.trim() ?? "";
   const live = mint ? await dexLive(mint, f.startedAt ?? 0) : { profile: false, boosts: [] as number[] };
   const boosts = [...live.boosts];
+  // Уровни, оплаченные не из сбора (DEX_PAID_ELSEWHERE="profile"): считаются пройденными, но их цена из сбора не вычитается.
+  const elsewhere = new Set((process.env.DEX_PAID_ELSEWHERE ?? "").split(",").map((x) => x.trim()).filter(Boolean));
   const levels = dexLevels().map((l) => {
+    if (elsewhere.has(l.id)) return { ...l, live: true, external: true };
     let isLive = false;
     if (!l.boost) isLive = live.profile;
     else {
@@ -103,9 +106,9 @@ async function ladder(f: Fund) {
         boosts.splice(i, 1);
       }
     }
-    return { ...l, live: isLive };
+    return { ...l, live: isLive, external: false };
   });
-  const spentUsd = levels.filter((l) => l.live).reduce((s, l) => s + l.usd, 0);
+  const spentUsd = levels.filter((l) => l.live && !l.external).reduce((s, l) => s + l.usd, 0);
   return { levels, spentUsd };
 }
 

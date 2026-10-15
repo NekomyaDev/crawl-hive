@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 16 | **Boost fund**: the DexScreener profile is paid, so the DEX fund moved on to boosts (10x, 30x, 100x, golden ticker); levels paid outside the fund are set with `DEX_PAID_ELSEWHERE` and are not deducted from gifts |
 | Oct 15 | **DEX fund**: chip in SOL with one click (or pay a whole level) for $CRAWLHIVE on DexScreener: the profile first, then boosts up to the golden ticker; gifts are verified onchain and held apart from buybacks |
 | Oct 15 | **Onchain proof**: every 15 minutes the Merkle root of all new verdicts and crawler calls is written to Solana; verify any token on [/track](https://crawlhive.xyz/track) |
 | Oct 15 | **For AI agents**: A2A agent card and live agent, official MCP Registry listing, OpenAPI, llms.txt; all on [/agents](https://crawlhive.xyz/agents) |
@@ -221,7 +222,7 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 
 ### DEX fund
 
-Under buyback & burn on the home page (and from the 🚀 buttons in the menu and the hero) anyone with Phantom can chip in 0.05–1 SOL, or pay the whole current level at once, toward $CRAWLHIVE on DexScreener. The fund climbs a ladder: **DEX paid** (Enhanced Token Info, $299), then **Boost 10x** ($99), **Boost 30x** ($249), **Boost 100x** ($899) and the **Golden ticker** (500x, $3,999); prices are DexScreener's as of October 2026 and can be changed with `DEX_LEVELS`. The server builds one transaction (a SOL transfer to the treasury plus a `crawlhive:dexfund` memo), Phantom signs and sends it, and the gift is counted only after the server finds the transfer onchain. Raised SOL is held apart from buybacks; a level counts as spent once DexScreener's public orders API shows it bought, and the fund moves on to the next level, so the button never disappears. Code: `src/lib/server/dexfund.ts`, `src/components/dex-fund.tsx`.
+Under buyback & burn on the home page (and from the 🚀 buttons in the menu and the hero) anyone with Phantom can chip in 0.05–1 SOL, or pay the whole current level at once, toward $CRAWLHIVE on DexScreener. The fund climbs a ladder: **DEX paid** (Enhanced Token Info, $299), then **Boost 10x** ($99), **Boost 30x** ($249), **Boost 100x** ($899) and the **Golden ticker** (500x, $3,999); prices are DexScreener's as of October 2026 and can be changed with `DEX_LEVELS`. A level paid outside the fund (the profile, paid on launch day) is listed in `DEX_PAID_ELSEWHERE`: it shows as paid and its price is not taken out of the gifts, so every donation goes to the next boost. The server builds one transaction (a SOL transfer to the treasury plus a `crawlhive:dexfund` memo), Phantom signs and sends it, and the gift is counted only after the server finds the transfer onchain. Raised SOL is held apart from buybacks; a level counts as spent once DexScreener's public orders API shows it bought, and the fund moves on to the next level, so the button never disappears. Code: `src/lib/server/dexfund.ts`, `src/components/dex-fund.tsx`.
 
 ### Contract X-Ray
 

@@ -15,6 +15,7 @@ interface Level {
   note: string;
   usd: number;
   status: "live" | "funded" | "open" | "next";
+  external?: boolean;
   haveUsd: number;
 }
 interface Fund {
@@ -83,7 +84,7 @@ export function DexFund() {
     <div id="dexfund" className="mt-4 scroll-mt-20 overflow-hidden rounded-xl border-2 border-honey/50 bg-gradient-to-br from-honey/10 via-panel to-pink/10 p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2 text-sm font-semibold">
-          <Rocket className="size-4 text-honey" /> {data.paid ? `$CRAWLHIVE is DEX paid ✓ · next: ${lv.title}` : "Get $CRAWLHIVE DEX paid"}
+          <Rocket className="size-4 text-honey" /> {data.paid ? `Boost $CRAWLHIVE on DexScreener · next: ${lv.title}` : "Get $CRAWLHIVE DEX paid"}
         </span>
         <span className="num text-xs text-muted">
           {data.backers} backer{data.backers === 1 ? "" : "s"}
@@ -93,7 +94,7 @@ export function DexFund() {
         <>
           <p className="mb-3 text-sm text-muted">
             {data.paid ? (
-              <>The DexScreener profile is paid, thank you hive! Now we climb the next level: <b className="text-fg">{lv.title}</b> ({lv.note}, ${lv.usd}).</>
+              <>The DexScreener profile is paid. Now the hive funds boosts that push $CRAWLHIVE up DexScreener trending. Next level: <b className="text-fg">{lv.title}</b> ({lv.note}, ${lv.usd}).</>
             ) : (
               <>Chip in for the DexScreener profile (Enhanced Token Info, ${lv.usd}): logo, banner, links and socials on every chart.</>
             )}{" "}
@@ -148,7 +149,7 @@ export function DexFund() {
                 <div className="font-semibold">
                   {i + 1}. {l.title}
                 </div>
-                <div className="num">{l.status === "live" ? "✓ live on DEX" : l.status === "funded" ? "✓ funded" : `$${l.usd}`}</div>
+                <div className="num">{l.status === "live" ? (l.external ? "✓ paid" : "✓ live on DEX") : l.status === "funded" ? "✓ funded" : `$${l.usd}`}</div>
               </li>
             ))}
           </ol>
@@ -183,7 +184,7 @@ export function DexFundButton({ compact }: { compact?: boolean }) {
   return (
     <a href="/#dexfund" className="dex-cta mt-2 block rounded-xl bg-gradient-to-r from-honey via-coral to-pink p-[2px] shadow-[0_0_24px_rgba(255,107,157,.35)]">
       <span className="block rounded-[10px] bg-bg/85 px-3 py-2.5 transition-colors hover:bg-bg/70">
-        <span className="flex items-center gap-2 text-sm font-extrabold text-white">🚀 {data.paid ? `DEX: ${data.level.title}` : "Get us DEX paid"}</span>
+        <span className="flex items-center gap-2 text-sm font-extrabold text-white">🚀 {data.paid ? `Boost us: ${data.level.title}` : "Get us DEX paid"}</span>
         <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-line/70">
           <span className="block h-full rounded-full bg-gradient-to-r from-honey to-pink" style={{ width: `${Math.max(pct, 3)}%` }} />
         </span>
