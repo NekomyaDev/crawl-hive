@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
-  { date: "Oct 15", title: "DEX fund", text: "One click to chip in SOL for the $CRAWLHIVE DexScreener profile. Progress is live, every gift is verified onchain and held apart from buybacks until the profile is paid." },
+  { date: "Oct 15", title: "DEX fund", text: "One click to chip in SOL, or pay a whole level, for $CRAWLHIVE on DexScreener: the profile first, then boosts up to the golden ticker. Progress is live and every gift is verified onchain." },
   { date: "Oct 15", title: "Onchain proof", text: "Every 15 minutes all new verdicts and crawler calls are hashed into a Merkle tree and the root is written to Solana. Nothing can be quietly deleted or edited after the price moves. Check any token on Track Record." },
   { date: "Oct 15", title: "For AI agents", text: "A2A agent card and a live agent at /a2a, the official MCP Registry listing, OpenAPI and llms.txt. Everything an agent needs to find, call and pay CrawlHive is on the new For agents page." },
   { date: "Oct 15", title: "First buyback & burn", text: "0.3 SOL from the treasury bought 1.61M $CRAWLHIVE on the market and 1.55M was burned onchain in the same transaction. The supply dropped by 0.155%." },

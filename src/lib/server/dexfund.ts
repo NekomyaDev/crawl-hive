@@ -1,7 +1,7 @@
 // Сбор на DEX: сообщество скидывается на оплату профиля $CRAWLHIVE в DexScreener (Enhanced Token Info).
 // SOL идёт на казну одной транзакцией из Phantom (перевод + memo), сервер находит перевод в сети и засчитывает
 // его. Собранное держится отдельно от байбека: кнопка выкупа не тратит деньги сбора, пока цель не оплачена.
-// Всё сверх цели и всё после оплаты профиля уходит в обычный байбек и сжигание.
+// Уровни идут лестницей (профиль, потом бусты): после покупки одного сбор продолжается на следующий.
 import "server-only";
 import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { ApiError, getMeta, isSigUsed, markSigUsed, setMeta } from "./store";
@@ -14,10 +14,35 @@ const MEMO = "crawlhive:dexfund";
 const MIN_SOL = 0.01;
 const MAX_SOL = 50;
 
-export const dexGoalUsd = () => {
-  const n = Number(process.env.DEX_FUND_GOAL_USD);
-  return n > 0 && n < 100_000 ? n : 299;
-};
+// Лестница уровней DEX: сначала профиль, потом бусты по нарастающей. Цены DexScreener на 10.2026, их можно
+// переопределить DEX_LEVELS='[{"id":"profile","usd":299},…]'. Уровень «живой», когда DexScreener показывает его
+// в публичных заказах токена; тогда его стоимость считается потраченной из сбора.
+export interface DexLevel {
+  id: string;
+  title: string;
+  note: string;
+  usd: number;
+  boost?: number; // размер буста в DexScreener; у профиля нет
+}
+const DEFAULT_LEVELS: DexLevel[] = [
+  { id: "profile", title: "DEX paid", note: "Enhanced Token Info: logo, banner, links and socials on every chart", usd: 299 },
+  { id: "boost10", title: "Boost 10x", note: "10 boosts for 12 hours: higher on DexScreener trending", usd: 99, boost: 10 },
+  { id: "boost30", title: "Boost 30x", note: "30 boosts for 12 hours", usd: 249, boost: 30 },
+  { id: "boost100", title: "Boost 100x", note: "100 boosts for 24 hours", usd: 899, boost: 100 },
+  { id: "boost500", title: "Golden ticker", note: "500 boosts: the golden ticker on DexScreener", usd: 3999, boost: 500 },
+];
+export function dexLevels(): DexLevel[] {
+  try {
+    const raw = process.env.DEX_LEVELS?.trim();
+    if (raw) {
+      const v = JSON.parse(raw) as Partial<DexLevel>[];
+      const byId = new Map(DEFAULT_LEVELS.map((l) => [l.id, l]));
+      const out = v.map((x) => ({ ...(byId.get(String(x.id)) ?? { id: String(x.id), title: String(x.id), note: "" }), ...x }) as DexLevel).filter((l) => l.usd > 0);
+      if (out.length) return out;
+    }
+  } catch {}
+  return DEFAULT_LEVELS;
+}
 
 interface Gift {
   sig: string;
@@ -27,7 +52,7 @@ interface Gift {
 }
 interface Fund {
   gifts: Gift[];
-  paidAt?: number; // профиль DexScreener оплачен: резерв снимается, дальше всё идёт в байбек
+  startedAt?: number;
 }
 
 const load = (): Fund => {
@@ -39,53 +64,95 @@ const load = (): Fund => {
 };
 const save = (f: Fund) => setMeta(KEY, JSON.stringify(f));
 
-// Оплачен ли профиль токена в DexScreener: смотрим их публичный список заказов по токену.
-let paidCache: { at: number; paid: boolean } | null = null;
-async function dexPaid(mint: string): Promise<boolean> {
-  if (paidCache && Date.now() - paidCache.at < 5 * 60_000) return paidCache.paid;
-  let paid = paidCache?.paid ?? false;
+// Что из лестницы уже куплено в DexScreener: публичный список заказов по токену. Бусты считаем только
+// купленные после старта сбора, иначе чужой старый буст «съел» бы деньги сообщества.
+let liveCache: { at: number; profile: boolean; boosts: number[] } | null = null;
+async function dexLive(mint: string, since: number) {
+  if (liveCache && Date.now() - liveCache.at < 5 * 60_000) return liveCache;
+  const prev = liveCache ?? { at: 0, profile: false, boosts: [] as number[] };
+  let v = { at: Date.now(), profile: prev.profile, boosts: prev.boosts };
   try {
     const r = await fetch(`https://api.dexscreener.com/orders/v1/solana/${mint}`, { signal: AbortSignal.timeout(6000) });
     if (r.ok) {
-      const d = (await r.json()) as { orders?: { type?: string; status?: string }[] };
-      paid = (d.orders ?? []).some((o) => o.type === "tokenProfile" && (o.status === "approved" || o.status === "processing"));
+      const d = (await r.json()) as { orders?: { type?: string; status?: string }[]; boosts?: { amount?: number; paymentTimestamp?: number }[] };
+      v = {
+        at: Date.now(),
+        profile: (d.orders ?? []).some((o) => o.type === "tokenProfile" && (o.status === "approved" || o.status === "processing")),
+        boosts: (d.boosts ?? []).filter((b) => (b.paymentTimestamp ?? 0) >= since).map((b) => Number(b.amount) || 0),
+      };
     }
   } catch {}
-  paidCache = { at: Date.now(), paid };
-  return paid;
+  liveCache = v;
+  return v;
 }
 
 const raisedSol = (f: Fund) => f.gifts.reduce((s, g) => s + g.sol, 0);
 
-// Сколько SOL на казне занято сбором: кнопка байбека не должна их потратить, пока профиль не оплачен.
+// Уровни со статусом: live — куплен в DexScreener, funded — сбор покрыл его цену, иначе открыт.
+async function ladder(f: Fund) {
+  const mint = process.env.TOKEN_MINT?.trim() ?? "";
+  const live = mint ? await dexLive(mint, f.startedAt ?? 0) : { profile: false, boosts: [] as number[] };
+  const boosts = [...live.boosts];
+  const levels = dexLevels().map((l) => {
+    let isLive = false;
+    if (!l.boost) isLive = live.profile;
+    else {
+      const i = boosts.indexOf(l.boost);
+      if (i >= 0) {
+        isLive = true;
+        boosts.splice(i, 1);
+      }
+    }
+    return { ...l, live: isLive };
+  });
+  const spentUsd = levels.filter((l) => l.live).reduce((s, l) => s + l.usd, 0);
+  return { levels, spentUsd };
+}
+
+// Сколько SOL на казне занято сбором: всё собранное минус уже потраченное на уровни. Кнопка байбека их не тратит.
 export async function dexReserveSol(): Promise<number> {
   const f = load();
-  if (f.paidAt) return 0;
-  const usd = await solUsd();
   const raised = raisedSol(f);
-  const goalSol = usd ? dexGoalUsd() / usd : raised;
-  return Math.min(raised, goalSol);
+  if (!raised) return 0;
+  const usd = await solUsd();
+  if (!usd) return raised;
+  const { spentUsd } = await ladder(f);
+  return Math.max(0, raised - spentUsd / usd);
 }
 
 export async function dexFundStats() {
   const f = load();
-  const mint = process.env.TOKEN_MINT?.trim() ?? "";
-  const paid = !!f.paidAt || (mint ? await dexPaid(mint) : false);
-  if (paid && !f.paidAt) {
-    f.paidAt = Date.now();
+  if (!f.startedAt) {
+    f.startedAt = Date.now();
     save(f);
   }
   const usd = await solUsd();
   const raised = raisedSol(f);
+  const raisedUsd = usd ? raised * usd : null;
+  const { levels, spentUsd } = await ladder(f);
+  // Текущий уровень — первый, который ещё не куплен. Прогресс к нему: собранное сверх уже потраченного и сверх
+  // цен профинансированных, но ещё не купленных уровней перед ним.
+  const idx = levels.findIndex((l) => !l.live);
+  let pool = raisedUsd != null ? Math.max(0, raisedUsd - spentUsd) : 0;
+  const out = levels.map((l, i) => {
+    if (l.live) return { ...l, status: "live" as const, haveUsd: l.usd };
+    const have = Math.min(l.usd, pool);
+    pool -= have;
+    return { ...l, status: have >= l.usd ? ("funded" as const) : i === idx || have > 0 ? ("open" as const) : ("next" as const), haveUsd: have };
+  });
+  const current = out.find((l) => l.status !== "live" && l.status !== "funded") ?? out.at(-1)!;
   const byWallet = new Map<string, number>();
   for (const g of f.gifts) byWallet.set(g.wallet, (byWallet.get(g.wallet) ?? 0) + g.sol);
   return {
-    goalUsd: dexGoalUsd(),
+    // Совместимость со старой карточкой: цель и «оплачено» относятся к профилю.
+    goalUsd: current.usd,
+    paid: out[0]?.status === "live",
+    level: current,
+    levels: out,
     solUsd: usd,
     raisedSol: raised,
-    raisedUsd: usd ? raised * usd : null,
+    raisedUsd,
     backers: byWallet.size,
-    paid,
     treasury: BUYBACK_TREASURY,
     top: [...byWallet.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([wallet, sol]) => ({ wallet, sol })),
     recent: f.gifts.slice(-8).reverse().map((g) => ({ wallet: g.wallet, sol: g.sol, at: g.at, sig: g.sig })),
@@ -138,6 +205,7 @@ export async function confirmDexGift(signature: string) {
   if (!lamports || !wallet || wallet !== signer) throw new ApiError("No SOL transfer to the treasury in this transaction");
   markSigUsed(signature);
   const f = load();
+  f.startedAt ??= Date.now();
   const gift = { sig: signature, wallet, sol: lamports / LAMPORTS_PER_SOL, at: (tx.blockTime ?? Date.now() / 1000) * 1000 };
   f.gifts.push(gift);
   save(f);
