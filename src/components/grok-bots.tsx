@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { del, patch, post } from "@/lib/client/api";
+import type { PayStep } from "@/lib/client/x402-pay";
 import type { PublicCrawler } from "@/lib/types";
 import { SOURCE_META, cn } from "@/lib/utils";
 
@@ -138,6 +139,61 @@ const scan = await (await pay("${X402_URL}/api/x402/scan?q=%24BONK")).json();`}
         />
         <CopyBox label="Discovery" value={`${X402_URL}/.well-known/x402`} />
       </div>
+      <TryX402 price={prices.scan} />
+    </div>
+  );
+}
+
+// Попробовать оплату руками: тот же x402-платёж, что делает агент, только подписывает Phantom.
+export function TryX402({ price }: { price: string }) {
+  const [q, setQ] = useState("$BONK");
+  const [step, setStep] = useState<PayStep | null>(null);
+  const [out, setOut] = useState<{ verdict?: string; score?: number | null; symbol?: string; page?: string; tx: string | null } | null>(null);
+  const [err, setErr] = useState("");
+  const LABEL: Record<PayStep, string> = { price: "Asking for the price…", sign: "Sign in Phantom…", scan: "Scanning, then settling…" };
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <div className="mb-1 text-[11px] text-muted">Try it as a human: pay ${price} USDC with Phantom, exactly like an agent would</div>
+      <form
+        className="flex gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setErr("");
+          setOut(null);
+          try {
+            const { payAndScan } = await import("@/lib/client/x402-pay");
+            const r = await payAndScan(`/api/x402/scan?q=${encodeURIComponent(q.trim())}`, setStep);
+            const b = r.result as { verdict?: string; score?: number | null; token?: { symbol?: string }; page?: string };
+            setOut({ verdict: b?.verdict, score: b?.score, symbol: b?.token?.symbol, page: b?.page, tx: r.tx });
+          } catch (e) {
+            setErr((e as Error).message);
+          } finally {
+            setStep(null);
+          }
+        }}
+      >
+        <input value={q} onChange={(e) => setQ(e.target.value)} className="num min-w-0 flex-1 rounded-lg border border-line bg-panel-2 px-2 py-1.5 text-sm" placeholder="Token address or $TICKER" />
+        <button type="submit" disabled={!!step || !q.trim()} className="shrink-0 rounded-lg bg-honey px-3 py-1.5 text-sm font-semibold text-black disabled:opacity-50">
+          {step ? LABEL[step] : `Pay $${price} & scan`}
+        </button>
+      </form>
+      {err && <p className="mt-2 text-xs text-danger">{err}</p>}
+      {out && (
+        <p className="mt-2 text-xs">
+          <span className="font-semibold">${out.symbol}</span>: {out.verdict}
+          {out.score != null && <> · {out.score}/100</>}
+          {out.page && (
+            <a href={out.page} className="ml-2 text-honey hover:underline">
+              report
+            </a>
+          )}
+          {out.tx && (
+            <a href={`https://solscan.io/tx/${out.tx}`} target="_blank" rel="noreferrer" className="ml-2 text-honey hover:underline">
+              payment on Solscan ↗
+            </a>
+          )}
+        </p>
+      )}
     </div>
   );
 }
