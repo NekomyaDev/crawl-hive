@@ -1,0 +1,10 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "xyz.crawlhive/crawlhive",
+  "title": "CrawlHive",
+  "description": "Memecoin safety scanner for Solana, BNB and Robinhood Chain with an onchain track record",
+  "version": "1.0.0",
+  "websiteUrl": "https://crawlhive.xyz",
+  "repository": { "url": "https://github.com/h100envy/crawl-hive", "source": "github" },
+  "remotes": [{ "type": "streamable-http", "url": "https://crawlhive.xyz/mcp" }]
+}

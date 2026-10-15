@@ -228,6 +228,19 @@ Each finding becomes a scored factor (for example *Can mint* −25, *Permanent d
 
 **Launch Radar** ([/radar](https://crawlhive.xyz/radar)) is the swarm scanning on its own. Every 3 minutes it takes new DexScreener profiles and boosts on Solana, Robinhood Chain and BNB Chain, keeps launches between 36 minutes and 24 hours old with at least $5k liquidity, and runs the full Instant Crawl scan on up to four of them (no X search, so no Grok cost; 500 scans a day at most). Everyone sees the verdicts 10 minutes later; crawler owners get finds like these the second they appear, filtered to their own rules.
 
+### Onchain proof: a track record that can't be edited
+
+Every 15 minutes all new verdicts and crawler signals are hashed into a Merkle tree, and its root is written to Solana in a Memo transaction signed by one public notary wallet. Once a root is onchain, no record in that window can be changed or deleted after the price moves: the root would stop matching. Anyone can check a record on [/track](https://crawlhive.xyz/track): find it by token address or signal id, and the browser recomputes the leaf and the path with WebCrypto and reads the memo straight from a public Solana RPC, so you don't have to trust our server.
+
+| Piece | Format (v1) |
+| --- | --- |
+| Leaf | `sha256(0x00 ‖ record JSON with sorted keys)` |
+| Node | `sha256(0x01 ‖ left ‖ right)`, an unpaired last node moves up as is |
+| Memo | `crawlhive:proof:v1:<window start, unix s>:<record count>:<root hex>` |
+| API | `GET /api/proof` (latest roots), `?q=<token address \| signal id>` (record, path, transaction), `?batch=<window start ms>` (every leaf of a window) |
+
+Private crawler signals are committed as a salted hash of their content, so their tokens stay hidden until the owner reveals them. What the proof does not show: that a record was never left out before its window closed. Code: `src/lib/server/proof.ts`, `src/components/proof-card.tsx`.
+
 ### Signals in Telegram
 
 Open *My Signals*, press **Connect Telegram** and hit *Start* in the bot chat. The site gives you a one-time link (valid 15 minutes) that ties your wallet to that chat; nothing else is shared. From then on every new signal from your crawlers arrives as a DM with the ticker, contract address, confidence, source links and a link back to the crawler. `/status` shows linked wallets, `/stop` unlinks.
@@ -325,6 +338,19 @@ const scan = await (await pay("https://crawlhive.xyz/api/x402/scan?q=%24BONK")).
 ```
 
 Code: `src/lib/server/x402.ts`, `src/app/api/x402/`. Paid calls and USDC earned show on the admin dashboard.
+
+### Where agents find CrawlHive
+
+| Standard | Where |
+| --- | --- |
+| A2A (Agent2Agent 1.0, 0.3 understood) | card at [`/.well-known/agent-card.json`](https://crawlhive.xyz/.well-known/agent-card.json), JSON-RPC `SendMessage` / `message/send` at `POST /a2a`: free scans (8 per 10 minutes per network), `proof <address>`, `track record` |
+| MCP | `https://crawlhive.xyz/mcp`, listed in the official MCP Registry as `xyz.crawlhive/crawlhive` |
+| x402 | `/.well-known/x402`, `/openapi.json` with `x-payment-info` on paid operations |
+| LLMs | [`/llms.txt`](https://crawlhive.xyz/llms.txt) |
+
+```bash
+curl -s https://crawlhive.xyz/a2a -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"role":"ROLE_USER","messageId":"1","parts":[{"text":"scan $BONK"}]}}}'
+```
 
 ### Jev: decides in half a second, Grok researches
 

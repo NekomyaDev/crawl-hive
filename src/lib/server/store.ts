@@ -105,6 +105,7 @@ function init(): State {
   setTimeout(() => import("./crawl/scheduler").then((m) => m.startScheduler()).catch((e) => console.error(e)), 1000);
   setTimeout(() => import("./telegram").then((m) => m.startTelegram()).catch((e) => console.error(e)), 1500);
   setTimeout(() => import("./radar").then((m) => m.startRadar()).catch((e) => console.error(e)), 2000);
+  setTimeout(() => import("./proof").then((m) => m.startProof()).catch((e) => console.error(e)), 2500);
 
   return {
     crawlers,
@@ -1116,6 +1117,11 @@ export function expiringCrawlers(withinMs: number) {
   return [...state().crawlers.values()]
     .filter((c) => c.live && c.expiresAt && c.expiresAt > now && c.expiresAt - now <= withinMs)
     .map((c) => ({ id: c.id, name: c.name, owner: c.owner, expiresAt: c.expiresAt! }));
+}
+
+// Сигналы живых краулеров, созданные в окне [from, to): их отпечатки уходят в блокчейн (proof.ts).
+export function liveSignalsBetween(from: number, to: number): Signal[] {
+  return state().liveSignals.filter((x) => x.ts >= from && x.ts < to);
 }
 
 export function metaEntries(prefix: string): [string, string][] {

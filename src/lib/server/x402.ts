@@ -550,3 +550,88 @@ export function withDeadline<T>(p: Promise<T>, ms: number, msg: string): Promise
 
 // Цены для описаний в MCP и на сайте.
 export const x402Prices = () => ({ scan: priceUsd("scan"), scanX: priceUsd("scan-x") });
+
+// /openapi.json: описание API для агентов и каталогов (x402scan читает его первым, Circle требует).
+// Платные операции помечены x-payment-info и ответом 402, бесплатные (доказательство, A2A) — без них.
+export function openApi() {
+  const cfg = x402Config();
+  const routes = Object.keys(ROUTES) as X402Route[];
+  const scanParams = [
+    { name: "q", in: "query", required: true, description: "Token address, pump.fun or DexScreener link, or $TICKER", schema: { type: "string", maxLength: 200 } },
+    { name: "chain", in: "query", required: false, description: "Where to look up a $TICKER (default solana)", schema: { type: "string", enum: ["solana", "bsc", "robinhood"] } },
+  ];
+  const paths: Record<string, unknown> = {};
+  if (cfg)
+    for (const r of routes)
+      paths[ROUTES[r].path] = {
+        get: {
+          operationId: r === "scan" ? "scanToken" : "scanTokenWithX",
+          summary: ROUTES[r].description,
+          parameters: scanParams,
+          "x-payment-info": {
+            price: { mode: "fixed", currency: "USD", amount: String(priceUsd(r)) },
+            protocols: [{ x402: { scheme: "exact", network: cfg.network, asset: cfg.asset, payTo: cfg.payTo, facilitator: cfg.facilitator } }],
+          },
+          responses: {
+            "200": { description: "Scan result", content: { "application/json": { schema: { type: "object" } } } },
+            "402": { description: "Payment required: requirements in the PAYMENT-REQUIRED header (x402 v2) and the body (v1)" },
+            "504": { description: "Scan did not finish in time; you were not charged" },
+          },
+        },
+      };
+  paths["/api/proof"] = {
+    get: {
+      operationId: "onchainProof",
+      security: [],
+      summary: "Onchain proof: Merkle roots of all verdicts and crawler signals committed to Solana every 15 minutes. With q, returns the record, its Merkle path and the Solana transaction holding the root.",
+      parameters: [{ name: "q", in: "query", required: false, description: "Token address or signal id", schema: { type: "string", maxLength: 100 } }],
+      responses: { "200": { description: "Proof summary or matches", content: { "application/json": { schema: { type: "object" } } } } },
+    },
+  };
+  paths["/a2a"] = {
+    post: {
+      operationId: "a2aSendMessage",
+      security: [],
+      summary: "A2A JSON-RPC endpoint (SendMessage / message/send). Free scans, 8 per 10 minutes per network. Agent card: /.well-known/agent-card.json",
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+      responses: { "200": { description: "JSON-RPC response with the agent message" } },
+    },
+  };
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "CrawlHive API",
+      version: "1.0.0",
+      description: "Memecoin safety scans for AI agents. Paid per call in USDC on Solana over x402 (no account, no API key), plus a free A2A agent and an onchain-verifiable track record.",
+      contact: { url: ISSUER },
+      "x-guidance":
+        "To scan a memecoin, GET /api/x402/scan?q=<token address, pump.fun or DexScreener link, or $TICKER>. The first call answers 402 with x402 payment requirements (USDC on Solana); pay with any x402 client and repeat. You are charged only when the scan succeeds. Use /api/x402/scan-x to add an X buzz check by Grok. For free, rate-limited scans talk to the A2A agent at /a2a. To check that a verdict was not edited later, GET /api/proof?q=<token address>.",
+    },
+    servers: [{ url: ISSUER }],
+    paths,
+    "x-discovery": { x402: `${ISSUER}/.well-known/x402`, a2a: `${ISSUER}/.well-known/agent-card.json`, mcp: `${ISSUER}/mcp` },
+  };
+}
+
+export function llmsTxt() {
+  const p = x402Prices();
+  const on = !!x402Config();
+  return `# CrawlHive
+
+> Memecoin safety scanner for Solana, BNB Chain and Robinhood Chain. A scan returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY) with holders, bundled wallets, dev history, copycat tickers and Contract X-Ray. Every verdict is committed to Solana every 15 minutes, so the track record can be verified.
+
+## For agents
+${on ? `- [Paid scan, $${p.scan} USDC over x402](${ISSUER}/api/x402/scan?q=%24BONK): GET with q=<address | link | $TICKER>, answers 402 with payment requirements; no account, no API key
+- [Paid scan + X check, $${p.scanX} USDC over x402](${ISSUER}/api/x402/scan-x?q=%24BONK)
+- [x402 manifest](${ISSUER}/.well-known/x402)\n` : ""}- [A2A agent card](${ISSUER}/.well-known/agent-card.json): free scans over A2A JSON-RPC at ${ISSUER}/a2a
+- [MCP server](${ISSUER}/mcp): scan_token, crawler signals, trending scans (OAuth or bot key)
+- [OpenAPI](${ISSUER}/openapi.json)
+
+## Track record
+- [Track Record](${ISSUER}/track): how often tokens with each verdict dumped within 24 hours, misses included
+- [Onchain proof API](${ISSUER}/api/proof): Merkle roots on Solana; ?q=<token address> returns the record, its path and the transaction
+
+## Token
+- $CRAWLHIVE on Solana: D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump
+`;
+}

@@ -173,3 +173,8 @@ export function trackStats() {
 export function trackEntry(id: string, at: number) {
   return all().find((e) => e.id === id && Math.abs(e.at - at) < WINDOW_MS);
 }
+
+// Вердикты, записанные в окне [from, to): их отпечатки уходят в блокчейн (proof.ts).
+export function trackBetween(from: number, to: number) {
+  return all().filter((e) => e.at >= from && e.at < to);
+}

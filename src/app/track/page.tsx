@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { VerdictPill, pct } from "@/components/verdict";
+import { ProofCard } from "@/components/proof-card";
 import { useApi } from "@/lib/client/use-api";
 import { cn, fmt, short, timeAgo } from "@/lib/utils";
 
@@ -88,7 +89,7 @@ export default function TrackPage() {
     <>
       <PageHeader
         title="Track Record"
-        sub={`Every verdict is checked against the real price for ${data?.windowHours ?? 24} hours after the scan. A token counts as dumped when it falls ${Math.abs(data?.dumpPct ?? 50)}% below the scan price or its liquidity is pulled. Hits and misses, nothing hidden.`}
+        sub={`Every verdict is checked against the real price for ${data?.windowHours ?? 24} hours after the scan. A token counts as dumped when it falls ${Math.abs(data?.dumpPct ?? 50)}% below the scan price or its liquidity is pulled. Hits and misses, nothing hidden, and every record is committed to Solana.`}
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Verdicts tracked" value={data ? fmt(data.total) : "—"} hint={data?.since ? `since ${new Date(data.since).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "starting now"} tone="honey" />
@@ -101,6 +102,8 @@ export default function TrackPage() {
           tone="lime"
         />
       </div>
+
+      <ProofCard />
 
       <Card className="mb-5">
         <CardHeader title="By verdict" sub="Settled = 24 hours passed since the scan, rugs included. The gap between DANGER and CLEAN is what the scanner is worth." />
