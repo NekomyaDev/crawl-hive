@@ -635,3 +635,45 @@ ${on ? `- [Paid scan, $${p.scan} USDC over x402](${ISSUER}/api/x402/scan?q=%24BO
 - $CRAWLHIVE on Solana: D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump
 `;
 }
+
+// Транзакция оплаты для человека с Phantom (/agents): та же, что собирает @x402/svm у агента — лимит и цена
+// вычислений, TransferChecked USDC на казну, memo с нонсом, комиссию платит фасилитатор. Сервер только
+// собирает её без подписей: подписывает кошелёк, в сеть отправляет фасилитатор после удачного скана.
+export async function buildPaymentTx(route: X402Route, wallet: string) {
+  const cfg = x402Config();
+  if (!cfg) throw new ApiError("x402 payments are not enabled yet", 503);
+  let owner: PublicKey;
+  try {
+    owner = new PublicKey(wallet);
+  } catch {
+    throw new ApiError("wallet must be a Solana address");
+  }
+  const fp = await feePayers(cfg);
+  if (!fp.v2) throw new ApiError("x402 v2 is not available on this network", 503);
+  const req = reqV2(cfg, route, fp.v2);
+  const { ComputeBudgetProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } = await import("@solana/web3.js");
+  const spl = await import("@solana/spl-token");
+  const { rpcConnection } = await import("./solana");
+  const conn = rpcConnection();
+  const mint = new PublicKey(req.asset);
+  const info = await conn.getAccountInfo(mint);
+  if (!info) throw new ApiError("USDC mint not found", 503);
+  const program = info.owner;
+  const decimals = info.data[44];
+  const source = spl.getAssociatedTokenAddressSync(mint, owner, false, program);
+  const dest = spl.getAssociatedTokenAddressSync(mint, new PublicKey(req.payTo), true, program);
+  const bal = await conn.getTokenAccountBalance(source).catch(() => null);
+  if (!bal || BigInt(bal.value.amount) < BigInt(req.amount)) throw new ApiError(`This wallet needs at least ${Number(req.amount) / 10 ** decimals} USDC`);
+  const { blockhash } = await conn.getLatestBlockhash("confirmed");
+  const msg = new TransactionMessage({
+    payerKey: new PublicKey(fp.v2),
+    recentBlockhash: blockhash,
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 20_000 }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
+      spl.createTransferCheckedInstruction(source, mint, dest, owner, BigInt(req.amount), decimals, [], program),
+      new TransactionInstruction({ programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"), keys: [], data: Buffer.from(createHash("sha256").update(`${wallet}${Date.now()}${Math.random()}`).digest("hex").slice(0, 32)) }),
+    ],
+  }).compileToV0Message();
+  return { transaction: Buffer.from(new VersionedTransaction(msg).serialize()).toString("base64"), accepted: req };
+}

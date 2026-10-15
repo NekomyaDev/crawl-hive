@@ -311,3 +311,11 @@ export function findProof(q: string) {
 export function proofBatch(from: number) {
   return readDay(dayOf(from)).find((b) => b.from === from) ?? null;
 }
+
+// Логи транзакции с корнем — запасной путь для страницы, когда публичный RPC Solana не отвечает браузеру.
+export async function proofTxLogs(sig: string): Promise<string[] | null> {
+  const tx = await rpcConnection()
+    .getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" })
+    .catch(() => null);
+  return tx?.meta?.logMessages ?? null;
+}

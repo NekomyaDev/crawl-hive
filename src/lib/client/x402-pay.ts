@@ -3,8 +3,7 @@
 // (лимит и цена вычислений, TransferChecked USDC, memo с нонсом, комиссию платит фасилитатор). Кошелёк
 // только подписывает; отправляет транзакцию в сеть фасилитатор, и только если скан удался.
 import { phantom } from "@/components/wallet-provider";
-
-const PUBLIC_RPC = "https://api.mainnet-beta.solana.com";
+import { api } from "./api";
 
 interface Requirements {
   scheme: string;
@@ -36,43 +35,17 @@ export async function payAndScan(url: string, onStep: (s: PayStep) => void) {
   const header = first.headers.get("PAYMENT-REQUIRED");
   if (!header) throw new Error("No PAYMENT-REQUIRED header");
   const pr = b64json(header) as PaymentRequired;
-  const req = pr.accepts.find((a) => a.scheme === "exact" && a.network.startsWith("solana:"));
-  if (!req?.extra?.feePayer) throw new Error("No Solana payment option");
 
   const { publicKey } = await provider.connect();
-  const [{ ComputeBudgetProgram, Connection, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction }, spl] = await Promise.all([
-    import("@solana/web3.js"),
-    import("@solana/spl-token"),
-  ]);
-  const owner = new PublicKey(publicKey.toString());
-  const mint = new PublicKey(req.asset);
-  const conn = new Connection(PUBLIC_RPC, "confirmed");
-  const mintInfo = await conn.getAccountInfo(mint);
-  if (!mintInfo) throw new Error("USDC mint not found");
-  const program = mintInfo.owner;
-  const decimals = mintInfo.data[44];
-  const source = spl.getAssociatedTokenAddressSync(mint, owner, false, program);
-  const dest = spl.getAssociatedTokenAddressSync(mint, new PublicKey(req.payTo), true, program);
-  const bal = await conn.getTokenAccountBalance(source).catch(() => null);
-  if (!bal || BigInt(bal.value.amount) < BigInt(req.amount)) throw new Error(`This wallet needs at least ${Number(req.amount) / 10 ** decimals} USDC`);
-
-  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-  const { blockhash } = await conn.getLatestBlockhash("confirmed");
-  const msg = new TransactionMessage({
-    payerKey: new PublicKey(req.extra.feePayer),
-    recentBlockhash: blockhash,
-    instructions: [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 20_000 }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
-      spl.createTransferCheckedInstruction(source, mint, dest, owner, BigInt(req.amount), decimals, [], program),
-      new TransactionInstruction({ programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"), keys: [], data: new TextEncoder().encode(nonce) as Buffer }),
-    ],
-  }).compileToV0Message();
+  // Транзакцию собирает наш сервер: публичный RPC Solana не отвечает запросам из браузера.
+  const built = await api<{ transaction: string; accepted: Requirements }>(`/api/x402/build?wallet=${publicKey.toString()}&route=${url.includes("scan-x") ? "scan-x" : "scan"}`);
+  const { VersionedTransaction } = await import("@solana/web3.js");
+  const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(built.transaction), (c) => c.charCodeAt(0)));
 
   onStep("sign");
   let signed: { serialize(): Uint8Array };
   try {
-    signed = await provider.signTransaction(new VersionedTransaction(msg));
+    signed = await provider.signTransaction(tx);
   } catch (e) {
     const m = (e as Error).message ?? "";
     throw new Error(/reject|cancel|denied|4001/i.test(m) ? "You cancelled the payment in Phantom" : `Phantom: ${m}`);
@@ -80,7 +53,7 @@ export async function payAndScan(url: string, onStep: (s: PayStep) => void) {
 
   onStep("scan");
   // Расширения (bazaar) возвращаем как есть: по ним фасилитатор заносит вызов в каталог.
-  const payload = { x402Version: 2, resource: pr.resource, accepted: req, payload: { transaction: tob64(signed.serialize()) }, extensions: pr.extensions };
+  const payload = { x402Version: 2, resource: pr.resource, accepted: built.accepted, payload: { transaction: tob64(signed.serialize()) }, extensions: pr.extensions };
   const res = await fetch(url, { headers: { "PAYMENT-SIGNATURE": tob64(new TextEncoder().encode(JSON.stringify(payload))) } });
   const body = await res.json().catch(() => null);
   const resp = res.headers.get("PAYMENT-RESPONSE");

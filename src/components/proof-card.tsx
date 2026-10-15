@@ -57,17 +57,24 @@ async function verify(m: Match): Promise<Check> {
   for (const p of m.proof) h = p.side === "L" ? await sha(new Uint8Array([1]), unhex(p.hash), unhex(h)) : await sha(new Uint8Array([1]), unhex(h), unhex(p.hash));
   const out: Check = { leaf: leaf === m.leaf, root: h === m.root, chain: null };
   if (!m.sig) return { ...out, note: "Root is waiting to be written onchain." };
+  const hasRoot = (logs: string[] | null | undefined) => (logs ? logs.some((l) => l.includes(`:${h}`)) : null);
   try {
     const r = await fetch(PUBLIC_RPC, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTransaction", params: [m.sig, { encoding: "json", maxSupportedTransactionVersion: 0, commitment: "confirmed" }] }),
     }).then((x) => x.json());
-    const logs: string[] = r?.result?.meta?.logMessages ?? [];
-    out.chain = logs.some((l) => l.includes(`:${h}`));
-    if (!r?.result) out.note = "Transaction not found yet, try again in a minute.";
+    if (!r?.result) throw new Error("no result");
+    out.chain = hasRoot(r.result.meta?.logMessages);
   } catch {
-    out.note = "Could not reach the Solana RPC, open the transaction on Solscan instead.";
+    // Публичный RPC часто не отвечает браузерам: читаем ту же транзакцию через наш сервер и честно об этом пишем.
+    try {
+      const { logs } = await api<{ logs: string[] | null }>(`/api/proof?tx=${m.sig}`);
+      out.chain = hasRoot(logs);
+      out.note = logs ? "Read through crawlhive.xyz because the public Solana RPC blocks browsers; compare the memo on Solscan to be sure." : "Transaction not found yet, try again in a minute.";
+    } catch {
+      out.note = "Could not read the transaction, open it on Solscan instead.";
+    }
   }
   return out;
 }
