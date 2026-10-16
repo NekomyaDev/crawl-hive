@@ -63,8 +63,8 @@ export interface Crawler {
 
 export type PublicCrawler = Omit<Crawler, "skill">;
 
-export type SignalKind = "mention_spike" | "new_pair" | "whale_buy" | "kol_call" | "doc_update";
-export const SIGNAL_KINDS: SignalKind[] = ["mention_spike", "new_pair", "whale_buy", "kol_call", "doc_update"];
+export type SignalKind = "mention_spike" | "new_pair" | "whale_buy" | "kol_call" | "doc_update" | "narrative";
+export const SIGNAL_KINDS: SignalKind[] = ["mention_spike", "new_pair", "whale_buy", "kol_call", "doc_update", "narrative"];
 
 // Спецификация краулера: что именно и как собирать. Задаётся при спавне, правится владельцем.
 export interface CrawlerSpec {

@@ -5,9 +5,12 @@ import type { LiveJob } from "../../store";
 import { grok, grokEnabled } from "../grok";
 import { finalize, parseCandidates, specBrief, SIGNAL_JSON_RULES } from "../analyze";
 import type { SourceResult } from "./types";
+import { crawlNarratives } from "./narratives";
 
 export async function crawlX(job: LiveJob): Promise<SourceResult> {
   if (!grokEnabled()) throw new Error("X crawling needs XAI_API_KEY on the server");
+  // Тип сигнала narrative включает режим охоты за нарративами вместо поиска коллов.
+  if (job.spec.signalKinds.includes("narrative")) return crawlNarratives(job);
   const handles = job.targets.filter((t) => t.startsWith("@")).map((t) => t.slice(1));
   const queries = job.targets.filter((t) => !t.startsWith("@"));
   const since = Number(job.cursor.lastSeenAt ?? Date.now() - 6 * 3600_000);

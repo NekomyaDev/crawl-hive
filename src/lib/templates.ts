@@ -185,6 +185,28 @@ export const TEMPLATES: CrawlerTemplate[] = [
     emoji: "📣",
   },
   {
+    id: "narrative-hunter",
+    name: "Narrative Hunter",
+    tagline: "What X starts talking about, before the coins show up",
+    description:
+      "Every 3 hours Grok walks X for narratives that started spreading in the last hours: new memes, viral animals, AI launches, internet moments. Every post link is checked with X's oEmbed, so invented ones drop out. Each narrative comes with how many coins with that ticker already launched in the last 24 hours.",
+    perks: ["Grok x_search, last 6 hours", "Every post link verified, fakes dropped", "Clone count: fresh vs already squeezed"],
+    source: "x",
+    tier: "worker",
+    chain: "solana",
+    narratives: ["ai", "dogs", "cats"],
+    targets: [],
+    frequencyMin: 180,
+    spec: {
+      instructions: "",
+      signalKinds: ["narrative"],
+      minConfidence: 0.5,
+      outcome: { horizonMin: 120, hitThresholdPct: 25 },
+    },
+    gradient: "linear-gradient(135deg,#c084fc 0%,#ff6b9d 100%)",
+    emoji: "🔮",
+  },
+  {
     id: "ecosystem-watch",
     name: "Ecosystem Watch",
     tagline: "Solana news and GitHub Trending, diffed for what's new",

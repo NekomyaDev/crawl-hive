@@ -11,7 +11,7 @@ export const SPEC_LIMITS = {
 
 // Какие типы сигналов вообще умеет выдавать каждый источник.
 export const KINDS_BY_SOURCE: Record<Source, SignalKind[]> = {
-  x: ["kol_call", "mention_spike", "new_pair", "whale_buy"],
+  x: ["kol_call", "mention_spike", "new_pair", "whale_buy", "narrative"],
   telegram: ["kol_call", "mention_spike", "new_pair"],
   onchain: ["new_pair", "whale_buy", "mention_spike"],
   docs: ["doc_update"],
@@ -23,6 +23,7 @@ export const SIGNAL_KIND_LABEL: Record<SignalKind, string> = {
   whale_buy: "Whale buy",
   kol_call: "KOL call",
   doc_update: "Docs update",
+  narrative: "Narrative",
 };
 
 export function defaultSpec(source: Source): CrawlerSpec {
@@ -30,7 +31,7 @@ export function defaultSpec(source: Source): CrawlerSpec {
     instructions: "",
     keywords: [],
     excludeKeywords: [],
-    signalKinds: [...KINDS_BY_SOURCE[source]],
+    signalKinds: KINDS_BY_SOURCE[source].filter((k) => k !== "narrative"),
     minConfidence: 0.5,
     onchain: { feeds: ["profiles", "boosts"], minLiquidityUsd: 5_000, minVolume1hUsd: 1_000, maxFdvUsd: 0, maxAgeHours: 24 },
     x: { imageUnderstanding: false },
