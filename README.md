@@ -45,6 +45,7 @@
 | Oct 16 | **Narrative Hunter**: a ready-made X crawler that finds narratives starting to spread, verifies every post link with X's oEmbed (invented links drop out) and counts coins already launched on the ticker in 24h |
 | Oct 16 | **Clean Launch** ([/launch](https://crawlhive.xyz/launch)): launch a coin on pump.fun from CrawlHive with an optional dev buy; the mint key is made in the browser, Phantom signs, the server sends only a byte-for-byte match, 0% platform fee; every coin is scanned at birth by the same rules and lands on the Track Record |
 | Oct 16 | **x402 revenue → burns**: treasury revenue by source on the home page (spawns in SOL, AI-agent x402 calls in USDC, DEX fund), every x402 settlement linked to Solscan; x402 USDC now goes into the same 12-hour buyback & burn, recorded as its own line |
+| Oct 16 | **Second buyback & burn**: 0.12 SOL → 659,303 $CRAWLHIVE bought, 639,524 burned ([tx](https://solscan.io/tx/59pmpJRQTziuLmKhKN82VPMU35mXB1NjcazgJ1J7VXHGfX4BBZScMhjeGeo4EaA68WN6aegBLg7gHuGNGEx4E2Lz)); 2.19M burned in total, 0.22% of supply |
 | Oct 16 | **Boost fund**: the DexScreener profile is paid, so the DEX fund moved on to boosts (10x, 30x, 100x, golden ticker); levels paid outside the fund are set with `DEX_PAID_ELSEWHERE` and are not deducted from gifts |
 | Oct 15 | **DEX fund**: chip in SOL with one click (or pay a whole level) for $CRAWLHIVE on DexScreener: the profile first, then boosts up to the golden ticker; gifts are verified onchain and held apart from buybacks |
 | Oct 15 | **Onchain proof**: every 15 minutes the Merkle root of all new verdicts and crawler calls is written to Solana; verify any token on [/track](https://crawlhive.xyz/track) |
@@ -181,7 +182,7 @@ Don't want to write a specification? The marketplace has nine crawlers with sour
   <img src="docs/images/marketplace-templates.png" alt="Marketplace with ready-made crawlers" width="100%">
 </p>
 
-**Narrative Hunter** (new). An X crawler in narrative mode: turn on the `narrative` signal kind and, instead of looking for token calls, Grok searches X for what started spreading in the last 6 hours (memes, viral animals, AI launches, internet moments; tragedies, politics and self-promoting projects are skipped). Every post link Grok returns is checked with X's public oEmbed: an invented post (404) is dropped, a real one gets its real author, and a narrative with no real post never becomes a signal. Each signal also says how many coins with that ticker launched on DexScreener in the last 24 hours, so a fresh narrative and a squeezed one look different. Narratives carry no token, so they are not price-scored. Code: `src/lib/server/crawl/sources/narratives.ts`. Ported from the Gem Search Narrative Hunter.
+**Narrative Hunter** (new). An X crawler in narrative mode: turn on the `narrative` signal kind and, instead of looking for token calls, Grok searches X for what started spreading in the last 6 hours (memes, viral animals, AI launches, internet moments; tragedies, politics and self-promoting projects are skipped). Every post link Grok returns is checked with X's public oEmbed: an invented post (404) is dropped, a real one gets its real author, and a narrative with no real post never becomes a signal. Each signal also says how many coins with that ticker launched on DexScreener in the last 24 hours, so a fresh narrative and a squeezed one look different. Narratives carry no token, so they are not price-scored. Code: `src/lib/server/crawl/sources/narratives.ts`.
 
 ## Your crawler, your rules
 
@@ -253,7 +254,7 @@ Each finding becomes a scored factor (for example *Can mint* −25, *Permanent d
 - **The server builds, Phantom signs, the server sends only a byte-for-byte match.** The picture and metadata go to IPFS, the server builds pump.fun's `create_v2` (plus the creator's first buy) with a public address lookup table so the launch fits one transaction, the mint co-signs in the browser and the creator signs in Phantom. If anything in the signed message differs from what was built, nothing is sent.
 - **No key on the server, 0% platform fee.** pump.fun's creator fees go to the creator's wallet as usual.
 - **Scanned at birth, same rules.** A few seconds after a coin goes live the swarm scans it like any other; the verdict is shown next to the launch and recorded on the Track Record. Coins launched here get no score boost.
-- Config: `PINATA_JWT` (IPFS) switches launches on; `LAUNCH_TABLE`, `LAUNCHES_PER_IP_HOUR`, `LAUNCHES_PER_DAY`, `LAUNCHPAD_PAUSED`. Code: `src/lib/server/launch.ts`, `src/app/launch/page.tsx`. Ported from the Gem Search launchpad.
+- Config: `PINATA_JWT` (IPFS) switches launches on; `LAUNCH_TABLE`, `LAUNCHES_PER_IP_HOUR`, `LAUNCHES_PER_DAY`, `LAUNCHPAD_PAUSED`. Code: `src/lib/server/launch.ts`, `src/app/launch/page.tsx`.
 
 ### Track Record and Launch Radar
 
@@ -690,6 +691,10 @@ db/schema.sql                target Postgres schema
 - [x] Pay per call with x402 (USDC on Solana), Phantom checkout on /agents
 - [x] Onchain proof: Merkle root of every verdict and call written to Solana every 15 minutes
 - [x] A2A agent, official MCP Registry listing, OpenAPI and llms.txt
+- [x] DEX fund with a level ladder; second burn on Oct 16 (2.19M burned in total)
+- [x] Treasury revenue by source; x402 USDC goes into buyback & burn
+- [x] Clean Launch: launch a coin on pump.fun from CrawlHive, scanned at birth
+- [x] Narrative Hunter: X crawler for rising narratives with verified posts
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks

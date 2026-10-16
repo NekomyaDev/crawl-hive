@@ -2,7 +2,6 @@
 // Ключ минта создаётся в браузере (сюда приходит только публичная половина), сервер кладёт картинку и метаданные
 // в IPFS, собирает транзакцию create_v2 (плюс первая покупка автора) и отправляет её, только если обе подписи
 // стоят на сообщении, байт в байт совпадающем с собранным. Ключей у сервера нет, комиссии платформы нет (0%).
-// Перенесено из лаунчпада Gem Search (gem-search/launchpad/launch.mjs).
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
@@ -28,7 +27,7 @@ const LOG_KEY = "launches";
 const LOG_MAX = 500;
 const PER_IP_HOUR = Number(process.env.LAUNCHES_PER_IP_HOUR ?? 6);
 const PER_DAY = Number(process.env.LAUNCHES_PER_DAY ?? 150);
-// Публичная таблица адресов с ключами, общими для всех запусков pump.fun (сделана для лаунчпада Gem Search):
+// Публичная таблица адресов с ключами, общими для всех запусков pump.fun:
 // запуск с первой покупкой без неё почти упирается в 1232 байта, с ней ~970.
 const LAUNCH_TABLE = process.env.LAUNCH_TABLE?.trim() || "6PRSyzJ6aDPA827RfPyY2fJ5f4yGzwCrj4GUyjyUMKmU";
 
