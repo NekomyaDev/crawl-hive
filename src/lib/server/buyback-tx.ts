@@ -15,9 +15,12 @@ import {
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, createBurnCheckedInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 
 export const WSOL_MINT = "So11111111111111111111111111111111111111112";
+// USDC от оплат x402 тоже идёт в байбек: тот же свап через Jupiter, только вход USDC.
+export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const JUPITER_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 export const BUYBACK_MEMO = "crawlhive:buyback";
+export const BUYBACK_USDC_MEMO = "crawlhive:buyback:x402";
 // lite-api — бесплатный вход Jupiter без ключа; api.jup.ag — запасной, если lite когда-нибудь закроют.
 const JUP_BASES = ["https://lite-api.jup.ag/swap/v1", "https://api.jup.ag/swap/v1"];
 const MAX_TX_BYTES = 1232;
@@ -98,11 +101,11 @@ async function jup<T>(path: string, init?: RequestInit): Promise<T> {
   throw new BuybackError(`Jupiter: ${last}`, 502);
 }
 
-export function jupQuote(outputMint: string, lamports: bigint, slippageBps: number, maxAccounts: number) {
+export function jupQuote(outputMint: string, amount: bigint, slippageBps: number, maxAccounts: number, inputMint = WSOL_MINT) {
   const q = new URLSearchParams({
-    inputMint: WSOL_MINT,
+    inputMint,
     outputMint,
-    amount: lamports.toString(),
+    amount: amount.toString(),
     slippageBps: String(slippageBps),
     restrictIntermediateTokens: "true",
     // Оставляем место под burn и memo в той же транзакции.
@@ -143,7 +146,7 @@ const memoIx = (owner: PublicKey, text: string) =>
 
 export interface BuiltBuyback {
   transaction: string; // base64 неподписанной VersionedTransaction
-  quote: { inSol: number; outTokens: number; minTokens: number; priceImpactPct: number; route: string[]; slippageBps: number };
+  quote: { inSol: number; inUsdc: number; outTokens: number; minTokens: number; priceImpactPct: number; route: string[]; slippageBps: number };
   burnRaw: string;
   lastValidBlockHeight: number;
 }
@@ -153,15 +156,17 @@ export interface BuiltBuyback {
 // остаток сверх минимума остаётся в ATA казны и сжигается отдельной кнопкой.
 export async function buildBuybackTx(
   conn: Connection,
-  opts: { owner: PublicKey; mint: PublicKey; lamports: bigint; slippageBps: number; mintInfo?: MintInfo },
+  opts: { owner: PublicKey; mint: PublicKey; lamports: bigint; slippageBps: number; mintInfo?: MintInfo; usdc?: boolean },
 ): Promise<BuiltBuyback> {
   const { owner, mint, lamports, slippageBps } = opts;
+  // usdc: lamports — это атомарные единицы USDC (6 знаков), вход свапа — USDC казны.
+  const input = opts.usdc ? USDC_MINT : WSOL_MINT;
   const m = opts.mintInfo ?? (await readMint(conn, mint));
   const ata = getAssociatedTokenAddressSync(mint, owner, false, m.program);
   let lastErr = "";
   // Маршрут с большим числом аккаунтов может не влезть в 1232 байта вместе с burn: сужаем и пробуем снова.
   for (const maxAccounts of [54, 40, 28]) {
-    const quote = await jupQuote(mint.toBase58(), lamports, slippageBps, maxAccounts);
+    const quote = await jupQuote(mint.toBase58(), lamports, slippageBps, maxAccounts, input);
     const minOut = BigInt(quote.otherAmountThreshold);
     if (minOut <= BigInt(0)) throw new BuybackError("Jupiter quote returns zero tokens");
     const ixs = await jup<JupSwapIxs>("/swap-instructions", {
@@ -181,7 +186,7 @@ export async function buildBuybackTx(
       toIx(ixs.swapInstruction),
       ...(ixs.cleanupInstruction ? [toIx(ixs.cleanupInstruction)] : []),
       createBurnCheckedInstruction(ata, mint, owner, minOut, m.decimals, [], m.program),
-      memoIx(owner, BUYBACK_MEMO),
+      memoIx(owner, opts.usdc ? BUYBACK_USDC_MEMO : BUYBACK_MEMO),
     ];
     const [alts, bh] = await Promise.all([lookupTables(conn, ixs.addressLookupTableAddresses ?? []), conn.getLatestBlockhash("confirmed")]);
     const msg = new TransactionMessage({ payerKey: owner, recentBlockhash: bh.blockhash, instructions }).compileToV0Message(alts);
@@ -201,7 +206,8 @@ export async function buildBuybackTx(
     return {
       transaction: Buffer.from(bytes).toString("base64"),
       quote: {
-        inSol: Number(quote.inAmount) / 1e9,
+        inSol: opts.usdc ? 0 : Number(quote.inAmount) / 1e9,
+        inUsdc: opts.usdc ? Number(quote.inAmount) / 1e6 : 0,
         outTokens: Number(quote.outAmount) / scale,
         minTokens: Number(minOut) / scale,
         priceImpactPct: Number(quote.priceImpactPct) * 100,
@@ -247,6 +253,7 @@ export async function buildBurnAllTx(conn: Connection, opts: { owner: PublicKey;
 export interface ParsedBuyback {
   kind: "buyback" | "burn";
   solSpent: number; // сколько SOL ушло из казны (свап плюс комиссии; для чистого сжигания — 0)
+  usdcSpent: number; // сколько USDC казны ушло в свап (байбек на выручку x402)
   burnedRaw: bigint;
   boughtRaw: bigint;
   at: number;
@@ -279,9 +286,15 @@ export function parseBuybackTx(tx: ParsedTransactionWithMeta, owner: string, min
   const tokenBal = (list?: TokenBalance[] | null) =>
     (list ?? []).filter((b) => b.mint === mint && b.owner === owner).reduce((s, b) => s + BigInt(b.uiTokenAmount.amount), BigInt(0));
   const delta = tokenBal(tx.meta?.postTokenBalances) - tokenBal(tx.meta?.preTokenBalances);
+  const usdcBal = (list?: TokenBalance[] | null) =>
+    (list ?? []).filter((b) => b.mint === USDC_MINT && b.owner === owner).reduce((s, b) => s + BigInt(b.uiTokenAmount.amount), BigInt(0));
+  const usdcRaw = usdcBal(tx.meta?.preTokenBalances) - usdcBal(tx.meta?.postTokenBalances);
+  const usdcSpent = swapped && usdcRaw > BigInt(0) ? Number(usdcRaw) / 1e6 : 0;
   return {
     kind: swapped ? "buyback" : "burn",
-    solSpent: swapped ? Math.max(0, pre - post) / 1e9 : 0,
+    // Свап из USDC: SOL ушли только на комиссию, в «потрачено SOL» их не пишем.
+    solSpent: swapped && !usdcSpent ? Math.max(0, pre - post) / 1e9 : 0,
+    usdcSpent,
     burnedRaw,
     boughtRaw: swapped ? delta + burnedRaw : BigInt(0),
     at: (tx.blockTime ?? Math.floor(Date.now() / 1000)) * 1000,

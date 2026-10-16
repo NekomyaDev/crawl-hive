@@ -67,7 +67,10 @@ function Label({ children }: { children: React.ReactNode }) {
 
 function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () => void; due: boolean }) {
   const toast = useToast();
-  const max = Math.max(0, (stats.treasurySol ?? 0) - stats.reserveSol - (stats.dexReserveSol ?? 0));
+  const [source, setSource] = useState<"sol" | "usdc">("sol");
+  const usdcMax = stats.treasuryUsdc ?? 0;
+  const max = source === "usdc" ? usdcMax : Math.max(0, (stats.treasurySol ?? 0) - stats.reserveSol - (stats.dexReserveSol ?? 0));
+  const unit = source === "usdc" ? "USDC" : "SOL";
   const [amount, setAmount] = useState("");
   const [slippage, setSlippage] = useState("3");
   const [step, setStep] = useState<OwnerStep | null>(null);
@@ -76,8 +79,8 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
 
   // Пришло время планового байбека — подставляем весь баланс казны минус резерв на комиссии.
   useEffect(() => {
-    if (due && !amount && max > 0) setAmount(String(Math.floor(max * 1e4) / 1e4));
-  }, [due, max, amount]);
+    if (due && !amount && max > 0 && source === "sol") setAmount(String(Math.floor(max * 1e4) / 1e4));
+  }, [due, max, amount, source]);
 
   const busy = step !== null;
   const run = async (kind: "buyback" | "burn") => {
@@ -85,10 +88,10 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
     try {
       const { result } = await runOwnerTx<
         { transaction: string; quote?: { outTokens: number; minTokens: number; priceImpactPct: number; route: string[] }; tokens?: number },
-        { record: { burned: number; sol: number } }
+        { record: { burned: number; sol: number; usdc?: number } }
       >(
         kind === "buyback" ? "/api/buyback/build" : "/api/buyback/burn",
-        kind === "buyback" ? { amountSol: Number(amount), slippageBps: Math.round(Number(slippage) * 100) } : {},
+        kind === "buyback" ? { amountSol: Number(amount), slippageBps: Math.round(Number(slippage) * 100), source } : {},
         "/api/buyback/confirm",
         {},
         (s, built, sig) => {
@@ -100,7 +103,7 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
         },
       );
       setPendingSig(null);
-      toast(`Burned ${tokFmt(result.record.burned)} $${stats.symbol}${result.record.sol ? ` for ${solFmt(result.record.sol)} SOL` : ""}`);
+      toast(`Burned ${tokFmt(result.record.burned)} $${stats.symbol}${result.record.usdc ? ` for ${result.record.usdc} USDC` : result.record.sol ? ` for ${solFmt(result.record.sol)} SOL` : ""}`);
       setAmount("");
       reload();
     } catch (e) {
@@ -131,7 +134,14 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
     <div className="mt-4 rounded-xl border border-honey/40 bg-honey/[0.06] p-3">
       <div className="mb-2 flex items-center justify-between gap-2 text-xs">
         <span className="font-semibold text-honey">Owner · buy back & burn</span>
-        <span className="num text-muted">treasury {stats.treasurySol !== null ? solFmt(stats.treasurySol) : "…"} SOL</span>
+        <span className="num text-muted">treasury {stats.treasurySol !== null ? solFmt(stats.treasurySol) : "…"} SOL · {usdcMax.toFixed(2)} USDC</span>
+      </div>
+      <div className="mb-2 flex gap-1.5 text-xs">
+        {(["sol", "usdc"] as const).map((s) => (
+          <button key={s} type="button" disabled={busy} onClick={() => { setSource(s); setAmount(""); }} className={cn("rounded-md border px-2 py-1", source === s ? "border-honey text-honey" : "border-line text-muted hover:text-honey")}>
+            {s === "sol" ? "SOL · spawns" : "USDC · x402 calls"}
+          </button>
+        ))}
       </div>
       <div className="flex flex-wrap gap-2">
         <div className="flex min-w-0 flex-1 items-center rounded-lg border border-line bg-bg px-3">
@@ -141,9 +151,9 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
             onChange={(e) => setAmount(e.target.value.replace(",", "."))}
             placeholder="0.00"
             className="num h-9 w-full min-w-0 bg-transparent text-sm outline-none"
-            aria-label="Amount in SOL"
+            aria-label={`Amount in ${unit}`}
           />
-          <span className="text-xs text-muted">SOL</span>
+          <span className="text-xs text-muted">{unit}</span>
         </div>
         <div className="flex items-center rounded-lg border border-line bg-bg px-2" title="Slippage">
           <input
@@ -157,18 +167,18 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        {[0.1, 0.5, 1].map((v) => (
+        {(source === "usdc" ? [1, 5, 10] : [0.1, 0.5, 1]).map((v) => (
           <button key={v} type="button" disabled={busy || v > max} onClick={() => setAmount(String(v))} className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-honey/60 hover:text-honey disabled:opacity-40">
             {v}
           </button>
         ))}
         <button type="button" disabled={busy || max <= 0} onClick={() => setAmount(String(Math.floor(max * 1e4) / 1e4))} className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:border-honey/60 hover:text-honey disabled:opacity-40">
-          Max (−{+(stats.reserveSol + (stats.dexReserveSol ?? 0)).toFixed(3)})
+          {source === "usdc" ? "Max" : `Max (−${+(stats.reserveSol + (stats.dexReserveSol ?? 0)).toFixed(3)})`}
         </button>
       </div>
       <Button className="mt-3 w-full" disabled={busy || !(Number(amount) > 0)} onClick={() => run("buyback")}>
         {step ? <Loader2 className="size-4 animate-spin" /> : <Flame className="size-4" />}
-        {step ? STEP_LABEL[step] : `Buy back & burn ${Number(amount) > 0 ? `${amount} SOL` : ""}`}
+        {step ? STEP_LABEL[step] : `Buy back & burn ${Number(amount) > 0 ? `${amount} ${unit}` : ""}`}
       </Button>
       {quote && <div className="num mt-2 text-[11px] text-muted">{quote}</div>}
       {pendingSig && !busy && (
@@ -187,6 +197,59 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
         </div>
       )}
       <p className="mt-2 text-[11px] text-muted">One transaction: Jupiter swap, then the guaranteed minimum is burned. Anything above the minimum stays as leftover to burn.</p>
+    </div>
+  );
+}
+
+// Откуда деньги казны: спавны (SOL), вызовы ИИ-агентов по x402 (USDC) и сбор на DEX. Источники приходят разными
+// транзакциями со своими memo, поэтому в сети не смешиваются; у каждой оплаты x402 ссылка на Solscan.
+function Revenue({ rev }: { rev: NonNullable<BuybackStats["revenue"]> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-bg/60 px-3 py-2.5">
+      <Label>Treasury revenue by source</Label>
+      <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+        <div>
+          <div className="num text-base font-semibold">{solFmt(rev.spawns.sol)} SOL</div>
+          <div className="text-[11px] text-muted">crawler spawns & renewals · {rev.spawns.payments} payments</div>
+        </div>
+        <div>
+          <div className="num text-base font-semibold text-teal">${rev.x402.usdc.toFixed(2)} USDC</div>
+          <div className="text-[11px] text-muted">
+            AI agents over x402 · {rev.x402.calls} paid calls{rev.x402.calls24h ? ` · ${rev.x402.calls24h} today` : ""}
+          </div>
+        </div>
+        {rev.dexFund && (
+          <div>
+            <div className="num text-base font-semibold text-pink">{solFmt(rev.dexFund.sol)} SOL</div>
+            <div className="text-[11px] text-muted">DEX fund · held for DexScreener, not burned</div>
+          </div>
+        )}
+      </div>
+      <div className="mt-1.5 text-[11px] text-muted">
+        x402 USDC joins the same buyback cycle as its own line{rev.x402.burnedFromUsdc ? `: ${rev.x402.burnedFromUsdc} USDC turned into burns so far` : ""}.
+      </div>
+      {rev.x402.recent.length > 0 && (
+        <>
+          <button type="button" onClick={() => setOpen((x) => !x)} className="mt-1.5 inline-flex items-center gap-1 text-xs text-teal hover:underline">
+            x402 settlements <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+          </button>
+          {open && (
+            <ul className="mt-1 divide-y divide-line text-[11px]">
+              {rev.x402.recent.map((c) => (
+                <li key={c.tx} className="flex items-center justify-between gap-2 py-1">
+                  <span className="num">
+                    ${c.usd} · {c.route}
+                  </span>
+                  <a href={solscanTx(c.tx)} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 text-muted hover:text-teal">
+                    {utc(c.at)} <ExternalLink className="size-3" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -226,7 +289,7 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
         </div>
 
         <p className="mt-4 text-sm text-fg/80">
-          Every 12 hours everything the treasury earned from crawler spawns buys ${symbol} on the market, and the bought tokens are burned in the same transaction. The supply only goes down.
+          Every 12 hours everything the treasury earned buys ${symbol} on the market: SOL from crawler spawns and USDC from AI agents paying per scan over x402. The bought tokens are burned in the same transaction. The supply only goes down.
         </p>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -236,7 +299,7 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
               <>
                 <div className="num mt-0.5 text-lg font-semibold text-honey">{tokFmt(last.burned)} burned</div>
                 <div className="num text-xs text-muted">
-                  {solFmt(last.sol)} SOL · {utc(last.at)}
+                  {last.usdc ? `${last.usdc} USDC (x402)` : `${solFmt(last.sol)} SOL`} · {utc(last.at)}
                 </div>
                 <a href={solscanTx(last.sig)} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted hover:text-honey">
                   tx {short(last.sig)} <ExternalLink className="size-3" />
@@ -250,9 +313,11 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
             <Label>Total burned</Label>
             <div className="num mt-0.5 text-lg font-semibold">{stats ? tokFmt(stats.burned) : "—"}</div>
             <div className="num text-xs text-lime">{stats ? `${stats.burnedPct ? stats.burnedPct.toFixed(stats.burnedPct < 0.01 ? 4 : 2) : "0.00"}% of supply` : ""}</div>
-            <div className="num text-xs text-muted">{stats ? `${solFmt(stats.solSpent)} SOL spent · ${stats.count} buybacks` : ""}</div>
+            <div className="num text-xs text-muted">{stats ? `${solFmt(stats.solSpent)} SOL${stats.usdcSpent ? ` + ${stats.usdcSpent} USDC` : ""} spent · ${stats.count} buybacks` : ""}</div>
           </div>
         </div>
+
+        {stats?.revenue && <Revenue rev={stats.revenue} />}
 
         <div className="mt-3 space-y-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
@@ -286,7 +351,7 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
                   <li key={r.sig} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
                     <span className="num min-w-0 truncate">
                       <span className="text-honey">{tokFmt(r.burned)}</span> burned
-                      <span className="text-muted">{r.kind === "buyback" ? ` · ${solFmt(r.sol)} SOL` : " · leftover"}</span>
+                      <span className="text-muted">{r.kind !== "buyback" ? " · leftover" : r.usdc ? ` · ${r.usdc} USDC · x402` : ` · ${solFmt(r.sol)} SOL`}</span>
                     </span>
                     <a href={solscanTx(r.sig)} target="_blank" rel="noreferrer" className="num inline-flex shrink-0 items-center gap-1 text-muted hover:text-honey">
                       {utc(r.at)} <ExternalLink className="size-3" />

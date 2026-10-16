@@ -6,10 +6,12 @@ import "server-only";
 import { LAMPORTS_PER_SOL, PublicKey, type ParsedTransactionWithMeta } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, NATIVE_MINT, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { BUYBACK_TREASURY } from "../economy";
-import { ApiError, getMeta, setMeta } from "./store";
+import { ApiError, getMeta, paymentTotals, setMeta } from "./store";
 import { publicConfig, rpcConnection } from "./solana";
 import { dexReserveSol } from "./dexfund";
-import { BuybackError, buildBurnAllTx, buildBuybackTx, parseBuybackTx, readMint, type MintInfo } from "./buyback-tx";
+import { BuybackError, USDC_MINT, buildBurnAllTx, buildBuybackTx, parseBuybackTx, readMint, type MintInfo } from "./buyback-tx";
+import { x402Stats } from "./x402";
+import { dexFundStats } from "./dexfund";
 
 // Сколько SOL оставляем в казне на комиссии и аренду аккаунтов, кнопка Max считает от остатка.
 export const BUYBACK_RESERVE_SOL = 0.05;
@@ -57,6 +59,7 @@ interface TokenCache {
   market?: { at: number; mint: string; v: Market | null };
   mint?: { at: number; mint: string; v: MintInfo };
   bal?: { at: number; sol: number };
+  usdc?: { at: number; v: number };
   fees?: { at: number; mint: string; v: { sol: number; creator: string } | null };
   rate: Map<string, number>;
 }
@@ -82,6 +85,21 @@ export async function treasurySol(force = false): Promise<number | null> {
     return sol;
   } catch {
     return c.bal?.sol ?? null;
+  }
+}
+
+// USDC на казне: сюда приходят оплаты x402 от ИИ-агентов.
+export async function treasuryUsdc(force = false): Promise<number | null> {
+  const c = cache();
+  if (!force && c.usdc && Date.now() - c.usdc.at < BAL_TTL_MS) return c.usdc.v;
+  try {
+    const ata = getAssociatedTokenAddressSync(new PublicKey(USDC_MINT), new PublicKey(BUYBACK_TREASURY), false, TOKEN_PROGRAM_ID);
+    const b = await rpcConnection().getTokenAccountBalance(ata).catch(() => null);
+    const v = Number(b?.value.amount ?? 0) / 1e6;
+    c.usdc = { at: Date.now(), v };
+    return v;
+  } catch {
+    return c.usdc?.v ?? null;
   }
 }
 
@@ -135,6 +153,7 @@ export interface BuybackRecord {
   sig: string;
   kind: "buyback" | "burn"; // burn — сжигание остатка без свапа
   sol: number;
+  usdc?: number; // байбек на выручку x402: сколько USDC ушло в свап
   burned: number; // в целых токенах
   bought: number;
   at: number;
@@ -142,6 +161,7 @@ export interface BuybackRecord {
 
 interface Ledger {
   sol: number;
+  usdc?: number;
   burnedRaw: string;
   count: number;
   items: BuybackRecord[]; // новые в начале
@@ -178,12 +198,35 @@ export async function buybackStats() {
     dexReserveSol: await dexReserveSol(),
     count: l.count,
     solSpent: l.sol,
+    usdcSpent: l.usdc ?? 0,
+    treasuryUsdc: await treasuryUsdc(),
+    revenue: await revenue(l),
     burned: m ? Number(burnedRaw) / scale : 0,
     burnedPct,
     supply: m ? Number(m.supplyRaw) / scale : null,
     last: l.items.find((x) => x.kind === "buyback") ?? null,
     items: l.items,
     nextAt: nextBuybackAt(),
+  };
+}
+
+// Откуда деньги казны, по источникам: спавны и продления (SOL), вызовы агентов по x402 (USDC), сбор на DEX (SOL).
+// Каждый источник приходит своей транзакцией со своим memo, поэтому в сети они не смешиваются.
+async function revenue(l: Ledger) {
+  const p = paymentTotals();
+  const x = x402Stats();
+  const dex = await dexFundStats().catch(() => null);
+  return {
+    spawns: { sol: p.sol, payments: p.payments },
+    x402: {
+      usdc: x.usdcTotal,
+      calls: x.callsTotal,
+      usdc24h: x.usdc24h,
+      calls24h: x.calls24h,
+      burnedFromUsdc: l.usdc ?? 0,
+      recent: x.recent.filter((c) => c.tx).slice(0, 8).map((c) => ({ tx: c.tx, usd: c.usd, at: c.at, route: c.route })),
+    },
+    dexFund: dex ? { sol: dex.raisedSol, backers: dex.backers } : null,
   };
 }
 
@@ -225,7 +268,7 @@ function requireMainnet() {
   return cfg.mint;
 }
 
-export async function buildBuyback(wallet: string, amountSol: unknown, slippageBps: unknown) {
+export async function buildBuyback(wallet: string, amountSol: unknown, slippageBps: unknown, source: unknown = "sol") {
   assertTreasury(wallet);
   const mint = requireMainnet();
   const amount = Number(amountSol);
@@ -235,6 +278,16 @@ export async function buildBuyback(wallet: string, amountSol: unknown, slippageB
   if (!Number.isFinite(slip) || slip < 10 || slip > 2000) throw new ApiError("Slippage must be between 0.1% and 20%");
   // Лимит после проверки ввода: опечатка в сумме не должна блокировать следующую попытку.
   rateLimit(`build:${wallet}`, 3000);
+  if (source === "usdc") {
+    // Байбек на выручку x402: тратим USDC казны, SOL не трогаем.
+    if (amount < 0.01) throw new ApiError("Minimum USDC buyback is 0.01 USDC");
+    const usdc = await treasuryUsdc(true);
+    if (usdc === null) throw new ApiError("Cannot read the treasury USDC balance, try again", 502);
+    if (amount > usdc + 1e-9) throw new ApiError(`Too much: the treasury holds ${usdc.toFixed(2)} USDC from x402 calls`);
+    const mu = (await mintInfo(true))!;
+    const units = BigInt(Math.floor(amount * 1e6));
+    return wrap(() => buildBuybackTx(rpcConnection(), { owner: new PublicKey(wallet), mint: new PublicKey(mint), lamports: units, slippageBps: slip, mintInfo: mu, usdc: true }));
+  }
   const bal = await treasurySol(true);
   if (bal === null) throw new ApiError("Cannot read the treasury balance, try again", 502);
   // SOL сбора на DEX не выкупаем, пока профиль не оплачен (dexfund.ts).
@@ -289,6 +342,7 @@ export async function confirmBuyback(wallet: string, signature: unknown) {
     sig,
     kind: p.kind,
     sol: Math.round(p.solSpent * 1e9) / 1e9,
+    ...(p.usdcSpent ? { usdc: Math.round(p.usdcSpent * 1e6) / 1e6 } : {}),
     burned: Number(p.burnedRaw) / scale,
     bought: Number(p.boughtRaw) / scale,
     at: p.at,
@@ -297,12 +351,14 @@ export async function confirmBuyback(wallet: string, signature: unknown) {
   const l = ledger();
   if (l.items.some((x) => x.sig === sig)) return { record: rec, duplicate: true, stats: await buybackStats() };
   l.sol = Math.round((l.sol + rec.sol) * 1e9) / 1e9;
+  if (rec.usdc) l.usdc = Math.round(((l.usdc ?? 0) + rec.usdc) * 1e6) / 1e6;
   l.burnedRaw = (BigInt(l.burnedRaw) + p.burnedRaw).toString();
   l.count += rec.kind === "buyback" ? 1 : 0;
   // Список ограничен, итоги — нет: они копятся отдельно и не теряются при обрезке.
   l.items = [rec, ...l.items].sort((a, b) => b.at - a.at).slice(0, MAX_RECORDS);
   setMeta("buybacks", JSON.stringify(l));
   cache().bal = undefined;
+  cache().usdc = undefined;
   return { record: rec, duplicate: false, stats: await buybackStats() };
 }
 

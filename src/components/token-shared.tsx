@@ -31,6 +31,7 @@ export interface BuybackRecord {
   sig: string;
   kind: "buyback" | "burn";
   sol: number;
+  usdc?: number;
   burned: number;
   bought: number;
   at: number;
@@ -45,6 +46,13 @@ export interface BuybackStats {
   dexReserveSol?: number;
   count: number;
   solSpent: number;
+  usdcSpent?: number;
+  treasuryUsdc?: number | null;
+  revenue?: {
+    spawns: { sol: number; payments: number };
+    x402: { usdc: number; calls: number; usdc24h: number; calls24h: number; burnedFromUsdc: number; recent: { tx: string; usd: number; at: number; route: string }[] };
+    dexFund: { sol: number; backers: number } | null;
+  };
   burned: number;
   burnedPct: number;
   supply: number | null;

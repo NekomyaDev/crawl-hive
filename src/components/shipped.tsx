@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 16", title: "x402 revenue → burns", text: "The treasury now shows revenue by source: SOL from crawler spawns, USDC from AI agents paying per scan over x402, and the DEX fund, with a Solscan link for every x402 settlement. x402 USDC joins the 12-hour buyback cycle as its own line: swapped to $CRAWLHIVE and burned." },
   { date: "Oct 16", title: "Boost fund", text: "The DexScreener profile is paid, so the DEX fund now goes straight to boosts: 10x, 30x, 100x and the golden ticker. Same one-click Phantom gift, verified onchain." },
   { date: "Oct 15", title: "DEX fund", text: "One click to chip in SOL, or pay a whole level, for $CRAWLHIVE on DexScreener: the profile first, then boosts up to the golden ticker. Progress is live and every gift is verified onchain." },
   { date: "Oct 15", title: "Onchain proof", text: "Every 15 minutes all new verdicts and crawler calls are hashed into a Merkle tree and the root is written to Solana. Nothing can be quietly deleted or edited after the price moves. Check any token on Track Record." },

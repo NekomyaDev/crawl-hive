@@ -7,7 +7,7 @@ import { buildBuyback } from "@/lib/server/buyback";
 export async function POST(req: NextRequest) {
   return handle(async () => {
     const wallet = walletFrom(req);
-    const { amountSol, slippageBps } = await body<{ amountSol: number; slippageBps?: number }>(req);
-    return buildBuyback(wallet, amountSol, slippageBps);
+    const { amountSol, slippageBps, source } = await body<{ amountSol: number; slippageBps?: number; source?: "sol" | "usdc" }>(req);
+    return buildBuyback(wallet, amountSol, slippageBps, source);
   });
 }
