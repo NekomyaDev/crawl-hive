@@ -3,7 +3,7 @@ import { TOKEN } from "@/lib/token";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot } from "lucide-react";
+import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { APP_URL, TelegramIcon } from "./telegram-cta";
@@ -16,6 +16,7 @@ const LINKS = [
   { href: "/spawn", label: "Spawn", icon: Plus, color: "text-coral" },
   { href: "/my", label: "My Crawlers", icon: Bug, color: "text-lime" },
   { href: "/signals", label: "My Signals", icon: Radio, color: "text-teal" },
+  { href: "/launch", label: "Clean Launch", icon: Rocket, color: "text-coral" },
   { href: "/radar", label: "Launch Radar", icon: Radar, color: "text-lime" },
   { href: "/track", label: "Track Record", icon: Target, color: "text-honey" },
   { href: "/agents", label: "For Agents", icon: Bot, color: "text-teal" },

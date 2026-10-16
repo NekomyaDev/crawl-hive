@@ -30,6 +30,7 @@ const Ctx = createContext<WalletCtx | null>(null);
 export interface PhantomProvider {
   isPhantom?: boolean;
   signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }>;
+  signTransaction?: <T>(tx: T) => Promise<T>;
   signMessage: (msg: Uint8Array, display?: "utf8" | "hex") => Promise<{ signature: Uint8Array }>;
   connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: { toString(): string } }>;
   disconnect: () => Promise<void>;

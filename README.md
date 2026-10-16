@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 16 | **Clean Launch** ([/launch](https://crawlhive.xyz/launch)): launch a coin on pump.fun from CrawlHive with an optional dev buy; the mint key is made in the browser, Phantom signs, the server sends only a byte-for-byte match, 0% platform fee; every coin is scanned at birth by the same rules and lands on the Track Record |
 | Oct 16 | **x402 revenue → burns**: treasury revenue by source on the home page (spawns in SOL, AI-agent x402 calls in USDC, DEX fund), every x402 settlement linked to Solscan; x402 USDC now goes into the same 12-hour buyback & burn, recorded as its own line |
 | Oct 16 | **Boost fund**: the DexScreener profile is paid, so the DEX fund moved on to boosts (10x, 30x, 100x, golden ticker); levels paid outside the fund are set with `DEX_PAID_ELSEWHERE` and are not deducted from gifts |
 | Oct 15 | **DEX fund**: chip in SOL with one click (or pay a whole level) for $CRAWLHIVE on DexScreener: the profile first, then boosts up to the golden ticker; gifts are verified onchain and held apart from buybacks |
@@ -240,6 +241,16 @@ Each finding becomes a scored factor (for example *Can mint* −25, *Permanent d
 <p align="center">
   <img src="docs/images/contract-xray.png" alt="Contract X-Ray on a Token-2022 mint: permanent delegate, switchable transfer hook, confidential transfers" width="85%">
 </p>
+
+### Clean Launch
+
+[crawlhive.xyz/launch](https://crawlhive.xyz/launch) launches a coin on pump.fun from CrawlHive: name, ticker, picture, description, links and an optional dev buy (up to 5 SOL) in the same transaction.
+
+- **The mint key is made in the browser.** Only its public half reaches the server.
+- **The server builds, Phantom signs, the server sends only a byte-for-byte match.** The picture and metadata go to IPFS, the server builds pump.fun's `create_v2` (plus the creator's first buy) with a public address lookup table so the launch fits one transaction, the mint co-signs in the browser and the creator signs in Phantom. If anything in the signed message differs from what was built, nothing is sent.
+- **No key on the server, 0% platform fee.** pump.fun's creator fees go to the creator's wallet as usual.
+- **Scanned at birth, same rules.** A few seconds after a coin goes live the swarm scans it like any other; the verdict is shown next to the launch and recorded on the Track Record. Coins launched here get no score boost.
+- Config: `PINATA_JWT` (IPFS) switches launches on; `LAUNCH_TABLE`, `LAUNCHES_PER_IP_HOUR`, `LAUNCHES_PER_DAY`, `LAUNCHPAD_PAUSED`. Code: `src/lib/server/launch.ts`, `src/app/launch/page.tsx`. Ported from the Gem Search launchpad.
 
 ### Track Record and Launch Radar
 
