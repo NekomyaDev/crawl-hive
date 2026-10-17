@@ -107,6 +107,7 @@ function init(): State {
   setTimeout(() => import("./radar").then((m) => m.startRadar()).catch((e) => console.error(e)), 2000);
   setTimeout(() => import("./proof").then((m) => m.startProof()).catch((e) => console.error(e)), 2500);
   setTimeout(() => import("./narrative-radar").then((m) => m.startNarrativeRadar()).catch((e) => console.error(e)), 3000);
+  setTimeout(() => import("./wallet-watch").then((m) => m.startWalletWatch()).catch((e) => console.error(e)), 3500);
 
   return {
     crawlers,
@@ -924,6 +925,26 @@ export interface LiveJob {
   tier: Tier;
   spec: CrawlerSpec;
   cursor: Record<string, string>;
+}
+
+// Wallet tracker: все кошельки, за которыми следят живые on-chain краулеры с лентой «wallets» (цели = кошельки).
+const isWalletWatcher = (c: { live?: boolean; status?: string; source: string; spec?: CrawlerSpec }) => !!c.live && c.status !== "paused" && c.source === "onchain" && !!c.spec?.onchain.feeds.includes("wallets");
+export function watchedWallets(): Set<string> {
+  const out = new Set<string>();
+  const now = Date.now();
+  for (const c of state().crawlers.values()) if (isWalletWatcher(c) && !isExpired(c, now) && c.chain === "solana") for (const t of c.targets) if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t.trim())) out.add(t.trim());
+  return out;
+}
+// Пришла сделка кошелька: будим краулеры, которые за ним следят, — их обход начнётся сразу, а не по расписанию.
+export function wakeWalletWatchers(wallet: string) {
+  const now = Date.now();
+  let n = 0;
+  for (const c of state().crawlers.values())
+    if (isWalletWatcher(c) && c.run && c.targets.some((t) => t.trim() === wallet)) {
+      c.run.nextRunAt = Math.min(c.run.nextRunAt, now);
+      n++;
+    }
+  return n;
 }
 
 // Краулеры, которым пора на обход. Возвращаем копии: сборщик не должен трогать состояние напрямую.

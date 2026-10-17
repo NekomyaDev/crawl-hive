@@ -1,12 +1,15 @@
 // On-chain: DexScreener. Ленты новых профилей токенов, бустов и поиска по ключевым словам
 // фильтруются по ликвидности, объёму, FDV и возрасту из спецификации. Цели-адреса — вотчлист:
 // по ним ловим всплеск объёма. Если есть Grok и инструкции владельца — модель отбирает подходящие.
+// Лента «wallets»: цели — кошельки Solana, их свопы присылает вебхук Helius (wallet-watch.ts), здесь они
+// становятся сигналами «Wallet trade» и проходят тот же конвейер с проверкой безопасности токена.
 import "server-only";
 import type { LiveJob } from "../../store";
 import { bestPairs, latestBoosts, latestProfiles, searchPairs, type PairInfo } from "../dexscreener";
 import { contractsIn, finalize, matchesKeywords, specBrief, type Candidate } from "../analyze";
 import { extractJson, grok, grokEnabled } from "../grok";
 import type { SourceResult } from "./types";
+import { tradesSince } from "../../wallet-watch";
 
 const usd = (n?: number) => (n === undefined ? "?" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(0)}`);
 
@@ -23,8 +26,12 @@ export async function crawlOnchain(job: LiveJob): Promise<SourceResult> {
   if (f.feeds.includes("search"))
     for (const k of keywords.slice(0, 5)) searched.push(...(await searchPairs(k)).filter((p) => p.chainId === job.chain));
 
-  const watch = job.targets.flatMap((t) => contractsIn(t, job.chain));
-  const pairs = await bestPairs(job.chain, [...new Set([...addresses, ...watch])]);
+  const walletMode = f.feeds.includes("wallets");
+  const watch = walletMode ? [] : job.targets.flatMap((t) => contractsIn(t, job.chain));
+  // Сделки кошельков с прошлого обхода.
+  const since = Number(job.cursor.walletsAt ?? Date.now() - 3600_000);
+  const trades = walletMode ? job.targets.map((t) => t.trim()).flatMap((w) => tradesSince(w, since)) : [];
+  const pairs = await bestPairs(job.chain, [...new Set([...addresses, ...watch, ...trades.map((t) => t.mint)])]);
   for (const p of searched) {
     const prev = pairs.get(p.baseToken.address);
     if (!prev || (p.liquidity?.usd ?? 0) > (prev.liquidity?.usd ?? 0)) pairs.set(p.baseToken.address, p);
@@ -73,6 +80,21 @@ export async function crawlOnchain(job: LiveJob): Promise<SourceResult> {
     });
   }
 
+  // Сделки кошельков — без фильтров ликвидности и без отбора Grok: владелец хочет видеть каждую.
+  const walletCandidates: Candidate[] = trades.map((t) => {
+    const p = pairs.get(t.mint);
+    const sym = p ? `$${p.baseToken.symbol}` : `${t.mint.slice(0, 4)}…${t.mint.slice(-4)}`;
+    const facts = p ? ` · liq ${usd(p.liquidity?.usd)}, FDV ${usd(p.fdv)}` : "";
+    return {
+      kind: "wallet_trade" as const,
+      contract: t.mint,
+      ticker: p?.baseToken.symbol,
+      summary: `Wallet ${t.wallet.slice(0, 4)}…${t.wallet.slice(-4)} ${t.side === "buy" ? "bought" : "sold"} ${sym}${t.sol ? ` for ${t.sol} SOL` : ""}${facts}`,
+      confidence: t.side === "buy" ? 0.8 : 0.6,
+      urls: [`https://solscan.io/tx/${t.signature}`, ...(p?.url ? [p.url] : [])],
+    };
+  });
+
   // Индивидуализация: Grok выбирает из кандидатов те, что подходят под инструкции владельца.
   let picked = candidates;
   if (grokEnabled() && job.spec.instructions && candidates.length) {
@@ -90,6 +112,7 @@ export async function crawlOnchain(job: LiveJob): Promise<SourceResult> {
   }
 
   const known = new Map<string, PairInfo | undefined>([...pairs].map(([a, p]) => [a, p]));
-  const fin = await finalize(job, picked, known);
-  return { items: pairs.size, signals: fin.signals, cursor: fin.cursor, filtered: fin.filtered };
+  const fin = await finalize(job, [...walletCandidates, ...picked], known);
+  const walletsAt = trades.length ? Math.max(since, ...trades.map((t) => t.at)) : since;
+  return { items: pairs.size + trades.length, signals: fin.signals, cursor: { ...fin.cursor, ...(walletMode ? { walletsAt: String(walletsAt) } : {}) }, filtered: fin.filtered };
 }

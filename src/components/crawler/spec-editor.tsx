@@ -109,10 +109,10 @@ export function SpecEditor({
           <div className={cn(!compact && "md:col-span-2")}>
             <Label hint="DexScreener">Feeds</Label>
             <Chips
-              options={["profiles", "boosts", "search"] as const}
+              options={["profiles", "boosts", "search", "wallets"] as const}
               value={spec.onchain.feeds}
               onChange={(v) => v.length && set({ onchain: { ...spec.onchain, feeds: v } })}
-              render={(f) => ({ profiles: "New token profiles", boosts: "Boosted tokens", search: "Search by keywords" })[f]}
+              render={(f) => ({ profiles: "New token profiles", boosts: "Boosted tokens", search: "Search by keywords", wallets: "Wallet trades (targets = wallets)" })[f]}
             />
           </div>
           {(

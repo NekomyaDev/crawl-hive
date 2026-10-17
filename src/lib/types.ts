@@ -63,8 +63,8 @@ export interface Crawler {
 
 export type PublicCrawler = Omit<Crawler, "skill">;
 
-export type SignalKind = "mention_spike" | "new_pair" | "whale_buy" | "kol_call" | "doc_update" | "narrative";
-export const SIGNAL_KINDS: SignalKind[] = ["mention_spike", "new_pair", "whale_buy", "kol_call", "doc_update", "narrative"];
+export type SignalKind = "mention_spike" | "new_pair" | "whale_buy" | "kol_call" | "doc_update" | "narrative" | "wallet_trade";
+export const SIGNAL_KINDS: SignalKind[] = ["mention_spike", "new_pair", "whale_buy", "kol_call", "doc_update", "narrative", "wallet_trade"];
 
 // Спецификация краулера: что именно и как собирать. Задаётся при спавне, правится владельцем.
 export interface CrawlerSpec {
@@ -75,7 +75,7 @@ export interface CrawlerSpec {
   minConfidence: number; // 0..1, ниже — не присылать
   // On-chain (DexScreener)
   onchain: {
-    feeds: ("profiles" | "boosts" | "search")[]; // новые профили токенов, бусты, поиск по ключевым словам
+    feeds: ("profiles" | "boosts" | "search" | "wallets")[]; // новые профили токенов, бусты, поиск по ключевым словам, сделки кошельков из целей
     minLiquidityUsd: number;
     minVolume1hUsd: number;
     maxFdvUsd: number; // 0 — без ограничения

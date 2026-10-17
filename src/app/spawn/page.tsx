@@ -39,7 +39,7 @@ const PLACEHOLDER: Record<Source, string> = {
 const SOURCE_HINT: Record<Source, string> = {
   x: "Searches X through Grok: posts from your accounts and queries, read through your instructions.",
   telegram: "Reads public Telegram channels (t.me preview) and picks out calls with tickers or contracts.",
-  onchain: "Scans DexScreener for new and boosted tokens that pass your filters; targets are a watchlist for volume spikes.",
+  onchain: "Scans DexScreener for new and boosted tokens that pass your filters; targets are a watchlist for volume spikes. Turn on the Wallet trades feed and targets become Solana wallets: every buy or sell they make reaches you within seconds, with a safety verdict on the token.",
   docs: "Watches pages for changes and tells you what's new: launches, airdrops, roadmap updates.",
 };
 
@@ -124,8 +124,12 @@ export default function SpawnPage() {
     if (!narratives.length) p.push("Pick at least one narrative");
     if (!targets.length && source !== "onchain") p.push("Add at least one target");
     if (targets.length > t.maxTargets) p.push(`${t.label} allows ${t.maxTargets} targets`);
+    if (source === "onchain" && spec.onchain.feeds.includes("wallets")) {
+      if (!targets.length) p.push("Wallet trades need at least one Solana wallet in targets");
+      else if (targets.some((x) => !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x.trim()))) p.push("With Wallet trades on, every target must be a Solana wallet address");
+    }
     return p;
-  }, [name, narratives, targets, t, source]);
+  }, [name, narratives, targets, t, source, spec]);
 
   const addTarget = (v: string) => {
     const x = v.trim();

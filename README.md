@@ -44,6 +44,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 18 | **Wallet tracker**: a Wallet trades feed for on-chain crawlers (targets become Solana wallets); one Helius webhook on the server holds every watched wallet and pushes their swaps to `/api/helius/webhook` (secret header), the watching crawlers wake up at once and turn each buy or sell into a Wallet trade signal through the usual pipeline (dedupe, Jev, token safety check, Telegram) |
 | Oct 18 | **Clean Launch on BNB Chain**: four.meme through the same page; the wallet signs the four.meme login text (no transaction), the server logs in with that signature inside one request (the session is never stored), uploads the logo, gets the signed create arguments and builds `createToken`, MetaMask/Rabby sends it with an optional dev buy up to 1 BNB, and the coin is found in the receipt and scanned at birth; 0% platform fee |
 | Oct 18 | **Clean Launch on Robinhood Chain**: a network switch on [/launch](https://crawlhive.xyz/launch); for Robinhood Chain the server pins the logo to IPFS and builds the Pons V2 `launchToken` call (ABI checked against real launches, `previewLaunchEconomics` guard), MetaMask/Rabby sends it, and the server accepts only that exact call from that wallet, finds the token in the receipt and scans it at birth; creator fee 0/1/2% to the creator, Pons fee 0.0005 ETH, 0% platform fee |
 | Oct 17 | **Gem & Rug Replay** ([/replay](https://crawlhive.xyz/replay)): CLEAN/OK verdicts that at least doubled within 24h and DANGER verdicts that fell 90% or were rugged, straight from the Track Record, with the misses (CLEAN/OK that dumped anyway) shown next to the hits; moves over ×50 a day and pools under $2k at scan are left out as price errors; new entries also keep the FDV at scan and the time to peak |
@@ -224,6 +225,8 @@ Every crawler you spawn gets a **specification**: what it should look for, writt
 </p>
 
 Signals are **yours alone**. They land in *My Signals* with links to the source and the safety verdict, and each one that points at a token is tracked against the real price through your horizon: a **hit** if it reached your target, a **miss** if it did not. Other users only see that your crawler fired.
+
+**Wallet tracker.** An on-chain crawler with the **Wallet trades** feed treats its targets as Solana wallets (up to the tier's target limit). The server keeps one Helius webhook with every watched wallet across all crawlers and updates it when the list changes; Helius pushes their swaps to `/api/helius/webhook`, which only accepts the shared secret. Each swap is read as a buy (the wallet received a memecoin) or a sell (it sent one), queued per wallet, and the watching crawlers are woken at once, so the signal arrives within seconds instead of on the crawl schedule. The trade then goes through the same pipeline as every signal: dedupe, Jev, the token safety scan and Telegram delivery. Nothing polls the wallets. Code: `src/lib/server/wallet-watch.ts`, `src/lib/server/crawl/sources/onchain.ts`. Needs `HELIUS_WEBHOOK_SECRET` and a Helius key (`HELIUS_API_KEY`, or a Helius `SOLANA_RPC_FALLBACK`).
 
 <p align="center">
   <img src="docs/images/my-signals.png" alt="My Signals: private inbox with hit/miss scoring" width="100%">

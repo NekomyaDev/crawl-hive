@@ -13,7 +13,7 @@ export const SPEC_LIMITS = {
 export const KINDS_BY_SOURCE: Record<Source, SignalKind[]> = {
   x: ["kol_call", "mention_spike", "new_pair", "whale_buy", "narrative"],
   telegram: ["kol_call", "mention_spike", "new_pair"],
-  onchain: ["new_pair", "whale_buy", "mention_spike"],
+  onchain: ["new_pair", "whale_buy", "mention_spike", "wallet_trade"],
   docs: ["doc_update"],
 };
 
@@ -24,6 +24,7 @@ export const SIGNAL_KIND_LABEL: Record<SignalKind, string> = {
   kol_call: "KOL call",
   doc_update: "Docs update",
   narrative: "Narrative",
+  wallet_trade: "Wallet trade",
 };
 
 export function defaultSpec(source: Source): CrawlerSpec {
@@ -62,7 +63,7 @@ export function normalizeSpec(input: Partial<CrawlerSpec> | undefined, source: S
   );
   if (!kinds.length) throw new Error("Pick at least one signal type this source can produce");
   const feeds = (Array.isArray(i.onchain?.feeds) ? i.onchain!.feeds : d.onchain.feeds).filter((f) =>
-    ["profiles", "boosts", "search"].includes(f),
+    ["profiles", "boosts", "search", "wallets"].includes(f),
   ) as CrawlerSpec["onchain"]["feeds"];
   const keywords = words(i.keywords);
   if (source === "onchain" && feeds.includes("search") && !keywords.length)
