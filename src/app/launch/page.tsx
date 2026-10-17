@@ -3,7 +3,8 @@
 // в IPFS и собирает транзакцию, Phantom подписывает, сервер отправляет без изменений. Сразу после запуска рой
 // сканирует монету по тем же правилам, что и любую другую.
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, ImagePlus, Loader2, Rocket, ShieldCheck, Sparkles } from "lucide-react";
+import { ExternalLink, ImagePlus, Loader2, Palette, Rocket, ShieldCheck, Sparkles } from "lucide-react";
+import { BannerMaker } from "@/components/banner-maker";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { phantom } from "@/components/wallet-provider";
@@ -54,6 +55,36 @@ export default function LaunchPage() {
   const [step, setStep] = useState<Step | null>(null);
   const [done, setDone] = useState<{ mint: string; signature: string; symbol: string } | null>(null);
   const [from, setFrom] = useState<string | null>(null);
+  const [nid, setNid] = useState("");
+  const [imgNote, setImgNote] = useState("");
+  const [drawing, setDrawing] = useState(false);
+
+  // Картинка по ссылке (пост X через наш прокси или нарисованный арт) → data URL для формы и баннера.
+  const loadImage = async (src: string, note: string) => {
+    const r = await fetch(src);
+    if (!r.ok) throw new Error("Could not load the picture");
+    const blob = await r.blob();
+    const data = await new Promise<string>((ok) => {
+      const fr = new FileReader();
+      fr.onload = () => ok(String(fr.result));
+      fr.readAsDataURL(blob);
+    });
+    setImage(data);
+    setImgNote(note);
+  };
+
+  const drawArt = async () => {
+    if (!nid) return;
+    setDrawing(true);
+    try {
+      const { url } = await post<{ url: string }>("/api/narratives/art", { id: nid });
+      await loadImage(url, "AI art for this narrative");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setDrawing(false);
+    }
+  };
   // Пришли с сигнала Narrative Hunter: название, тикер и описание уже заполнены, остаётся картинка.
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -64,6 +95,10 @@ export default function LaunchPage() {
     setF((x) => ({ ...x, name: name ?? x.name, symbol: symbol ?? x.symbol, description: description ?? x.description }));
     const src = q.get("from");
     setFrom(src && /^https:\/\/(x|twitter)\.com\//.test(src) ? src : "");
+    setNid(q.get("nid")?.replace(/[^a-z0-9-]/gi, "") ?? "");
+    const img = q.get("img");
+    if (img && /^https:\/\/pbs\.twimg\.com\//.test(img)) loadImage(`/api/narratives/image?u=${encodeURIComponent(img)}`, "picture from the source post").catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
 
@@ -164,6 +199,17 @@ export default function LaunchPage() {
                 <input className={cn(FIELD, "num uppercase")} placeholder="TICKER (2–10)" maxLength={11} value={f.symbol} onChange={set("symbol")} />
               </div>
             </div>
+            {(nid || imgNote) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {imgNote && <span className="text-muted">🖼 {imgNote} · tap the picture to use your own</span>}
+                {nid && (
+                  <button type="button" onClick={drawArt} disabled={drawing} className="inline-flex items-center gap-1.5 rounded-lg border border-violet/60 px-2.5 py-1 text-violet hover:bg-violet/10 disabled:opacity-60">
+                    {drawing ? <Loader2 className="size-3.5 animate-spin" /> : <Palette className="size-3.5" />}
+                    {drawing ? "Drawing…" : "Generate art"}
+                  </button>
+                )}
+              </div>
+            )}
             <textarea className={cn(FIELD, "min-h-20")} placeholder="Description (up to 500)" maxLength={500} value={f.description} onChange={set("description")} />
             <div className="grid gap-2 sm:grid-cols-3">
               <input className={FIELD} placeholder="https://website" value={f.website} onChange={set("website")} />
@@ -214,6 +260,13 @@ export default function LaunchPage() {
               </div>
             </Card>
           )}
+
+          <Card>
+            <CardHeader title="DexScreener banner" sub="3:1, drawn in your browser from your picture, name and ticker" />
+            <div className="p-4">
+              <BannerMaker image={image} name={f.name} symbol={f.symbol.replace(/^\$/, "").toUpperCase()} />
+            </div>
+          </Card>
 
           <Card>
             <CardHeader title={<span className="flex items-center gap-2"><ShieldCheck className="size-4 text-lime" /> How it stays safe</span>} />

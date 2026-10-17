@@ -27,8 +27,10 @@ export function launchHref(s: Pick<Signal, "kind" | "text" | "ticker" | "urls">,
 }
 
 // Тот же адрес из готовых полей нарратива (Narrative Radar хранит их по отдельности).
-export function launchHrefFor(n: { title: string; ticker: string; why: string; post?: string }, base = "") {
+export function launchHrefFor(n: { title: string; ticker: string; why: string; post?: string; img?: string; nid?: string }, base = "") {
   const q = new URLSearchParams({ name: fitName(n.title), symbol: n.ticker.slice(0, 10), description: n.why.slice(0, 500) });
   if (n.post) q.set("from", n.post);
+  if (n.img) q.set("img", n.img); // картинка из поста (pbs.twimg.com) — подставится в форму
+  if (n.nid) q.set("nid", n.nid); // id нарратива — для кнопки «Generate art»
   return `${base}/launch?${q}`;
 }

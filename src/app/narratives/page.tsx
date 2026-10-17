@@ -24,6 +24,10 @@ interface Item {
   stage: "new" | "rising" | "peak" | "fading";
   seen: number;
   firstBy: string | null;
+  score: number;
+  speed: number;
+  media?: string[];
+  reach?: { views: number; likes: number; reposts: number; replies: number; followers: number; firstPostAt: number };
   sightings?: { at: number; heat: string; clones: number | null }[];
   outcome?: { coins: number; best?: { address: string; symbol: string; fdv: number }; maxFdv: number; checkedAt: number };
   launched: { mint: string; symbol: string; verdict: string | null; score: number | null } | null;
@@ -50,6 +54,9 @@ const STAGE: Record<Item["stage"], { t: string; c: string; r: number }> = {
   fading: { t: "🌙 fading", c: "text-muted", r: 0.92 },
 };
 const HEAT_N: Record<string, number> = { early: 1, rising: 2, hot: 3 };
+const num = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k` : String(n));
+const img = (u: string) => `/api/narratives/image?u=${encodeURIComponent(u)}`;
+const SCORE_TONE = (s: number) => (s >= 70 ? "text-coral border-coral/60 bg-coral/10" : s >= 50 ? "text-honey border-honey/60 bg-honey/10" : "text-lime border-lime/50 bg-lime/10");
 const usd = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}k` : `$${Math.round(n)}`);
 
 // Мини-график: горячесть нарратива по каждой охоте, где его видели.
@@ -90,6 +97,13 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
         active ? "border-violet/70 shadow-[0_0_28px_rgba(167,139,250,.35)]" : "border-line hover:border-violet/40",
       )}
     >
+      {n.media?.[0] && (
+        <a href={n.posts[0]} target="_blank" rel="noreferrer" className="relative -mx-4 -mt-4 mb-3 block h-36 overflow-hidden rounded-t-2xl">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={img(n.media[0])} alt="" loading="lazy" className="size-full object-cover transition-transform duration-300 hover:scale-105" />
+          <span className="absolute inset-0 bg-gradient-to-t from-panel via-transparent to-transparent" />
+        </a>
+      )}
       <div className="flex items-start gap-3">
         <div className="grid size-11 shrink-0 place-items-center rounded-full border-2 bg-bg text-xl" style={{ borderColor: heat.color, boxShadow: `0 0 14px color-mix(in oklab, ${heat.color} 45%, transparent)` }}>
           {GLYPH[n.kind] ?? "✨"}
@@ -101,7 +115,12 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
           </div>
           <div className="truncate text-sm text-fg/80">{n.title}</div>
         </div>
-        <span className={cn("shrink-0 rounded-full border border-current/40 px-2 py-0.5 text-[11px] font-semibold", STAGE[n.stage].c)}>{STAGE[n.stage].t}</span>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className={cn("num rounded-lg border px-2 py-0.5 text-sm font-black", SCORE_TONE(n.score))} title="Narrative Score: heat, reach, spread speed, free ticker, stage">
+            {n.score}
+          </span>
+          <span className={cn("text-[11px] font-semibold", STAGE[n.stage].c)}>{STAGE[n.stage].t}</span>
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
@@ -115,6 +134,15 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
       </div>
 
       <p className="mt-2 flex-1 text-sm leading-snug text-fg/85">{n.why}</p>
+      {n.reach && (
+        <div className="num mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+          <span title="views across verified posts">👁 {num(n.reach.views)}</span>
+          <span>❤ {num(n.reach.likes)}</span>
+          <span>🔁 {num(n.reach.reposts)}</span>
+          {n.speed > 0 && <span className="text-honey" title="views per hour since the first post">⚡ {num(n.speed)}/h</span>}
+          {n.reach.followers > 0 && <span title="largest author among the posts">👤 {num(n.reach.followers)}</span>}
+        </div>
+      )}
 
       <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-line bg-bg/60 p-2.5">
         <div>
@@ -164,7 +192,7 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
       ) : (
         <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
           <Link
-            href={launchHrefFor({ title: n.title, ticker: n.ticker, why: n.why, post: n.posts[0] })}
+            href={launchHrefFor({ title: n.title, ticker: n.ticker, why: n.why, post: n.posts[0], img: n.media?.[0], nid: n.id })}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-honey via-coral to-pink px-3 py-2 text-sm font-extrabold text-black hover:opacity-90"
           >
             <Rocket className="size-4" /> Launch this narrative
@@ -184,6 +212,7 @@ export default function NarrativesPage() {
   const { data } = useApi<Feed>("/api/narratives", 60_000);
   const [heat, setHeat] = useState<string>("all");
   const [active, setActive] = useState<string | null>(null);
+  const [sort, setSort] = useState<"score" | "new">("score");
   const d = data?.day;
   const items = useMemo(
     () =>
@@ -191,7 +220,7 @@ export default function NarrativesPage() {
         heat === "all" ? true : heat === "fresh" ? n.clones === 0 : heat === "winner" ? (n.outcome?.maxFdv ?? 0) >= (data?.record.winFdv ?? 1e5) : heat === "fading" ? n.stage === "fading" : n.stage === heat,
       ),
     [data, heat],
-  );
+  ).slice().sort((a, b) => (sort === "score" ? b.score - a.score : b.at - a.at));
   const blips = items.slice(0, 18).map((n) => ({ id: n.id, label: `$${n.ticker}`, glyph: GLYPH[n.kind] ?? "✨", color: (HEAT[n.heat] ?? HEAT.early).color, r: (STAGE[n.stage]?.r ?? 0.6) + (3 - (HEAT_N[n.heat] ?? 1)) * 0.07 }));
   const pick = (id: string) => {
     setActive(id);
@@ -210,7 +239,7 @@ export default function NarrativesPage() {
             Narrative <span className="bg-gradient-to-r from-violet via-pink to-honey bg-clip-text text-transparent">Radar</span>
           </h1>
           <p className="mt-4 max-w-xl text-fg/85">What is starting to spread on X right now, found by the platform&apos;s own Narrative Hunter. Nobody owns it: every find is here for everyone.</p>
-          <p className="mt-1 max-w-xl text-sm text-muted">Every post link is verified, invented ones drop out. Each narrative shows how many coins already use its ticker, and one tap turns it into a Clean Launch.</p>
+          <p className="mt-1 max-w-xl text-sm text-muted">Every post is verified, invented ones drop out. Each narrative gets a score from its heat, reach, spread speed, free ticker and stage, a life story across hunts, the coins it produced, and one tap turns it into a Clean Launch with the picture, name, ticker and banner ready.</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Box label="Narratives, 24h" value={d ? d.found : "—"} tone="text-violet" />
             <Box label="Hot now" value={d ? d.hot : "—"} tone="text-coral" />
@@ -233,6 +262,11 @@ export default function NarrativesPage() {
               </Chip>
             ))}
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+            Sort:
+            <Chip on={sort === "score"} onClick={() => setSort("score")}>Narrative Score</Chip>
+            <Chip on={sort === "new"} onClick={() => setSort("new")}>Newest</Chip>
+</div>
         </div>
         <RadarScope blips={blips} active={active} onPick={pick} tone="var(--violet)" center="🔮" />
       </section>

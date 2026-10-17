@@ -9,6 +9,7 @@ import { grokEnabled } from "./crawl/grok";
 import { searchPairs } from "./crawl/dexscreener";
 import { SHILL_RE, huntNarratives, type Narrative } from "./crawl/sources/narratives";
 import { recentLaunches } from "./launch";
+import { postInfo } from "./narrative-media";
 
 const KEY = "narrRadar";
 const LAST_KEY = "narrRadarAt";
@@ -40,6 +41,17 @@ export interface NarrativeEntry extends Narrative {
   lastAt?: number; // когда видели последний раз
   sightings?: Sighting[];
   outcome?: Outcome;
+  reach?: Reach;
+  media?: string[]; // картинки из постов (pbs.twimg.com)
+}
+export interface Reach {
+  views: number;
+  likes: number;
+  reposts: number;
+  replies: number;
+  followers: number; // самый крупный автор среди постов
+  firstPostAt: number; // когда вышел самый ранний из постов
+  checkedAt: number;
 }
 
 const read = <T>(k: string, d: T): T => {
@@ -91,16 +103,37 @@ async function hunt() {
     added++;
     list.unshift({ ...n, id: `${now.toString(36)}-${i}`, at: now, lastAt: now, sightings: [sight] });
   });
+  // Свежие и повторно найденные — обновляем охват и картинки.
+  for (const n of list.filter((e) => e.lastAt === now)) await enrich(n);
   save(list);
   console.log(`[narratives] radar: ${added} new, ${again} seen again`);
+}
+
+// Охват и картинки по проверенным постам (fxtwitter, без X API): суммы просмотров, лайков, репостов.
+async function enrich(n: NarrativeEntry) {
+  const infos = (await Promise.all(n.posts.slice(0, 4).map((u) => postInfo(u).catch(() => null)))).filter((x): x is NonNullable<typeof x> => !!x);
+  if (!infos.length) return;
+  const sum = (k: "views" | "likes" | "reposts" | "replies") => infos.reduce((a, i) => a + i[k], 0);
+  n.reach = {
+    views: sum("views"),
+    likes: sum("likes"),
+    reposts: sum("reposts"),
+    replies: sum("replies"),
+    followers: Math.max(...infos.map((i) => i.followers)),
+    firstPostAt: Math.min(...infos.map((i) => i.createdAt || Date.now())),
+    checkedAt: Date.now(),
+  };
+  const media = [...new Set(infos.flatMap((i) => i.images))].slice(0, 4);
+  if (media.length) n.media = media;
 }
 
 // Исход: монеты на тикере после нарратива (Solana, тот же символ) и лучший пик FDV, который мы застали.
 async function refreshOutcomes() {
   const list = all();
   const now = Date.now();
-  const due = list.filter((n) => now - n.at < OUTCOME_MS && (!n.outcome || now - n.outcome.checkedAt > 55 * 60_000)).slice(0, 40);
+  const due = list.filter((n) => now - n.at < OUTCOME_MS && (!n.outcome || !n.reach || now - n.outcome.checkedAt > 55 * 60_000)).slice(0, 40);
   for (const n of due) {
+    if (now - n.at < 24 * HOUR) await enrich(n).catch(() => {});
     try {
       const pairs = (await searchPairs(n.ticker)).filter(
         (p) => p.chainId === "solana" && p.baseToken.symbol.toUpperCase().replace(/^\$/, "") === n.ticker && (p.pairCreatedAt ?? 0) >= n.at - HOUR,
@@ -158,6 +191,20 @@ function stageOf(n: NarrativeEntry, now: number): "new" | "rising" | "peak" | "f
   return "new";
 }
 
+// Narrative Score 0–100: горячесть, охват, скорость распространения, свободный тикер, стадия. Одно число,
+// по которому видно, что сейчас самое живое; составные части показываем рядом.
+function scoreOf(n: NarrativeEntry, stage: string, now: number) {
+  const r = n.reach;
+  const heat = ((HEAT_RANK[n.heat] ?? 1) / 3) * 30;
+  const reach = r ? Math.min(25, (Math.log10(1 + r.views) / 6) * 25) : 0; // 1M просмотров — максимум
+  const hours = r ? Math.max(0.5, (now - r.firstPostAt) / HOUR) : 0;
+  const speedV = r ? r.views / hours : 0;
+  const speed = Math.min(20, (Math.log10(1 + speedV) / 5) * 20); // 100k просмотров в час — максимум
+  const fresh = n.clones === 0 ? 15 : n.clones !== null && n.clones <= 2 ? 8 : 0;
+  const life = stage === "peak" ? 10 : stage === "rising" ? 8 : stage === "new" ? 5 : 0;
+  return { score: Math.round(heat + reach + speed + fresh + life), speed: Math.round(speedV) };
+}
+
 const handleOf = (u?: string) => u?.match(/(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/status/)?.[1];
 
 // Публичная лента: нарративы со стадией, исходом и тем, кто заметил первым, плюс оценка самого радара.
@@ -167,9 +214,13 @@ export function narrativeFeed() {
   const launches = recentLaunches(200).launches;
   const items = list.slice(0, 60).map((n) => {
     const l = launches.find((x) => x.symbol.toUpperCase() === n.ticker && x.at >= n.at);
+    const stage = stageOf(n, now);
+    const sc = scoreOf(n, stage, now);
     return {
       ...n,
-      stage: stageOf(n, now),
+      score: sc.score,
+      speed: sc.speed,
+      stage,
       seen: n.sightings?.length ?? 1,
       firstBy: handleOf(n.posts[0]) ?? null,
       launched: l ? { mint: l.mint, symbol: l.symbol, verdict: l.verdict ?? null, score: l.score ?? null } : null,
@@ -190,6 +241,8 @@ export function narrativeFeed() {
     record: { graded: graded.length, wins: wins.length, winFdv: WIN_FDV },
   };
 }
+
+export const narrativeById = (id: string) => all().find((n) => n.id === id) ?? null;
 
 export function startNarrativeRadar() {
   const s = st();
