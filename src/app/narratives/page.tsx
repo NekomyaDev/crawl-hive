@@ -101,11 +101,10 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
           </div>
           <div className="truncate text-sm text-fg/80">{n.title}</div>
         </div>
-        <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold", heat.c)}>{heat.t}</span>
+        <span className={cn("shrink-0 rounded-full border border-current/40 px-2 py-0.5 text-[11px] font-semibold", STAGE[n.stage].c)}>{STAGE[n.stage].t}</span>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-        <span className={cn("font-semibold", STAGE[n.stage].c)}>{STAGE[n.stage].t}</span>
         <span className="text-muted">seen in {n.seen} hunt{n.seen > 1 ? "s" : ""}</span>
         {n.firstBy && (
           <a href={n.posts[0]} target="_blank" rel="noreferrer" className="text-sky hover:underline">
@@ -119,7 +118,7 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
 
       <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-line bg-bg/60 p-2.5">
         <div>
-          <div className="text-[10px] text-muted uppercase tracking-wider">Heat</div>
+          <div className="text-[10px] text-muted uppercase tracking-wider">Heat · {n.heat}</div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line/70">
             <div className="h-full rounded-full" style={{ width: `${heat.bar}%`, background: heat.color }} />
           </div>
@@ -193,7 +192,7 @@ export default function NarrativesPage() {
       ),
     [data, heat],
   );
-  const blips = items.slice(0, 18).map((n) => ({ id: n.id, label: `$${n.ticker}`, glyph: GLYPH[n.kind] ?? "✨", color: (HEAT[n.heat] ?? HEAT.early).color, r: STAGE[n.stage]?.r ?? 0.6 }));
+  const blips = items.slice(0, 18).map((n) => ({ id: n.id, label: `$${n.ticker}`, glyph: GLYPH[n.kind] ?? "✨", color: (HEAT[n.heat] ?? HEAT.early).color, r: (STAGE[n.stage]?.r ?? 0.6) + (3 - (HEAT_N[n.heat] ?? 1)) * 0.07 }));
   const pick = (id: string) => {
     setActive(id);
     document.getElementById(`n-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -204,7 +203,7 @@ export default function NarrativesPage() {
       <section className="mb-8 grid items-center gap-8 lg:grid-cols-[1.15fr_1fr]">
         <div>
           <LivePill tone="bg-violet">
-            {data?.enabled === false ? "Resting" : `Live · hunts X every ${data?.everyH ?? 3} hours`}
+            {data?.enabled === false ? "Resting" : `Live · hunts X ${(data?.everyH ?? 3) === 1 ? "every hour" : `every ${data?.everyH ?? 3} hours`}`}
             {data?.nextAt ? ` · next in ${inH(data.nextAt)}` : ""}
           </LivePill>
           <h1 className="mt-4 text-4xl leading-none font-bold tracking-tight lg:text-6xl">
