@@ -9,6 +9,7 @@ import { fetchChannel } from "./crawl/sources/telegram";
 import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
+import { traceSnipers, type SniperReport } from "./scan-snipers";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
@@ -50,6 +51,8 @@ export interface ScanResult {
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
   bundles?: BundleReport;
   dev?: DevReport;
+  snipers?: SniperReport; // кто купил в первых блоках и сколько держит сейчас
+  insiders?: { wallets: number; pct: number }; // топ-держатели, которых пополнил кошелёк создателя
   evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
   xray?: XRayView; // Contract X-Ray: рычаги владельца из байткода (EVM) или расширений Token-2022 (Solana)
   core?: string; // базовый актив сети (SOL, USDC…): мем-проверки к нему не применяются
@@ -349,6 +352,36 @@ export async function runScan(
         )
       : Promise.resolve(undefined);
 
+  // Снайперы: только молодые токены pump.fun и только сканы людей (радар и краулеры не тратят ленту pump.fun).
+  const snipersP: Promise<SniperReport | undefined> =
+    chain === "solana" && !core && address.endsWith("pump") && opts.record !== false
+      ? Promise.all([devP, marketP]).then(([d, m]) => {
+          const age = m?.pair.pairCreatedAt ? (Date.now() - m.pair.pairCreatedAt) / 3600_000 : undefined;
+          if (age !== undefined && age > 72) return undefined;
+          // У всех монет pump.fun эмиссия 1 млрд.
+          return withTimeout(traceSnipers(address, 1_000_000_000, d?.creator), 12_000)
+            .then((r) => {
+              if (!r) {
+                log({ crawler: "crawler_snipers", text: "too many trades to reach the first block", tone: "info" });
+                return undefined;
+              }
+              log({
+                crawler: "crawler_snipers",
+                text: r.wallets
+                  ? `${r.wallets} wallet${r.wallets > 1 ? "s" : ""} bought in the first ${r.slots + 1} blocks (${pct(r.boughtPct)}) · still hold ${pct(r.holdPct)}${r.sold ? ` · ${r.sold} sold out` : ""}`
+                  : "no one but the creator bought in the first blocks",
+                tone: r.holdPct >= 15 ? "bad" : r.holdPct >= 5 ? "warn" : "ok",
+              });
+              return r;
+            })
+            .catch((e) => {
+              console.error("[scan] snipers:", (e as Error).message);
+              log({ crawler: "crawler_snipers", text: "could not read the first buyers right now", tone: "warn" });
+              return undefined;
+            });
+        })
+      : Promise.resolve(undefined);
+
   const market = await marketP;
   const symbol = sym(market?.pair.baseToken.symbol);
 
@@ -438,7 +471,10 @@ export async function runScan(
     return found;
   });
 
-  const [holders, cloneInfo, telegram, bundles, dev, evm, xr, siteR] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP, xrayP, siteP]);
+  const [holders, cloneInfo, telegram, bundles, dev, evm, xr, siteR, snipers] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP, xrayP, siteP, snipersP]);
+  // Инсайдеры: топ-держатели, которым первый SOL прислал (или первую транзакцию оплатил) сам создатель.
+  const devLinks = dev ? (bundles?.links ?? []).filter((l) => l.funder === dev.creator && l.wallet !== dev.creator) : [];
+  const insiders = devLinks.length ? { wallets: devLinks.length, pct: Math.round(devLinks.reduce((x, l) => x + l.pct, 0) * 100) / 100 } : undefined;
   let xray = xr && "program" in xr ? xrayViewSol(xr) : xr ? xrayViewEvm(xr, !!evm?.owner) : undefined;
   if (siteR) {
     const siteView = { host: siteR.host, wallet: siteR.wallet, error: siteR.error, findings: siteR.findings.map((f) => ({ label: f.label, note: f.note, severity: f.severity, detail: f.evidence })) };
@@ -468,6 +504,10 @@ export async function runScan(
   // Пять и больше топ-кошельков под одним хозяином — бандл, даже если доля пока небольшая.
   if (cluster && (cluster.pct >= 10 || cluster.wallets >= 5)) hit("Bundled", -25, `${cluster.wallets} linked wallets hold ${pct(cluster.pct)}`);
   else if (cluster && (cluster.pct >= 4 || cluster.wallets >= 3)) hit("Linked wallets", -10, `${cluster.wallets} top wallets share a funder (${pct(cluster.pct)})`);
+  if (insiders && insiders.pct >= 5) hit("Dev-funded holders", -20, `${insiders.wallets} top wallet${insiders.wallets > 1 ? "s were" : " was"} funded by the creator and hold ${pct(insiders.pct)}`);
+  else if (insiders) hit("Dev-funded wallets", -10, `${insiders.wallets} top wallet${insiders.wallets > 1 ? "s were" : " was"} funded by the creator (${pct(insiders.pct)})`);
+  if (snipers && snipers.holdPct >= 15) hit("Snipers hold a lot", -15, `${snipers.wallets} first-block buyers still hold ${pct(snipers.holdPct)}`);
+  else if (snipers && snipers.holdPct >= 5) hit("Snipers", -5, `first-block buyers still hold ${pct(snipers.holdPct)}`);
   if (bundles && bundles.fresh.pct >= 15) hit("Fresh wallets", -10, `${bundles.fresh.wallets} wallets under 3 days old hold ${pct(bundles.fresh.pct)}`);
   if (dev) {
     const prior = dev.launched - 1;
@@ -501,7 +541,7 @@ export async function runScan(
   // Жёсткое правило по данным Track Record (13.10): молодые токены со связанными или свежими кошельками
   // в первые часы массово рушились на 60–98% при вердикте OK/CLEAN. Взвешенная сумма тут обманывает:
   // такой токен не выше RISKY, сколько бы баллов он ни набрал.
-  const YOUNG_RISK = ["Bundled", "Linked wallets", "Fresh dev wallet", "Fresh wallets", "Owner active", "Dev holds a lot"];
+  const YOUNG_RISK = ["Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Fresh dev wallet", "Fresh wallets", "Owner active", "Dev holds a lot"];
   const youngFlag = market?.ageHours !== undefined && market.ageHours < 24 ? factors.find((f) => YOUNG_RISK.includes(f.label)) : undefined;
   if (youngFlag && score >= 60) {
     hit("Young and linked", -(score - 59), `under a day old with "${youngFlag.label.toLowerCase()}": such launches often dump in the first hours`);
@@ -510,7 +550,7 @@ export async function runScan(
 
   // «Слишком рано» — только если явных красных флагов нет: связанные кошельки или серийного создателя видно
   // уже в первые минуты, и молчать о них нельзя.
-  const SERIOUS = ["Bundled", "Linked wallets", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
+  const SERIOUS = ["Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
   const tooEarly =
     !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !xray?.findings.some((f) => f.severity === "high") && !factors.some((f) => SERIOUS.includes(f.label));
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";
@@ -549,7 +589,9 @@ export async function runScan(
         }
       : undefined,
     holders: holders && { top1: holders.top1, top10: holders.top10, mintAuthority: holders.mintAuthority, freezeAuthority: holders.freezeAuthority },
-    bundles,
+    bundles: bundles && { ...bundles, links: undefined },
+    snipers,
+    insiders,
     dev,
     evm,
     xray,

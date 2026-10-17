@@ -16,6 +16,7 @@ export interface BundleReport {
   checked: number; // сколько кошельков удалось проследить
   clusters: { wallets: number; pct: number; funder: string }[];
   fresh: { wallets: number; pct: number }; // кошельки моложе 3 дней
+  links?: { wallet: string; funder: string; pct: number }[]; // кто кого пополнил первым — для поиска кошельков создателя
 }
 
 const EXCHANGE_SOL = 5_000; // спонсор с таким балансом — почти наверняка горячий кошелёк биржи
@@ -124,5 +125,6 @@ export async function traceBundles(conn: Connection, holders: HolderAccount[]): 
     .map(([root, ws]) => ({ wallets: ws.length, pct: ws.reduce((s, w) => s + (pctBy.get(w) ?? 0), 0), funder: root }))
     .sort((a, b) => b.pct - a.pct);
 
-  return { checked: traced.filter(Boolean).length, clusters, fresh };
+  const links = [...funderOf].map(([wallet, funder]) => ({ wallet, funder, pct: pctBy.get(wallet) ?? 0 }));
+  return { checked: traced.filter(Boolean).length, clusters, fresh, links };
 }

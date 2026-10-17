@@ -56,6 +56,8 @@ interface Result {
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
   bundles?: { checked: number; clusters: { wallets: number; pct: number; funder: string }[]; fresh: { wallets: number; pct: number } };
   dev?: { creator: string; launched: number; graduated: number; walletAgeHours?: number; walletTxs: number; holdsPct?: number };
+  snipers?: { wallets: number; boughtPct: number; holdPct: number; sold: number; slots: number };
+  insiders?: { wallets: number; pct: number };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   xray?: XRayView;
   core?: string;
@@ -411,6 +413,8 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
         )}
         {r.bundles && <BundleFlag b={r.bundles} />}
         {r.dev && <DevFlag d={r.dev} />}
+        {r.insiders && <Flag ok={false} label={`${r.insiders.wallets} dev-funded wallet${r.insiders.wallets > 1 ? "s" : ""} · ${r.insiders.pct.toFixed(1)}%`} />}
+        {r.snipers && (r.snipers.wallets ? <Flag ok={r.snipers.holdPct < 5} label={`${r.snipers.wallets} sniper${r.snipers.wallets > 1 ? "s" : ""} · hold ${r.snipers.holdPct.toFixed(1)}%${r.snipers.sold ? ` · ${r.snipers.sold} sold` : ""}`} /> : <Flag ok label="no snipers" />)}
         {r.evm && (
           <>
             {r.evm.honeypot !== undefined && <Flag ok={!r.evm.honeypot} label={r.evm.honeypot ? "honeypot: can't sell" : "sellable"} />}
