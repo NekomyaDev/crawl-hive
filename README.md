@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 17 | **Fourth buyback & burn**: 0.5 SOL → 1,719,136 $CRAWLHIVE bought, 1,667,562 burned ([tx](https://solscan.io/tx/z7cAhcHfPKa8jVoturZCGcpoqSQsV5sziWTci1FLbo4fZpgAXTiVUsJx4YvfcTxYx5bFG1fH2hRgbcANMrnNBdy)); 4.33M burned in total across 4 buybacks, 1.02 SOL spent |
 | Oct 17 | **Launch this narrative**: every Narrative Hunter signal (feed and Telegram) gets a button that opens [Clean Launch](https://crawlhive.xyz/launch) with the name, ticker and description filled in from the narrative, plus a link to the source post; the coin is still scanned at birth by the same rules |
 | Oct 16 | **Third buyback & burn**: 0.1 SOL → 489,478 $CRAWLHIVE bought, 474,794 burned ([tx](https://solscan.io/tx/5K5at3b1dYYdPVrFxxdSrzLY2TTvSv8tNpeATYDuszqqA4wFFLsHTcJZPBAnqwGmvnJpyuVqU7ckfhQZ9p1hP9Ar)); 2.67M burned in total, 0.27% of supply |
 | Oct 16 | **Narrative Hunter**: a ready-made X crawler that finds narratives starting to spread, verifies every post link with X's oEmbed (invented links drop out) and counts coins already launched on the ticker in 24h |
@@ -693,7 +694,7 @@ db/schema.sql                target Postgres schema
 - [x] Pay per call with x402 (USDC on Solana), Phantom checkout on /agents
 - [x] Onchain proof: Merkle root of every verdict and call written to Solana every 15 minutes
 - [x] A2A agent, official MCP Registry listing, OpenAPI and llms.txt
-- [x] DEX fund with a level ladder; second and third burns on Oct 16 (2.67M burned in total)
+- [x] DEX fund with a level ladder; four burns by Oct 17 (4.33M burned in total)
 - [x] Treasury revenue by source; x402 USDC goes into buyback & burn
 - [x] Clean Launch: launch a coin on pump.fun from CrawlHive, scanned at birth
 - [x] Narrative Hunter: X crawler for rising narratives with verified posts
