@@ -27,11 +27,13 @@
 <p align="center">
   <a href="https://crawlhive.xyz/track"><img alt="Track Record" src="https://img.shields.io/badge/🎯%20Track%20Record-hits%20and%20misses-b6f23a?style=for-the-badge&labelColor=0b0c0f"></a>
   <a href="https://crawlhive.xyz/radar"><img alt="Launch Radar" src="https://img.shields.io/badge/📡%20Launch%20Radar-live-5eead4?style=for-the-badge&labelColor=0b0c0f"></a>
+  <a href="https://crawlhive.xyz/narratives"><img alt="Narrative Radar" src="https://img.shields.io/badge/🔮%20Narrative%20Radar-free-c084fc?style=for-the-badge&labelColor=0b0c0f"></a>
+  <a href="https://crawlhive.xyz/launch"><img alt="Clean Launch" src="https://img.shields.io/badge/🚀%20Clean%20Launch-0%25%20fee-ff6b9d?style=for-the-badge&labelColor=0b0c0f"></a>
 </p>
 
 <p align="center">
-  <img src="docs/images/home-oct13.png" alt="The CrawlHive home page: Instant Crawl, the Telegram bot and live tiles for Launch Radar, Track Record, agents and Jev" width="100%">
-  <br><sub>The home page on Oct 13: paste any token, or scan it in Telegram; below, live tiles for Launch Radar, Track Record, AI agents and Jev.</sub>
+  <img src="docs/images/home-oct17.png" alt="The CrawlHive home page: Instant Crawl with recently scanned tokens, Clean Launch, Narrative Radar and Launch Radar in the menu" width="100%">
+  <br><sub>The home page on Oct 17: paste any token, or scan it in Telegram. Clean Launch, Launch Radar and Narrative Radar are one click away.</sub>
 </p>
 
 <p align="center"><b>$CRAWLHIVE</b> (Solana): <code>D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump</code><br><sub>The only official contract. The treasury buys it back and burns it every 12 hours: <a href="https://crawlhive.xyz/#treasury">crawlhive.xyz/#treasury</a> · <a href="https://pump.fun/coin/D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump">pump.fun</a> · <a href="https://dexscreener.com/solana/D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump">DexScreener</a></sub></p>
@@ -72,7 +74,13 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
-**Latest (Oct 13):**
+**Latest (Oct 17):**
+- 🔮 **Narrative Radar.** The platform runs its own Narrative Hunter, owned by nobody: every 3 hours Grok walks X for what just started spreading, every post is verified with X's oEmbed, and each narrative lands on [/narratives](https://crawlhive.xyz/narratives) for everyone, with its heat, how many coins already use the ticker and a **Launch this narrative** button. In the bot: `/narratives`.
+- 🚀 **Clean Launch + Launch this narrative.** Launch a coin on pump.fun right from CrawlHive (0% platform fee, the mint key is made in your browser, Phantom signs), and every coin is scanned by the swarm at birth by the same rules. Any narrative opens Clean Launch already filled in.
+- 📡 **New radar screens.** Launch Radar and Narrative Radar show a live radar with every find as a blip, plus cards with logos, FDV at scan, score, a copyable contract and filters.
+- 🔥 **4 buybacks & burns in 3 days.** 1.02 SOL from the treasury bought back and burned 4.33M $CRAWLHIVE; x402 USDC from AI agents joins the same cycle.
+
+**Oct 13:**
 - 🔥 **$CRAWLHIVE: buyback & burn, Crawler of the day.** The home page shows the token with a live chart. Every 12 hours (00:00 and 12:00 UTC) the treasury buys $CRAWLHIVE with what crawler spawns earned, and the bought tokens are burned in the same transaction; every burn is listed with its transaction. Half of the day's creator fees go to the owner of the best crawler of the day, if they hold $CRAWLHIVE.
 - 🩻 **Contract X-Ray: we reverse engineer every token.** On BNB Chain and Robinhood Chain the scanner reads the deployed bytecode, even when the source is not published, traces which functions write what with evmole (the EVM engine of the REA reverse-engineering toolkit), and lists what the team can still do to holders: mint, blacklist wallets, change the tax, stop trading, cap sells, upgrade the contract through a proxy. On Solana it reads Token-2022 extensions: permanent delegate, transfer hook, transfer tax, frozen-by-default, pausable. The project website is checked for wallet-drainer code. Every power counts against the score, and AI agents get the same X-Ray through MCP.
 - 🔐 **Security audit.** Several agents went through the whole codebase in parallel, every finding was verified by hand, and more than a dozen issues were fixed: SSRF-safe fetching for docs targets, a ReDoS fix, real client IPs in limits, domain-bound wallet sign-in with logout everywhere, OAuth hardening, a verdict floor against prompt injection, a separate AI budget for anonymous Telegram scans, and a non-root container. Details in [Trust & safety](#trust--safety).
@@ -193,6 +201,10 @@ Don't want to write a specification? The marketplace has nine crawlers with sour
 
 **Narrative Radar** ([/narratives](https://crawlhive.xyz/narratives)). The same hunt, run by the platform itself instead of a user's crawler: every `NARR_RADAR_HOURS` (3 by default) it searches X for Solana-friendly narratives, keeps the last 120 with a 12-hour ticker dedup, and shows them to everyone without delay. Each card has the heat (early, rising, hot), the kind, the verified posts, how many coins already launched on the ticker in 24 hours and a **Launch this narrative** button; once a coin with that ticker is launched through Clean Launch, the card links to it with its scan verdict. The bot answers `/narratives` with the latest finds. `NARR_RADAR_OFF=1` turns it off. Code: `src/lib/server/narrative-radar.ts`, `src/app/narratives/page.tsx`.
 
+<p align="center">
+  <img src="docs/images/narrative-radar.png" alt="Narrative Radar: the platform's own hunter, narratives on a radar screen with heat, coin count on the ticker and a Launch this narrative button" width="100%">
+</p>
+
 ## Your crawler, your rules
 
 Every crawler you spawn gets a **specification**: what it should look for, written in plain language, plus filters and a scoring rule. An AI (Grok) reads every new post, message, token or page through those rules and only sends you what fits.
@@ -232,7 +244,7 @@ What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRA
 - Config: `TOKEN_MINT` / `TOKEN_SYMBOL` turn on the token block, buybacks and the holder check. Code: `src/lib/server/buyback-tx.ts`, `buyback.ts`, `src/components/token-panel.tsx`, `buyback-burn.tsx`.
 
 <p align="center">
-  <img src="docs/images/token-buyback.png" alt="The token block: live chart, buyback & burn with a 12-hour countdown" width="100%">
+  <img src="docs/images/token-buyback.png" alt="Buyback & burn: 12-hour countdown, last buyback, total burned and treasury revenue by source" width="100%">
 </p>
 
 ### DEX fund
@@ -268,7 +280,11 @@ Each finding becomes a scored factor (for example *Can mint* −25, *Permanent d
 
 **Track Record** ([/track](https://crawlhive.xyz/track)) answers the only question that matters about a scanner: did the verdict come true? Every verdict is stored with the price and liquidity at the moment of the scan, whether it came from a user scan, a crawler's safety check, Launch Radar or an agent through MCP. For the next 24 hours the price is sampled every 10 minutes. A token counts as **dumped** when its low falls 50% below the scan price, and as **rugged** when its liquidity drops below 20% of the start or the pair disappears. One token counts once per day, and a real verdict replaces an earlier `TOO_EARLY`. The page splits the outcome by verdict, lists the DANGER calls that came true (*We warned you*) and the CLEAN / OK calls that dumped anyway (*We missed*), and shows the hit rate of crawler signals without revealing their tickers.
 
-**Launch Radar** ([/radar](https://crawlhive.xyz/radar)) is the swarm scanning on its own. Every 3 minutes it takes new DexScreener profiles and boosts on Solana, Robinhood Chain and BNB Chain, keeps launches between 36 minutes and 24 hours old with at least $5k liquidity, and runs the full Instant Crawl scan on up to four of them (no X search, so no Grok cost; 500 scans a day at most). Everyone sees the verdicts 10 minutes later; crawler owners get finds like these the second they appear, filtered to their own rules.
+**Launch Radar** ([/radar](https://crawlhive.xyz/radar)) is the swarm scanning on its own. Every 3 minutes it takes new DexScreener profiles and boosts on Solana, Robinhood Chain and BNB Chain, keeps launches between 36 minutes and 24 hours old with at least $5k liquidity, and runs the full Instant Crawl scan on up to four of them (no X search, so no Grok cost; 500 scans a day at most). Everyone sees the verdicts 10 minutes later; crawler owners get finds like these the second they appear, filtered to their own rules. The page shows a live radar screen (rotating sweep, one blip per launch, newest at the center, tap a blip to jump to its card) and cards with the token logo, FDV and liquidity at scan, score and verdict, a copyable contract, chain and verdict filters.
+
+<p align="center">
+  <img src="docs/images/launch-radar.png" alt="Launch Radar: live radar screen with every scanned launch as a blip, and cards with FDV at scan, score, verdict and contract" width="100%">
+</p>
 
 ### Onchain proof: a track record that can't be edited
 

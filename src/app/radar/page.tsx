@@ -134,7 +134,7 @@ export default function RadarPage() {
   const d = data?.day;
   const vf = VERDICTS.find((v) => v[0] === verdict)![2];
   const items = useMemo(() => (data?.items ?? []).filter((e) => (chain === "all" || e.chain === chain) && vf(e.verdict)), [data, chain, vf]);
-  const blips = items.slice(0, 16).map((e) => ({ id: e.id, label: `$${e.symbol}`, img: e.img, glyph: e.symbol.slice(0, 1).toUpperCase(), color: COLOR[e.verdict] ?? "var(--muted)", r: Math.min(1, (e.ageH ?? 12) / 24) }));
+  const blips = items.slice(0, 16).map((e, i) => ({ id: e.id, label: `$${e.symbol}`, img: e.img, glyph: e.symbol.slice(0, 1).toUpperCase(), color: COLOR[e.verdict] ?? "var(--muted)", r: 0.05 + (i / Math.max(1, Math.min(16, items.length) - 1)) * 0.95 }));
   const pick = (id: string) => {
     setActive(id);
     document.getElementById(`r-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });

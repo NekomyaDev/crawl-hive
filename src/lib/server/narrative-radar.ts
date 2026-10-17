@@ -4,7 +4,7 @@
 import "server-only";
 import { getMeta, setMeta } from "./store";
 import { grokEnabled } from "./crawl/grok";
-import { huntNarratives, type Narrative } from "./crawl/sources/narratives";
+import { SHILL_RE, huntNarratives, type Narrative } from "./crawl/sources/narratives";
 import { recentLaunches } from "./launch";
 
 const KEY = "narrRadar";
@@ -31,7 +31,8 @@ const read = <T>(k: string, d: T): T => {
     return d;
   }
 };
-const all = () => read<NarrativeEntry[]>(KEY, []);
+// Записи до появления фильтра саморекламы тоже проходят через него.
+const all = () => read<NarrativeEntry[]>(KEY, []).filter((n) => !SHILL_RE.test(`${n.title} ${n.why}`));
 
 const g = globalThis as unknown as { __crawlhiveNarr?: { started: boolean; busy: boolean } };
 const st = () => (g.__crawlhiveNarr ??= { started: false, busy: false });

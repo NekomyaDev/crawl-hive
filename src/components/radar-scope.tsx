@@ -19,7 +19,7 @@ function angleOf(id: string) {
   return ((h >>> 0) % 3600) / 10;
 }
 
-export function RadarScope({ blips, active, onPick, tone = "var(--lime)", center }: { blips: Blip[]; active?: string | null; onPick?: (id: string) => void; tone?: string; center?: string }) {
+export function RadarScope({ blips, active, onPick, tone = "var(--lime)", center, labels = 6 }: { blips: Blip[]; active?: string | null; onPick?: (id: string) => void; tone?: string; center?: string; labels?: number }) {
   return (
     <div className="relative mx-auto aspect-square w-full max-w-[420px] select-none">
       <div
@@ -36,7 +36,7 @@ export function RadarScope({ blips, active, onPick, tone = "var(--lime)", center
       <div className="absolute top-1/2 left-1/2 grid size-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 text-base" style={{ borderColor: tone, background: "var(--bg)", boxShadow: `0 0 18px ${tone}` }}>
         {center ?? "🐙"}
       </div>
-      {blips.map((b) => {
+      {blips.map((b, i) => {
         const a = (angleOf(b.id) * Math.PI) / 180;
         const r = 12 + Math.min(1, Math.max(0, b.r)) * 34; // в процентах от стороны
         const on = active === b.id;
@@ -56,7 +56,7 @@ export function RadarScope({ blips, active, onPick, tone = "var(--lime)", center
                 <img src={b.img} alt="" className="absolute inset-0 size-full object-cover" onError={(e) => ((e.currentTarget.style.display = "none"))} />
               )}
             </span>
-            <span className={cn("num absolute top-full left-1/2 mt-0.5 -translate-x-1/2 rounded bg-bg/90 px-1 text-[10px] whitespace-nowrap", on ? "text-fg" : "text-muted group-hover:text-fg")}>{b.label}</span>
+            <span className={cn("num absolute top-full left-1/2 mt-0.5 -translate-x-1/2 rounded bg-bg/90 px-1 text-[10px] whitespace-nowrap", on ? "text-fg" : "text-muted group-hover:text-fg", !on && i >= labels && "hidden group-hover:block")}>{b.label}</span>
           </button>
         );
       })}

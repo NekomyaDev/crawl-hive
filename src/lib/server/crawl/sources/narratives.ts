@@ -9,7 +9,7 @@ import { specBrief } from "../analyze";
 import type { SourceResult } from "./types";
 
 const DEDUP_MS = 12 * 3600_000;
-const SHILL_RE = /\b(launchpad|airdrop|presale|whitelist|stealth launch|fair launch|CA:|contract address)\b/i;
+export const SHILL_RE = /\b(launchpad|airdrop|presale|whitelist|stealth launch|fair launch|CA:|contract address)\b/i;
 const HEAT_CONF: Record<string, number> = { early: 0.55, rising: 0.7, hot: 0.85 };
 
 const RULES = `Reply with JSON only, no prose:
