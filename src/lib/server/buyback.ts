@@ -207,7 +207,13 @@ export async function buybackStats() {
     last: l.items.find((x) => x.kind === "buyback") ?? null,
     items: l.items,
     nextAt: nextBuybackAt(),
+    paused: buybackPaused(),
   };
+}
+
+// Пауза байбеков (BUYBACK_PAUSED=dex): казна копит на профиль DexScreener, отсчёт и напоминания выключены.
+export function buybackPaused(): string | null {
+  return process.env.BUYBACK_PAUSED?.trim() || null;
 }
 
 // Откуда деньги казны, по источникам: спавны и продления (SOL), вызовы агентов по x402 (USDC), сбор на DEX (SOL).

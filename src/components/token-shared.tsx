@@ -59,6 +59,7 @@ export interface BuybackStats {
   last: BuybackRecord | null;
   items: BuybackRecord[];
   nextAt: number;
+  paused?: string | null;
   owner?: { leftover: number; creatorFees: { sol: number; creator: string } | null };
 }
 

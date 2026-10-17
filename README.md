@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 17 | **Burns paused for the DEX profile**: with `BUYBACK_PAUSED` set, the site swaps the buyback countdown for a paused notice, the bot's `/token` says why, and the buyback reminder stays quiet; treasury SOL goes to the DexScreener profile, then burns resume |
 | Oct 17 | **DEX fund back to the profile**: the third party who paid for the profile moved the payment to another token and DexScreener deleted the profile, so the fund is raising for Enhanced Token Info ($299) again before any boosts |
 | Oct 17 | **Fourth buyback & burn**: 0.5 SOL → 1,719,136 $CRAWLHIVE bought, 1,667,562 burned ([tx](https://solscan.io/tx/z7cAhcHfPKa8jVoturZCGcpoqSQsV5sziWTci1FLbo4fZpgAXTiVUsJx4YvfcTxYx5bFG1fH2hRgbcANMrnNBdy)); 4.33M burned in total across 4 buybacks, 1.02 SOL spent |
 | Oct 17 | **Launch this narrative**: every Narrative Hunter signal (feed and Telegram) gets a button that opens [Clean Launch](https://crawlhive.xyz/launch) with the name, ticker and description filled in from the narrative, plus a link to the source post; the coin is still scanned at birth by the same rules |

@@ -683,7 +683,9 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
         `🔥 <b>$${TOKEN.symbol}</b> · Solana`,
         `<code>${TOKEN.mint}</code>`,
         m?.marketCap ? `Market cap $${fmtUsd(m.marketCap)}${m.change24h != null ? ` · ${m.change24h > 0 ? "+" : ""}${Math.round(m.change24h)}% 24h` : ""}` : "",
-        `Buyback &amp; burn every 12 hours from the treasury${done ? ` · ${done} done, ${Math.round(b!.burned).toLocaleString("en-US")} burned` : ""}.`,
+        b?.paused
+          ? `Buybacks are paused: the treasury is paying for the DexScreener profile first${done ? ` · ${done} done so far, ${Math.round(b.burned).toLocaleString("en-US")} burned` : ""}.`
+          : `Buyback &amp; burn every 12 hours from the treasury${done ? ` · ${done} done, ${Math.round(b!.burned).toLocaleString("en-US")} burned` : ""}.`,
       ].filter(Boolean).join("\n"),
       [
         [{ text: `🔥 Buy $${TOKEN.symbol}`, url: TOKEN.buy }, { text: "📈 Chart", url: TOKEN.chart }],
@@ -747,8 +749,8 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
 // Напоминание команде: каждые 12 часов (00:00 и 12:00 UTC) — пора выкупить и сжечь токен на деньги казны.
 // Один раз на окно; без адреса токена молчим.
 export async function buybackReminder() {
-  const { tokenConfig, nextBuybackAt, treasurySol } = await import("./buyback");
-  if (!tokenConfig().mint) return;
+  const { tokenConfig, nextBuybackAt, treasurySol, buybackPaused } = await import("./buyback");
+  if (!tokenConfig().mint || buybackPaused()) return;
   const slot = nextBuybackAt() - 12 * 3600_000; // начало текущего окна
   if (Date.now() - slot > 30 * 60_000 || getMeta("buybackRemind") === String(slot)) return;
   setMeta("buybackRemind", String(slot));

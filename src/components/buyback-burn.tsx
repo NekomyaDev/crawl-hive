@@ -265,7 +265,8 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
   const symbol = token?.symbol ?? "CRAWLHIVE";
   const last = stats?.last ?? null;
   // Плановое окно наступило, а байбека с его начала ещё не было.
-  const due = !!stats?.configured && nextAt !== null && (!last || last.at < nextAt - HALF_DAY);
+  const paused = !!stats?.paused;
+  const due = !paused && !!stats?.configured && nextAt !== null && (!last || last.at < nextAt - HALF_DAY);
   const isOwner = !!stats && address === stats.treasury;
   const list = stats?.items ?? [];
 
@@ -277,20 +278,34 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
           <h3 className="flex items-center gap-2 text-xl font-bold tracking-tight">
             <Flame className="size-5 text-honey" /> buyback & burn
           </h3>
-          <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">every 12 hours</span>
+          <span className={cn("rounded-full border px-2 py-0.5 text-[11px]", paused ? "border-honey/60 text-honey" : "border-line text-muted")}>{paused ? "paused" : "every 12 hours"}</span>
         </div>
 
-        <div className="mt-4">
-          <Label>Next buyback</Label>
-          <div className="mt-1.5">
-            <FlipDigits value={clock} />
+        {paused ? (
+          <div className="mt-4 rounded-xl border-2 border-honey/50 bg-honey/[0.07] px-4 py-3">
+            <div className="text-lg font-bold text-honey">⏸ Burns paused</div>
+            <p className="mt-1 text-sm text-fg/85">
+              The person who paid for the ${symbol} DexScreener profile moved that payment to another token, and the profile was deleted. Until a new one is live, every SOL the treasury earns goes to the DexScreener profile. Burns resume right after.
+            </p>
+            <a href="#dexfund" className="dex-cta mt-2 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-honey to-pink px-3 py-1 text-xs font-extrabold text-black">
+              🚀 Help fund the profile
+            </a>
           </div>
-          <div className="num mt-1.5 text-xs text-muted">{nextAt !== null ? utc(nextAt) : "\u00a0"}</div>
-        </div>
+        ) : (
+          <>
+            <div className="mt-4">
+              <Label>Next buyback</Label>
+              <div className="mt-1.5">
+                <FlipDigits value={clock} />
+              </div>
+              <div className="num mt-1.5 text-xs text-muted">{nextAt !== null ? utc(nextAt) : "\u00a0"}</div>
+            </div>
 
-        <p className="mt-4 text-sm text-fg/80">
-          Every 12 hours everything the treasury earned buys ${symbol} on the market: SOL from crawler spawns and USDC from AI agents paying per scan over x402. The bought tokens are burned in the same transaction. The supply only goes down.
-        </p>
+            <p className="mt-4 text-sm text-fg/80">
+              Every 12 hours everything the treasury earned buys ${symbol} on the market: SOL from crawler spawns and USDC from AI agents paying per scan over x402. The bought tokens are burned in the same transaction. The supply only goes down.
+            </p>
+          </>
+        )}
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <div className="rounded-xl border border-line bg-bg/60 px-3 py-2.5">
