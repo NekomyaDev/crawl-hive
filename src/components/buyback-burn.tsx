@@ -1,16 +1,14 @@
 "use client";
-// «buyback & burn · crawler rewards»: таймер байбека раз в 12 часов со статистикой сжиганий и «Crawler of the day».
-// Кнопки владельца видит только подписанный кошелёк казны (выплату — ещё и CREATOR_WALLET); сервер проверяет то же самое.
+// «buyback & burn»: таймер байбека раз в 12 часов со статистикой сжиганий, выручкой казны и сбором на DEX.
+// Кнопки владельца видит только подписанный кошелёк казны; сервер проверяет то же самое.
 import { useEffect, useState } from "react";
 import { DexFund } from "@/components/dex-fund";
-import { ArrowUpRight, ChevronDown, ExternalLink, Flame, Loader2, Trophy } from "lucide-react";
-import { BOT_URL } from "@/components/telegram-cta";
+import { ChevronDown, ExternalLink, Flame, Loader2 } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { CopyButton, solscanAccount, solscanTx, tokFmt, type BuybackStats, type TokenInfo } from "@/components/token-shared";
 import { solFmt } from "@/components/treasury-card";
-import { useApi } from "@/lib/client/use-api";
 import { runOwnerTx, type OwnerStep } from "@/lib/client/owner-tx";
 import { post } from "@/lib/client/api";
 import { cn, short } from "@/lib/utils";
@@ -19,7 +17,6 @@ const HALF_DAY = 12 * 3600_000;
 const STEP_LABEL: Record<OwnerStep, string> = { prepare: "Building the route…", sign: "Confirm in Phantom…", confirm: "Verifying onchain…" };
 
 const utc = (ts: number) => new Date(ts).toISOString().replace("T", " ").slice(0, 16) + " UTC";
-const utcDay = (ts: number) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 // Часы только на клиенте: при пререндере времени нет (null), иначе Next ругается и разметка не совпадёт.
 function useNow(ms = 1000) {
@@ -389,186 +386,13 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
   );
 }
 
-// ---------- Crawler of the day ----------
-
-interface BoardRow {
-  crawlerId: string;
-  name: string;
-  owner: string;
-  points: number;
-  hits: number;
-  signals: number;
-  hitRate: number;
-  eligible: boolean | null;
-}
-interface DaySnapshot {
-  day: string;
-  winner: BoardRow | null;
-  top: BoardRow[];
-  decidedAt: number;
-  paid?: { sol: number; tx: string; at: number; by: string };
-}
-interface Rewards {
-  board: { day: string; endsAt: number; preview: boolean; minHold: number; top: BoardRow[]; crawlers: number };
-  last: DaySnapshot | null;
-  yesterday: DaySnapshot | null;
-  history: DaySnapshot[];
-  payers: string[];
-  creatorFees?: { sol: number; creator: string } | null;
-}
-
-const STEPS = [
-  { n: "01", title: "Spawn", text: "Spawn a crawler and point it at your sources." },
-  { n: "02", title: "Get scored", text: "Every signal is checked against the real price after it fires. The day closes at 00:00 UTC." },
-  { n: "03", title: "Win", text: "The crawler with the best hits of the day wins, if its owner holds $CRAWLHIVE. A rug call costs points." },
-];
-
-function PayWinner({ snap, fees, reload }: { snap: DaySnapshot; fees?: { sol: number } | null; reload: () => void }) {
-  const toast = useToast();
-  const [amount, setAmount] = useState("");
-  const [step, setStep] = useState<OwnerStep | null>(null);
-  const pay = async () => {
-    try {
-      await runOwnerTx<{ transaction: string }, DaySnapshot>("/api/rewards/build", { day: snap.day, amountSol: Number(amount) }, "/api/rewards/confirm", { day: snap.day }, (s) => setStep(s));
-      toast(`Paid ${amount} SOL to ${short(snap.winner!.owner)}`);
-      setAmount("");
-      reload();
-    } catch (e) {
-      toast((e as Error).message, "error");
-    } finally {
-      setStep(null);
-    }
-  };
-  return (
-    <div className="mt-4 rounded-xl border border-lime/40 bg-lime/[0.05] p-3">
-      <div className="mb-2 text-xs font-semibold text-lime">
-        Owner · pay the winner of {utcDay(Date.parse(`${snap.day}T00:00:00Z`))}
-      </div>
-      <div className="flex gap-2">
-        <div className="flex min-w-0 flex-1 items-center rounded-lg border border-line bg-bg px-3">
-          <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(",", "."))} placeholder="50% of the day's fees" className="num h-9 w-full min-w-0 bg-transparent text-sm outline-none" aria-label="Reward in SOL" />
-          <span className="text-xs text-muted">SOL</span>
-        </div>
-        <Button disabled={step !== null || !(Number(amount) > 0)} onClick={pay}>
-          {step ? <Loader2 className="size-4 animate-spin" /> : <Trophy className="size-4" />}
-          {step ? STEP_LABEL[step] : "Pay winner"}
-        </Button>
-      </div>
-      {fees && (
-        <div className="num mt-2 text-[11px] text-muted">
-          Unclaimed pump.fun creator fees: {solFmt(fees.sol)} SOL (the creator vault, shared by all coins of that creator). Half: {solFmt(fees.sol / 2)} SOL.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CrawlerOfDay() {
-  const { address, signedIn } = useWallet();
-  const { data: r, reload } = useApi<Rewards>(`/api/rewards?v=${signedIn ? address : ""}`, 60_000);
-  const last = r?.last ?? null;
-  const unpaid = [r?.yesterday, last].find((s) => s?.winner && !s.paid) ?? null;
-  const isPayer = !!r && signedIn && r.payers.includes(address);
-  const firstCrown = r ? r.board.endsAt : null;
-  return (
-    <div className="relative flex flex-col overflow-hidden rounded-2xl border border-line bg-panel p-5 lg:p-6">
-      <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-16 size-64 rounded-full bg-gradient-to-tr from-lime/15 via-teal/10 to-transparent blur-3xl" />
-      <div className="relative">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2 text-xl font-bold tracking-tight">
-            <Trophy className="size-5 text-lime" /> Crawler of the day
-          </h3>
-          <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">$CRAWLHIVE holders</span>
-        </div>
-
-        <div className="mt-4 flex items-end gap-3">
-          <span className="num bg-gradient-to-br from-lime to-teal bg-clip-text text-6xl leading-none font-bold text-transparent">50%</span>
-          <span className="pb-1 text-sm text-fg/80">of the day&apos;s creator fees go to the owner of the best crawler</span>
-        </div>
-
-        <ol className="mt-4 grid gap-2 sm:grid-cols-3">
-          {STEPS.map((s) => (
-            <li key={s.n} className="rounded-xl border border-line bg-bg/60 px-3 py-2.5">
-              <div className="num text-xs text-lime">{s.n}</div>
-              <div className="text-sm font-semibold">{s.title}</div>
-              <div className="mt-0.5 text-xs text-muted">{s.text}</div>
-            </li>
-          ))}
-        </ol>
-
-        <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between">
-            <Label>Today&apos;s top 3{r?.board.preview ? " · preview" : ""}</Label>
-            <span className="num text-[11px] text-muted">{r ? `closes ${utc(r.board.endsAt).slice(11)}` : ""}</span>
-          </div>
-          {r && r.board.top.length > 0 ? (
-            <ul className="divide-y divide-line rounded-xl border border-line bg-bg/40">
-              {r.board.top.map((row, i) => (
-                <li key={row.crawlerId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className={cn("num w-4 shrink-0 text-xs", i === 0 ? "text-lime" : "text-muted")}>{i + 1}</span>
-                    <span className="truncate font-medium">{row.name}</span>
-                    <span className="num shrink-0 text-xs text-muted">{short(row.owner)}</span>
-                  </span>
-                  <span className="num shrink-0 text-xs">
-                    <span className={cn("font-semibold", row.points > 0 ? "text-lime" : row.points < 0 ? "text-danger" : "text-muted")}>{row.points} pts</span>
-                    <span className="text-muted"> · {Math.round(row.hitRate * 100)}%</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="rounded-xl border border-dashed border-line px-3 py-3 text-sm text-muted">No signals scored today yet. The first 2x call takes the lead.</div>
-          )}
-          {r?.board.preview && <div className="mt-1 text-[11px] text-muted">Preview: the holder check turns on when $CRAWLHIVE is live.</div>}
-        </div>
-
-        <div className="mt-3 rounded-xl border border-line bg-bg/60 px-3 py-2.5">
-          <Label>Last winner</Label>
-          {last?.winner ? (
-            <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="min-w-0 truncate">
-                <span className="font-semibold">{last.winner.name}</span> <span className="num text-xs text-muted">{short(last.winner.owner)} · {last.winner.points} pts · {utcDay(Date.parse(`${last.day}T00:00:00Z`))}</span>
-              </span>
-              {last.paid ? (
-                <a href={solscanTx(last.paid.tx)} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 text-xs text-lime hover:underline">
-                  paid {solFmt(last.paid.sol)} SOL <ExternalLink className="size-3" />
-                </a>
-              ) : (
-                <span className="text-xs text-muted">payout pending</span>
-              )}
-            </div>
-          ) : (
-            <div className="mt-0.5 text-sm text-muted">{firstCrown ? `The first winner is crowned on ${utcDay(firstCrown)}, 00:00 UTC.` : "…"}</div>
-          )}
-        </div>
-
-        {isPayer && unpaid && <PayWinner snap={unpaid} fees={r?.creatorFees} reload={reload} />}
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <a href="/track" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-sm hover:border-lime/60 hover:text-lime">
-            Full details <ArrowUpRight className="size-3.5" />
-          </a>
-          <a href={BOT_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-sm hover:border-lime/60 hover:text-lime">
-            Open @crawlhivebot <ArrowUpRight className="size-3.5" />
-          </a>
-        </div>
-        <p className="mt-3 text-[11px] text-muted">Not financial advice. Rewards are paid manually by the project and can change.</p>
-      </div>
-    </div>
-  );
-}
-
 export function BuybackBurn({ token, stats, reload }: { token: TokenInfo | null; stats: BuybackStats | null; reload: () => void }) {
   return (
     <div className="mt-8">
       <h2 className="mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
-        buyback & burn <span className="text-muted">·</span> <span className="text-gradient">crawler rewards</span>
+        buyback <span className="text-muted">&</span> <span className="text-gradient">burn</span>
       </h2>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <BuybackCard token={token} stats={stats} reload={reload} />
-        <CrawlerOfDay />
-      </div>
+      <BuybackCard token={token} stats={stats} reload={reload} />
       <DexFund />
     </div>
   );

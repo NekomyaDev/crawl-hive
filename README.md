@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 17 | **Crawler of the day retired**: the home page token block now shows buyback & burn and the DEX fund only |
 | Oct 17 | **New radar screens**: [Launch Radar](https://crawlhive.xyz/radar) and [Narrative Radar](https://crawlhive.xyz/narratives) show a live radar (rotating sweep, one blip per find, tap to jump to the card), cards with token logos, FDV at scan, score, copyable contract, chain and verdict filters; Clean Launch and Narrative Radar tiles on the home page and in the marketplace |
 | Oct 17 | **Narrative Radar** ([/narratives](https://crawlhive.xyz/narratives)): the platform's own Narrative Hunter, owned by nobody; every 3 hours it hunts X, verifies every post with oEmbed and shows each narrative to everyone with its heat, the coin count on the ticker and a Launch this narrative button; coins later launched on CrawlHive under that ticker show up on the card; `/narratives` in the bot |
 | Oct 17 | **DEX fund back to the profile**: the third party who paid for the profile moved the payment to another token and DexScreener deleted the profile, so the fund is raising for Enhanced Token Info ($299) again before any boosts |
@@ -223,16 +224,15 @@ Signals are **yours alone**. They land in *My Signals* with links to the source 
 
 What each source reads and how signals are scored: [`docs/CRAWLERS.md`](docs/CRAWLERS.md).
 
-### $CRAWLHIVE: buyback & burn and Crawler of the day
+### $CRAWLHIVE: buyback & burn
 
 - **Buyback & burn.** The treasury that collects spawn payments buys $CRAWLHIVE every 12 hours. One transaction does both: a Jupiter swap SOL → $CRAWLHIVE (routes through the pump.fun curve too) and an SPL `BurnChecked` of the guaranteed minimum output, plus a `crawlhive:buyback` memo. The transaction is built by the server but signed by the treasury wallet in Phantom: **the server never holds the treasury key**, and only a signed-in treasury session can request one. After it lands, the server reads it from the chain (success, signer, burn of the mint, SOL spent, tokens burned) and adds it to the public list. Leftover dust above the minimum can be burned with one more click. The team gets a Telegram reminder when each 12-hour window opens.
 - **x402 revenue goes into burns too.** AI agents pay for scans in USDC straight to the treasury's USDC account; spawns and renewals pay in SOL with their own memos, so the sources never mix onchain. The buyback card shows revenue by source (spawns, x402 calls, DEX fund) with a Solscan link for every x402 settlement. In the same 12-hour cycle the treasury can buy back with USDC: a Jupiter swap USDC → $CRAWLHIVE plus `BurnChecked` and a `crawlhive:buyback:x402` memo, recorded with the USDC spent as its own line.
-- **Crawler of the day.** Every UTC day the crawlers are ranked by how their token signals played out: a peak of 2x or more earns its multiple in points, a dump of 50% costs a point. The winner's owner must hold $CRAWLHIVE (`REWARD_MIN_HOLD`). Half of the day's creator fees are paid to them in SOL, again signed in Phantom and verified on-chain (`crawlhive:reward:<day>` memo), and shown as the last winner.
 - Contract: `D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump` (Token-2022, launched on pump.fun). In Telegram `/token` (or `/ca`) shows it with buy and chart buttons.
-- Config: `TOKEN_MINT` / `TOKEN_SYMBOL` turn on the token block, buybacks and the holder check; `REWARD_MIN_HOLD`, `CREATOR_WALLET` configure rewards. Code: `src/lib/server/buyback-tx.ts`, `buyback.ts`, `rewards.ts`, `src/components/token-panel.tsx`, `buyback-burn.tsx`.
+- Config: `TOKEN_MINT` / `TOKEN_SYMBOL` turn on the token block, buybacks and the holder check. Code: `src/lib/server/buyback-tx.ts`, `buyback.ts`, `src/components/token-panel.tsx`, `buyback-burn.tsx`.
 
 <p align="center">
-  <img src="docs/images/token-buyback.png" alt="The token block: live chart, buyback & burn with a 12-hour countdown, Crawler of the day" width="100%">
+  <img src="docs/images/token-buyback.png" alt="The token block: live chart, buyback & burn with a 12-hour countdown" width="100%">
 </p>
 
 ### DEX fund
@@ -608,7 +608,6 @@ XAI_API_KEY=...                                # enables X crawlers and AI readi
 # TELEGRAM_ADMIN_IDS=123456  TELEGRAM_ADMIN_USERNAMES=name  # who can open /admin
 # JEV_PUBLIC_DAILY=600                         # Jev budget for anonymous Telegram scans
 # TOKEN_MINT=...  TOKEN_SYMBOL=CRAWLHIVE         # project token: home block, buyback & burn, reward holder check
-# REWARD_MIN_HOLD=1  CREATOR_WALLET=...          # Crawler of the day settings
 # SESSION_SECRET=...                           # optional, otherwise generated and stored in .data/
 # X402_PAY_TO=...                              # Solana address that receives USDC for x402 calls; unset = x402 off
 # X402_PRICE_SCAN=0.01  X402_PRICE_SCAN_X=0.05 # USD per call: scan, scan + X check

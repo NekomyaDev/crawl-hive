@@ -1,6 +1,6 @@
 "use client";
 // Токен проекта на главной: живой график GeckoTerminal, карточка «CRAWLHIVE has a token» со статистикой
-// сжиганий, строка с адресом контракта, ниже — байбек раз в 12 часов и «Crawler of the day», под ними фонд казны.
+// сжиганий, строка с адресом контракта, ниже — байбек раз в 12 часов, под ним фонд казны.
 // Пока TOKEN_MINT не задан, показываем «launching» без выдуманных цифр и адресов.
 import { ArrowUpRight, ExternalLink, Flame, LineChart, Rocket } from "lucide-react";
 import { BotOcto } from "@/components/bot-octo";
