@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
-import { ExternalLink, Lock, Radio } from "lucide-react";
+import { ExternalLink, Lock, Radio, Rocket } from "lucide-react";
 import { SOURCE_META, cn, timeAgo } from "@/lib/utils";
 import { SIGNAL_KIND_LABEL } from "@/lib/spec";
 import type { Signal } from "@/lib/types";
 import { BotOcto } from "@/components/bot-octo";
+import { launchHref } from "@/lib/narrative";
 
 // Исход сигнала: ждём проверки цены, попал, не попал, или оценить нельзя (нет токена).
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n}%`;
@@ -83,6 +84,20 @@ function BotTakeLine({ s }: { s: Signal }) {
   );
 }
 
+// Сигнал Narrative Hunter → Clean Launch с уже заполненными названием, тикером и описанием.
+function LaunchNarrative({ s }: { s: Signal }) {
+  const href = launchHref(s);
+  if (!href) return null;
+  return (
+    <Link
+      href={href}
+      className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-honey via-coral to-pink px-2.5 py-1 text-[12px] font-bold text-black hover:opacity-90"
+    >
+      <Rocket className="size-3.5" /> Launch this narrative
+    </Link>
+  );
+}
+
 function hostOf(u: string) {
   try {
     return new URL(u).hostname.replace(/^www\./, "");
@@ -130,6 +145,7 @@ export function SignalFeed({ signals, max = 30, showCrawler = true }: { signals:
           )}
           {s.safety && !s.redacted && !s.bot && <SafetyLine s={s} />}
           {s.bot && !s.redacted && <BotTakeLine s={s} />}
+          {!s.redacted && <LaunchNarrative s={s} />}
           <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
             {showCrawler ? (
               <Link href={`/crawler/${s.crawlerId}`} className="hover:text-honey">

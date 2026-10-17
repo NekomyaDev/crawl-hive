@@ -42,6 +42,8 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 17 | **Launch this narrative**: every Narrative Hunter signal (feed and Telegram) gets a button that opens [Clean Launch](https://crawlhive.xyz/launch) with the name, ticker and description filled in from the narrative, plus a link to the source post; the coin is still scanned at birth by the same rules |
+| Oct 16 | **Third buyback & burn**: 0.1 SOL → 489,478 $CRAWLHIVE bought, 474,794 burned ([tx](https://solscan.io/tx/5K5at3b1dYYdPVrFxxdSrzLY2TTvSv8tNpeATYDuszqqA4wFFLsHTcJZPBAnqwGmvnJpyuVqU7ckfhQZ9p1hP9Ar)); 2.67M burned in total, 0.27% of supply |
 | Oct 16 | **Narrative Hunter**: a ready-made X crawler that finds narratives starting to spread, verifies every post link with X's oEmbed (invented links drop out) and counts coins already launched on the ticker in 24h |
 | Oct 16 | **Clean Launch** ([/launch](https://crawlhive.xyz/launch)): launch a coin on pump.fun from CrawlHive with an optional dev buy; the mint key is made in the browser, Phantom signs, the server sends only a byte-for-byte match, 0% platform fee; every coin is scanned at birth by the same rules and lands on the Track Record |
 | Oct 16 | **x402 revenue → burns**: treasury revenue by source on the home page (spawns in SOL, AI-agent x402 calls in USDC, DEX fund), every x402 settlement linked to Solscan; x402 USDC now goes into the same 12-hour buyback & burn, recorded as its own line |
@@ -182,7 +184,7 @@ Don't want to write a specification? The marketplace has nine crawlers with sour
   <img src="docs/images/marketplace-templates.png" alt="Marketplace with ready-made crawlers" width="100%">
 </p>
 
-**Narrative Hunter** (new). An X crawler in narrative mode: turn on the `narrative` signal kind and, instead of looking for token calls, Grok searches X for what started spreading in the last 6 hours (memes, viral animals, AI launches, internet moments; tragedies, politics and self-promoting projects are skipped). Every post link Grok returns is checked with X's public oEmbed: an invented post (404) is dropped, a real one gets its real author, and a narrative with no real post never becomes a signal. Each signal also says how many coins with that ticker launched on DexScreener in the last 24 hours, so a fresh narrative and a squeezed one look different. Narratives carry no token, so they are not price-scored. Code: `src/lib/server/crawl/sources/narratives.ts`.
+**Narrative Hunter** (new). An X crawler in narrative mode: turn on the `narrative` signal kind and, instead of looking for token calls, Grok searches X for what started spreading in the last 6 hours (memes, viral animals, AI launches, internet moments; tragedies, politics and self-promoting projects are skipped). Every post link Grok returns is checked with X's public oEmbed: an invented post (404) is dropped, a real one gets its real author, and a narrative with no real post never becomes a signal. Each signal also says how many coins with that ticker launched on DexScreener in the last 24 hours, so a fresh narrative and a squeezed one look different. Narratives carry no token, so they are not price-scored. Every narrative signal, in the feed and in Telegram, has a **Launch this narrative** button that opens Clean Launch with the name, ticker and description already filled in (`src/lib/narrative.ts`). Code: `src/lib/server/crawl/sources/narratives.ts`.
 
 ## Your crawler, your rules
 
@@ -691,10 +693,11 @@ db/schema.sql                target Postgres schema
 - [x] Pay per call with x402 (USDC on Solana), Phantom checkout on /agents
 - [x] Onchain proof: Merkle root of every verdict and call written to Solana every 15 minutes
 - [x] A2A agent, official MCP Registry listing, OpenAPI and llms.txt
-- [x] DEX fund with a level ladder; second burn on Oct 16 (2.19M burned in total)
+- [x] DEX fund with a level ladder; second and third burns on Oct 16 (2.67M burned in total)
 - [x] Treasury revenue by source; x402 USDC goes into buyback & burn
 - [x] Clean Launch: launch a coin on pump.fun from CrawlHive, scanned at birth
 - [x] Narrative Hunter: X crawler for rising narratives with verified posts
+- [x] Launch this narrative: one click from a narrative signal to a prefilled Clean Launch
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks

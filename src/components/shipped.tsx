@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 17", title: "Launch this narrative", text: "Every Narrative Hunter signal now has a Launch this narrative button, on the site and in Telegram. It opens Clean Launch with the name, ticker and description already filled in from the narrative and a link to the source post: add a picture and launch. The swarm scans the coin at birth like any other." },
+  { date: "Oct 16", title: "Third buyback & burn", text: "0.1 SOL from the treasury bought 489,478 $CRAWLHIVE and 474,794 was burned. Three burns in two days: 2.67M burned in total, 0.27% of supply." },
   { date: "Oct 16", title: "Narrative Hunter", text: "A new ready-made crawler: every 3 hours Grok walks X for narratives that started spreading, every post link is verified with X's oEmbed so invented ones drop out, and each narrative shows how many coins with that ticker already launched in 24 hours." },
   { date: "Oct 16", title: "Clean Launch", text: "Launch a coin on pump.fun right from CrawlHive, with an optional dev buy. The mint key is made in your browser, Phantom signs, 0% platform fee. The swarm scans every coin at birth by the same rules as any other and puts the verdict on the Track Record." },
   { date: "Oct 16", title: "x402 revenue → burns", text: "The treasury now shows revenue by source: SOL from crawler spawns, USDC from AI agents paying per scan over x402, and the DEX fund, with a Solscan link for every x402 settlement. x402 USDC joins the 12-hour buyback cycle as its own line: swapped to $CRAWLHIVE and burned." },

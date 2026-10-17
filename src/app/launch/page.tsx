@@ -2,8 +2,8 @@
 // Лаунчпад: запуск монеты на pump.fun с сайта. Ключ минта рождается здесь, в браузере; сервер кладёт картинку
 // в IPFS и собирает транзакцию, Phantom подписывает, сервер отправляет без изменений. Сразу после запуска рой
 // сканирует монету по тем же правилам, что и любую другую.
-import { useRef, useState } from "react";
-import { ExternalLink, ImagePlus, Loader2, Rocket, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ExternalLink, ImagePlus, Loader2, Rocket, ShieldCheck, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { phantom } from "@/components/wallet-provider";
@@ -53,6 +53,18 @@ export default function LaunchPage() {
   const [image, setImage] = useState<string>("");
   const [step, setStep] = useState<Step | null>(null);
   const [done, setDone] = useState<{ mint: string; signature: string; symbol: string } | null>(null);
+  const [from, setFrom] = useState<string | null>(null);
+  // Пришли с сигнала Narrative Hunter: название, тикер и описание уже заполнены, остаётся картинка.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const name = q.get("name")?.slice(0, 32);
+    const symbol = q.get("symbol")?.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+    const description = q.get("description")?.slice(0, 500);
+    if (!name && !symbol && !description) return;
+    setF((x) => ({ ...x, name: name ?? x.name, symbol: symbol ?? x.symbol, description: description ?? x.description }));
+    const src = q.get("from");
+    setFrom(src && /^https:\/\/(x|twitter)\.com\//.test(src) ? src : "");
+  }, []);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
 
   const pick = (file?: File) => {
@@ -123,6 +135,19 @@ export default function LaunchPage() {
         <Card>
           <CardHeader title="Your coin" sub="0% platform fee · you pay only pump.fun and the network" />
           <div className="space-y-3 p-4">
+            {from !== null && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-honey/40 bg-honey/[0.07] px-3 py-2 text-[13px]">
+                <Sparkles className="size-4 shrink-0 text-honey" />
+                <span>
+                  Filled in from a <b>Narrative Hunter</b> signal. Add a picture, check the text, launch.
+                </span>
+                {from && (
+                  <a href={from} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky hover:underline">
+                    source post <ExternalLink className="size-3" />
+                  </a>
+                )}
+              </div>
+            )}
             <div className="flex gap-3">
               <button
                 type="button"

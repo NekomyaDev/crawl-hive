@@ -8,6 +8,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import type { Signal } from "../types";
 import { SIGNAL_KIND_LABEL } from "../spec";
+import { launchHref } from "../narrative";
 import { expiringCrawlers, getMeta, metaEntries, onLiveSignal, setMeta } from "./store";
 
 const API = process.env.TELEGRAM_API_URL?.trim() || "https://api.telegram.org"; // подмена — только для тестов
@@ -127,11 +128,12 @@ function signalMessage(sig: Signal) {
     sig.outcome?.status === "pending" && sig.outcome.checkAt
       ? `\nScored ${Math.round((sig.outcome.checkAt - sig.ts) / 60_000)} min from now against the price.`
       : "";
+  const launch = launchHref(sig, siteUrl());
   return [
     head,
     `${ticker}${esc(sig.text)}${ca}`,
     `confidence ${Math.round(sig.confidence * 100)}%${links ? ` · ${links}` : ""}${scoring}`,
-    `<a href="${siteUrl()}/crawler/${sig.crawlerId}">Open in CrawlHive</a>`,
+    `<a href="${siteUrl()}/crawler/${sig.crawlerId}">Open in CrawlHive</a>${launch ? ` · <a href="${esc(launch)}">🚀 Launch this narrative</a>` : ""}`,
   ].join("\n");
 }
 
