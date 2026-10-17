@@ -7,7 +7,7 @@ import { evmLaunchInfo, prepareEvmLaunch } from "@/lib/server/launch-evm";
 const MAX = 3_000_000;
 
 export async function GET(req: NextRequest) {
-  return handle(() => evmLaunchInfo((req.nextUrl.searchParams.get("chain") ?? "robinhood") as "robinhood"));
+  return handle(() => evmLaunchInfo((req.nextUrl.searchParams.get("chain") ?? "robinhood") as "robinhood" | "bsc"));
 }
 
 export async function POST(req: Request) {

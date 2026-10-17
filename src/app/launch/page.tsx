@@ -34,11 +34,11 @@ interface Recent {
 
 type Step = "ipfs" | "sign" | "send" | "live";
 const STEP_LABEL: Record<Step, string> = { ipfs: "Storing the picture on IPFS…", sign: "Confirm in your wallet…", send: "Launching…", live: "Live" };
-type Net = "solana" | "robinhood";
+type Net = "solana" | "robinhood" | "bsc";
 const NETS: { id: Net | "bsc"; t: string; pad: string; soon?: boolean }[] = [
   { id: "solana", t: "Solana", pad: "pump.fun" },
   { id: "robinhood", t: "Robinhood Chain", pad: "Pons" },
-  { id: "bsc", t: "BNB Chain", pad: "four.meme", soon: true },
+  { id: "bsc", t: "BNB Chain", pad: "four.meme" },
 ];
 const RH_CHAIN = {
   chainId: "0x1237",
@@ -46,6 +46,10 @@ const RH_CHAIN = {
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
   blockExplorerUrls: ["https://robin.etherscan.io"],
+};
+const EVM_CHAINS = {
+  robinhood: RH_CHAIN,
+  bsc: { chainId: "0x38", chainName: "BNB Smart Chain", nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 }, rpcUrls: ["https://bsc-dataseed.binance.org"], blockExplorerUrls: ["https://bscscan.com"] },
 };
 const CHAIN_BADGE: Record<string, string> = { solana: "SOL", robinhood: "RH", bsc: "BNB" };
 const VERDICT_CLS: Record<string, string> = {
@@ -73,6 +77,8 @@ export default function LaunchPage() {
   const [net, setNet] = useState<Net>("solana");
   const [tax, setTax] = useState(0);
   const { data: rh } = useApi<{ enabled: boolean; feeEth: number | null }>("/api/launch/evm?chain=robinhood", 60_000);
+  const { data: bnb } = useApi<{ enabled: boolean; feeEth: number | null; maxDevBuy: number }>("/api/launch/evm?chain=bsc", 60_000);
+  const [devBnb, setDevBnb] = useState("");
   const [nid, setNid] = useState("");
   const [imgNote, setImgNote] = useState("");
   const [drawing, setDrawing] = useState(false);
@@ -169,22 +175,34 @@ export default function LaunchPage() {
     }
   };
 
-  // Robinhood Chain (Pons): сервер собирает вызов фабрики, кошелёк (MetaMask, Rabby) отправляет его сам.
-  const launchEvm = async () => {
+  // EVM-сети. Robinhood Chain (Pons): сервер собирает вызов фабрики. BNB Chain (four.meme): сначала подпись текста
+  // входа (не транзакция), сервер входит ею, загружает картинку и собирает createToken. Отправляет всегда кошелёк.
+  const launchEvm = async (chain: "robinhood" | "bsc") => {
     const p = evmProvider();
     if (!p) return toast("Open the site in a browser with MetaMask or Rabby", "error");
     if (!image) return toast("Add a picture for the coin", "error");
+    const net = EVM_CHAINS[chain];
     setDone(null);
     try {
       const [from] = (await p.request({ method: "eth_requestAccounts" })) as string[];
       try {
-        await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: RH_CHAIN.chainId }] });
+        await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: net.chainId }] });
       } catch (e) {
         if ((e as { code?: number }).code === 4001) throw new Error("You cancelled in your wallet. Nothing was sent.");
-        await p.request({ method: "wallet_addEthereumChain", params: [RH_CHAIN] });
+        await p.request({ method: "wallet_addEthereumChain", params: [net] });
+      }
+      let loginSignature: string | undefined;
+      if (chain === "bsc") {
+        const { message } = await post<{ message: string }>("/api/launch/evm/nonce", { address: from });
+        setStep("sign");
+        try {
+          loginSignature = (await p.request({ method: "personal_sign", params: [message, from] })) as string;
+        } catch {
+          throw new Error("You cancelled the four.meme sign-in. Nothing was sent.");
+        }
       }
       setStep("ipfs");
-      const prep = await post<{ id: string; tx: { to: string; data: string; value: string } }>("/api/launch/evm", { ...f, image, chain: "robinhood", creator: from, taxBps: tax });
+      const prep = await post<{ id: string; tx: { to: string; data: string; value: string } }>("/api/launch/evm", { ...f, image, chain, creator: from, taxBps: tax, loginSignature, devBuy: chain === "bsc" ? devBnb : undefined });
       setStep("sign");
       let hash: string;
       try {
@@ -200,8 +218,8 @@ export default function LaunchPage() {
       }
       if (r.status !== "live") throw new Error(r.status === "failed" ? "The launch failed onchain. Nothing was created." : r.status === "pending" ? `Still confirming. Check the transaction in a minute: ${hash}` : r.status);
       setStep("live");
-      setDone({ mint: r.mint, signature: hash, symbol: f.symbol.replace(/^\$/, "").toUpperCase(), chain: "robinhood" });
-      toast(`$${f.symbol.replace(/^\$/, "").toUpperCase()} is live on Robinhood Chain 🐙`);
+      setDone({ mint: r.mint, signature: hash, symbol: f.symbol.replace(/^\$/, "").toUpperCase(), chain });
+      toast(`$${f.symbol.replace(/^\$/, "").toUpperCase()} is live on ${net.chainName} 🐙`);
       reload();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -211,7 +229,7 @@ export default function LaunchPage() {
   };
 
   const busy = step !== null && step !== "live";
-  const off = net === "solana" ? data && !data.enabled : rh && !rh.enabled;
+  const off = net === "solana" ? data && !data.enabled : net === "robinhood" ? rh && !rh.enabled : bnb && !bnb.enabled;
 
   return (
     <>
@@ -222,12 +240,12 @@ export default function LaunchPage() {
             Clean Launch
           </>
         }
-        sub="Launch a coin on pump.fun (Solana) or Pons (Robinhood Chain) right from CrawlHive. The moment it is live, the swarm scans it by the same rules as every other coin: no special treatment, and the verdict goes on the public Track Record."
+        sub="Launch a coin on pump.fun (Solana), Pons (Robinhood Chain) or four.meme (BNB Chain) right from CrawlHive. The moment it is live, the swarm scans it by the same rules as every other coin: no special treatment, and the verdict goes on the public Track Record."
       />
 
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
         <Card>
-          <CardHeader title="Your coin" sub={`0% platform fee · you pay only ${net === "solana" ? "pump.fun" : "Pons"} and the network`} />
+          <CardHeader title="Your coin" sub={`0% platform fee · you pay only ${net === "solana" ? "pump.fun" : net === "robinhood" ? "Pons" : "four.meme"} and the network`} />
           <div className="space-y-3 p-4">
             {from !== null && (
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-honey/40 bg-honey/[0.07] px-3 py-2 text-[13px]">
@@ -292,7 +310,18 @@ export default function LaunchPage() {
               <input className={FIELD} placeholder="https://x.com/…" value={f.twitter} onChange={set("twitter")} />
               <input className={FIELD} placeholder="https://t.me/…" value={f.telegram} onChange={set("telegram")} />
             </div>
-            {net === "robinhood" ? (
+            {net === "bsc" ? (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-muted" htmlFor="devbnb">
+                  Dev buy
+                </label>
+                <div className="flex items-center rounded-lg border border-line bg-bg px-3">
+                  <input id="devbnb" inputMode="decimal" className="num h-9 w-20 bg-transparent text-sm outline-none" placeholder="0" value={devBnb} onChange={(e) => setDevBnb(e.target.value.replace(",", "."))} />
+                  <span className="text-xs text-muted">BNB</span>
+                </div>
+                <span className="text-xs text-muted">optional, up to {bnb?.maxDevBuy ?? 1} BNB, in the same transaction</span>
+              </div>
+            ) : net === "robinhood" ? (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm text-muted">Creator fee on trades</span>
                 {[0, 100, 200].map((b) => (
@@ -317,16 +346,18 @@ export default function LaunchPage() {
             <button
               type="button"
               disabled={busy || !!off}
-              onClick={net === "solana" ? launch : launchEvm}
+              onClick={net === "solana" ? launch : () => launchEvm(net)}
               className="dex-cta flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-honey via-coral to-pink text-lg font-extrabold text-black disabled:opacity-60"
             >
               {busy ? <Loader2 className="size-5 animate-spin" /> : <Rocket className="size-5" />}
-              {off ? "Launches are paused" : busy ? STEP_LABEL[step!] : net === "solana" ? "Launch on pump.fun" : "Launch on Robinhood Chain"}
+              {off ? "Launches are paused" : busy ? STEP_LABEL[step!] : net === "solana" ? "Launch on pump.fun" : net === "robinhood" ? "Launch on Robinhood Chain" : "Launch on four.meme"}
             </button>
             <p className="text-[11px] text-muted">
               {net === "solana"
                 ? "A launch costs about 0.03 SOL in pump.fun and network fees, plus your dev buy."
-                : `A launch costs ${rh?.feeEth ?? 0.0005} ETH to Pons plus network gas, paid from MetaMask or Rabby.`}{" "}
+                : net === "robinhood"
+                  ? `A launch costs ${rh?.feeEth ?? 0.0005} ETH to Pons plus network gas, paid from MetaMask or Rabby.`
+                  : `four.meme charges ${bnb?.feeEth ?? 0} BNB to launch, plus gas and your dev buy. You sign a four.meme login message first (free), then the launch.`}{" "}
               Launching a coin does not make it a good investment.
             </p>
           </div>
@@ -343,10 +374,10 @@ export default function LaunchPage() {
                   <a href={`/scan/${done.mint}`} className="rounded-lg border border-honey/60 px-3 py-1.5 text-honey hover:bg-honey/10">
                     Swarm scan
                   </a>
-                  <a href={done.chain === "solana" ? `https://pump.fun/coin/${done.mint}` : `https://dexscreener.com/robinhood/${done.mint}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
-                    {done.chain === "solana" ? "pump.fun" : "DexScreener"} <ExternalLink className="size-3" />
+                  <a href={done.chain === "solana" ? `https://pump.fun/coin/${done.mint}` : done.chain === "bsc" ? `https://four.meme/token/${done.mint}` : `https://dexscreener.com/robinhood/${done.mint}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
+                    {done.chain === "solana" ? "pump.fun" : done.chain === "bsc" ? "four.meme" : "DexScreener"} <ExternalLink className="size-3" />
                   </a>
-                  <a href={done.chain === "solana" ? `https://solscan.io/tx/${done.signature}` : `https://robin.etherscan.io/tx/${done.signature}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
+                  <a href={done.chain === "solana" ? `https://solscan.io/tx/${done.signature}` : done.chain === "bsc" ? `https://bscscan.com/tx/${done.signature}` : `https://robin.etherscan.io/tx/${done.signature}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
                     {done.chain === "solana" ? "Solscan" : "Explorer"} <ExternalLink className="size-3" />
                   </a>
                 </div>
@@ -371,7 +402,7 @@ export default function LaunchPage() {
                 </>
               ) : (
                 <>
-                  <li>• <b>Your wallet calls the Pons factory itself.</b> We only build the call; MetaMask or Rabby shows it and sends it.</li>
+                  <li>• <b>Your wallet calls the {net === "robinhood" ? "Pons factory" : "four.meme contract"} itself.</b> We only build the call; MetaMask or Rabby shows it and sends it.{net === "bsc" ? " The four.meme sign-in is a free message signature, not a transaction, and we never keep its session." : ""}</li>
                   <li>• <b>You are the creator.</b> The creator fee, if you set one, goes to your wallet. We check the receipt is exactly the call we built.</li>
                 </>
               )}
