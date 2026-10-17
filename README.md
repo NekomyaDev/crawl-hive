@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 17 | **Narrative Radar** ([/narratives](https://crawlhive.xyz/narratives)): the platform's own Narrative Hunter, owned by nobody; every 3 hours it hunts X, verifies every post with oEmbed and shows each narrative to everyone with its heat, the coin count on the ticker and a Launch this narrative button; coins later launched on CrawlHive under that ticker show up on the card; `/narratives` in the bot |
 | Oct 17 | **DEX fund back to the profile**: the third party who paid for the profile moved the payment to another token and DexScreener deleted the profile, so the fund is raising for Enhanced Token Info ($299) again before any boosts |
 | Oct 17 | **Fourth buyback & burn**: 0.5 SOL → 1,719,136 $CRAWLHIVE bought, 1,667,562 burned ([tx](https://solscan.io/tx/z7cAhcHfPKa8jVoturZCGcpoqSQsV5sziWTci1FLbo4fZpgAXTiVUsJx4YvfcTxYx5bFG1fH2hRgbcANMrnNBdy)); 4.33M burned in total across 4 buybacks, 1.02 SOL spent |
 | Oct 17 | **Launch this narrative**: every Narrative Hunter signal (feed and Telegram) gets a button that opens [Clean Launch](https://crawlhive.xyz/launch) with the name, ticker and description filled in from the narrative, plus a link to the source post; the coin is still scanned at birth by the same rules |
@@ -187,6 +188,8 @@ Don't want to write a specification? The marketplace has nine crawlers with sour
 </p>
 
 **Narrative Hunter** (new). An X crawler in narrative mode: turn on the `narrative` signal kind and, instead of looking for token calls, Grok searches X for what started spreading in the last 6 hours (memes, viral animals, AI launches, internet moments; tragedies, politics and self-promoting projects are skipped). Every post link Grok returns is checked with X's public oEmbed: an invented post (404) is dropped, a real one gets its real author, and a narrative with no real post never becomes a signal. Each signal also says how many coins with that ticker launched on DexScreener in the last 24 hours, so a fresh narrative and a squeezed one look different. Narratives carry no token, so they are not price-scored. Every narrative signal, in the feed and in Telegram, has a **Launch this narrative** button that opens Clean Launch with the name, ticker and description already filled in (`src/lib/narrative.ts`). Code: `src/lib/server/crawl/sources/narratives.ts`.
+
+**Narrative Radar** ([/narratives](https://crawlhive.xyz/narratives)). The same hunt, run by the platform itself instead of a user's crawler: every `NARR_RADAR_HOURS` (3 by default) it searches X for Solana-friendly narratives, keeps the last 120 with a 12-hour ticker dedup, and shows them to everyone without delay. Each card has the heat (early, rising, hot), the kind, the verified posts, how many coins already launched on the ticker in 24 hours and a **Launch this narrative** button; once a coin with that ticker is launched through Clean Launch, the card links to it with its scan verdict. The bot answers `/narratives` with the latest finds. `NARR_RADAR_OFF=1` turns it off. Code: `src/lib/server/narrative-radar.ts`, `src/app/narratives/page.tsx`.
 
 ## Your crawler, your rules
 
@@ -700,6 +703,7 @@ db/schema.sql                target Postgres schema
 - [x] Clean Launch: launch a coin on pump.fun from CrawlHive, scanned at birth
 - [x] Narrative Hunter: X crawler for rising narratives with verified posts
 - [x] Launch this narrative: one click from a narrative signal to a prefilled Clean Launch
+- [x] Narrative Radar: the platform's own narrative hunter, public for everyone
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
 - [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks

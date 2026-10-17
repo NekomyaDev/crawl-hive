@@ -23,7 +23,11 @@ function fitName(t: string) {
 
 export function launchHref(s: Pick<Signal, "kind" | "text" | "ticker" | "urls">, base = "") {
   const n = narrativeOf(s);
-  if (!n) return null;
+  return n ? launchHrefFor(n, base) : null;
+}
+
+// Тот же адрес из готовых полей нарратива (Narrative Radar хранит их по отдельности).
+export function launchHrefFor(n: { title: string; ticker: string; why: string; post?: string }, base = "") {
   const q = new URLSearchParams({ name: fitName(n.title), symbol: n.ticker.slice(0, 10), description: n.why.slice(0, 500) });
   if (n.post) q.set("from", n.post);
   return `${base}/launch?${q}`;

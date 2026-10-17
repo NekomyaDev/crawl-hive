@@ -106,6 +106,7 @@ function init(): State {
   setTimeout(() => import("./telegram").then((m) => m.startTelegram()).catch((e) => console.error(e)), 1500);
   setTimeout(() => import("./radar").then((m) => m.startRadar()).catch((e) => console.error(e)), 2000);
   setTimeout(() => import("./proof").then((m) => m.startProof()).catch((e) => console.error(e)), 2500);
+  setTimeout(() => import("./narrative-radar").then((m) => m.startNarrativeRadar()).catch((e) => console.error(e)), 3000);
 
   return {
     crawlers,

@@ -260,6 +260,7 @@ export function startTelegram() {
     commands: [
       { command: "start", description: "Check a token: send an address, link or $TICKER" },
       { command: "token", description: "$CRAWLHIVE: contract, buy, buybacks" },
+      { command: "narratives", description: "Narrative Radar: what is starting to spread on X" },
       { command: "support", description: "Write to the CrawlHive team" },
     ],
   }).catch(() => {});

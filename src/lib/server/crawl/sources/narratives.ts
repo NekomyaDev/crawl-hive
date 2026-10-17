@@ -51,13 +51,26 @@ async function clones(chain: string, ticker: string): Promise<number | null> {
   }
 }
 
-export async function crawlNarratives(job: LiveJob): Promise<SourceResult> {
+export interface Narrative {
+  title: string;
+  why: string;
+  ticker: string;
+  heat: string;
+  kind: string;
+  conf: number;
+  posts: string[];
+  clones: number | null;
+}
+
+// Одна охота: Grok ищет в X, ссылки проверяются oEmbed, по каждому тикеру считаются клоны. Общая для
+// краулеров пользователей и для Narrative Radar платформы. Возвращает и обновлённый словарь «уже видели».
+export async function huntNarratives(opts: { brief: string; targets: string[]; chain: string; seen: Record<string, number> }) {
   const since = Date.now() - 6 * 3600_000;
   const { text, citations } = await grok({
     system: `You are a CrawlHive crawler hunting X for narratives a memecoin could form around right now.\n${RULES}`,
     user: [
-      specBrief(job),
-      job.targets.length ? `Look around these topics first: ${job.targets.join(" | ")}.` : "",
+      opts.brief,
+      opts.targets.length ? `Look around these topics first: ${opts.targets.join(" | ")}.` : "",
       `Search X for what started spreading after ${new Date(since).toISOString()}: new memes and catchphrases, viral animals, new AI models or products, funny tech or internet moments, crypto culture jokes. Prefer things rising now over things that peaked days ago.`,
     ]
       .filter(Boolean)
@@ -71,17 +84,11 @@ export async function crawlNarratives(job: LiveJob): Promise<SourceResult> {
     parsed = {};
   }
   const cited = new Set(citations.map(idOf).filter(Boolean));
-  const seen: Record<string, number> = (() => {
-    try {
-      return JSON.parse(job.cursor.seenNarr ?? "{}");
-    } catch {
-      return {};
-    }
-  })();
+  const seen = { ...opts.seen };
   const now = Date.now();
   for (const [k, t] of Object.entries(seen)) if (now - t > DEDUP_MS) delete seen[k];
 
-  const signals: LiveSignalInput[] = [];
+  const found: Narrative[] = [];
   let dropped = 0;
   for (const n of (parsed.narratives ?? []).slice(0, 6)) {
     const ticker = tickerOf(n.ticker);
@@ -98,19 +105,38 @@ export async function crawlNarratives(job: LiveJob): Promise<SourceResult> {
       dropped++;
       continue;
     }
-    const conf = HEAT_CONF[String(n.heat)] ?? 0.55;
-    if (conf < job.spec.minConfidence) continue;
-    const c = await clones(job.chain, ticker);
-    const heat = String(n.heat ?? "early");
-    const cloneNote = c === null ? "" : c === 0 ? " No coin with this ticker launched in the last 24h." : ` ${c} coin${c === 1 ? "" : "s"} with this ticker launched in the last 24h.`;
-    seen[ticker] = now;
-    signals.push({
-      kind: "narrative",
+    const heat = ["early", "rising", "hot"].includes(String(n.heat)) ? String(n.heat) : "early";
+    found.push({
+      title,
+      why: String(n.why ?? "").trim().slice(0, 220),
       ticker,
-      text: `${title} (${heat}): ${String(n.why ?? "").trim().slice(0, 220)}${cloneNote}`,
-      confidence: conf,
-      urls: [...new Set(posts)],
+      heat,
+      kind: String(n.kind ?? "other").slice(0, 12),
+      conf: HEAT_CONF[heat],
+      posts: [...new Set(posts)],
+      clones: await clones(opts.chain, ticker),
     });
   }
-  return { items: citations.length, signals, cursor: { seenNarr: JSON.stringify(seen), lastSeenAt: String(now) }, filtered: dropped };
+  return { found, seen, dropped, items: citations.length };
+}
+
+export async function crawlNarratives(job: LiveJob): Promise<SourceResult> {
+  const seen0: Record<string, number> = (() => {
+    try {
+      return JSON.parse(job.cursor.seenNarr ?? "{}");
+    } catch {
+      return {};
+    }
+  })();
+  const { found, seen, dropped, items } = await huntNarratives({ brief: specBrief(job), targets: job.targets, chain: job.chain, seen: seen0 });
+  const now = Date.now();
+  const signals: LiveSignalInput[] = [];
+  for (const n of found) {
+    if (n.conf < job.spec.minConfidence) continue;
+    const c = n.clones;
+    const cloneNote = c === null ? "" : c === 0 ? " No coin with this ticker launched in the last 24h." : ` ${c} coin${c === 1 ? "" : "s"} with this ticker launched in the last 24h.`;
+    seen[n.ticker] = now;
+    signals.push({ kind: "narrative", ticker: n.ticker, text: `${n.title} (${n.heat}): ${n.why}${cloneNote}`, confidence: n.conf, urls: n.posts });
+  }
+  return { items, signals, cursor: { seenNarr: JSON.stringify(seen), lastSeenAt: String(now) }, filtered: dropped };
 }

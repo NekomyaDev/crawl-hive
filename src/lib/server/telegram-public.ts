@@ -505,6 +505,25 @@ async function radarMessage(chat: string) {
   );
 }
 
+async function narrativesMessage(chat: string) {
+  const { narrativeFeed } = await import("./narrative-radar");
+  const { launchHrefFor } = await import("../narrative");
+  const f = narrativeFeed();
+  if (!f.items.length) return send(chat, "Narrative Radar has nothing to show yet. The first hunt lands in a few minutes.");
+  const HEAT: Record<string, string> = { hot: "🔥", rising: "📈", early: "🌱" };
+  send(
+    chat,
+    [
+      `🔮 <b>Narrative Radar</b> · what the platform's hunter found on X`,
+      ...f.items.slice(0, 6).map(
+        (n) =>
+          `${HEAT[n.heat] ?? "🌱"} <b>${esc(n.title)}</b> · $${esc(n.ticker)}\n${esc(n.why)}${n.clones === 0 ? "\n✓ no coin on this ticker yet" : ""}\n${n.launched ? `🚀 launched: <a href="${siteUrl()}/scan/${n.launched.mint}">$${esc(n.launched.symbol)}</a>` : `<a href="${esc(launchHrefFor({ title: n.title, ticker: n.ticker, why: n.why, post: n.posts[0] }, siteUrl()))}">🚀 Launch this narrative</a>`}`,
+      ),
+    ].join("\n\n"),
+    [[{ text: "🔮 Open Narrative Radar", url: `${siteUrl()}/narratives` }]],
+  );
+}
+
 async function trackMessage(chat: string) {
   const { trackStats } = await import("./track");
   const t = trackStats();
@@ -654,6 +673,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
 
   if (cmd === "/scan") return arg ? doScan(chat, scanQuery(arg) ?? arg) : send(chat, "Send /scan followed by a token address, link or $TICKER.");
   if (cmd === "/radar") return radarMessage(chat);
+  if (cmd === "/narratives") return narrativesMessage(chat);
   if (cmd === "/track") return trackMessage(chat);
   if (group) {
     if (cmd === "/autoscan") {
