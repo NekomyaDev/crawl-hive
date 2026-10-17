@@ -136,7 +136,7 @@ async function enrich(n: NarrativeEntry) {
 async function refreshOutcomes() {
   const list = all();
   const now = Date.now();
-  const due = list.filter((n) => now - n.at < OUTCOME_MS && (!n.outcome || !n.reach || now - n.outcome.checkedAt > 55 * 60_000)).slice(0, 40);
+  const due = list.filter((n) => now - n.at < OUTCOME_MS && (!n.outcome || !n.reach || n.takenFdv === undefined || now - n.outcome.checkedAt > 55 * 60_000)).slice(0, 40);
   for (const n of due) {
     if (now - n.at < 24 * HOUR) await enrich(n).catch(() => {});
     try {
