@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 17", title: "DEX fund: back to the profile", text: "DexScreener confirmed the $CRAWLHIVE profile was never actually paid, so the DEX fund goes back to its first goal: Enhanced Token Info ($299) for the logo, banner and links on every chart. Boosts come after that. Every gift is verified onchain and kept apart from buybacks." },
   { date: "Oct 17", title: "Fourth buyback & burn", text: "The biggest one yet: 0.5 SOL from the treasury bought 1.72M $CRAWLHIVE and 1,667,562 was burned. Four burns in three days: 4.33M burned in total, 1.02 SOL spent." },
   { date: "Oct 17", title: "Launch this narrative", text: "Every Narrative Hunter signal now has a Launch this narrative button, on the site and in Telegram. It opens Clean Launch with the name, ticker and description already filled in from the narrative and a link to the source post: add a picture and launch. The swarm scans the coin at birth like any other." },
   { date: "Oct 16", title: "Third buyback & burn", text: "0.1 SOL from the treasury bought 489,478 $CRAWLHIVE and 474,794 was burned. Three burns in two days: 2.67M burned in total, 0.27% of supply." },
