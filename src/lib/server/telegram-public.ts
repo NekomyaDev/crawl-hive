@@ -439,10 +439,11 @@ export async function pushRadar() {
     cur.delayed = cur.live = Date.now();
     return;
   }
-  const { radarAll, RADAR_DELAY_MS } = await import("./radar");
+  const { radarAll, RADAR_DELAY_MS, withNarrative, narrativeIndex } = await import("./radar");
   const now = Date.now();
   const owners = ownerChats();
-  const list = radarAll();
+  const idx = narrativeIndex();
+  const list = radarAll().map((e) => withNarrative(e, idx) as typeof e & { narrative?: { id: string; title: string } });
   const fresh = (from: number, to: number) => list.filter((e) => e.at > from && e.at <= to).reverse();
   const live = fresh(cur.live, now);
   const delayed = fresh(cur.delayed, now - RADAR_DELAY_MS);
@@ -461,6 +462,7 @@ export async function pushRadar() {
           `📡 <b>New launch</b>${isOwner ? " · live" : ""} · ${CHAIN_LABEL[e.chain] ?? e.chain}`,
           `${VERDICT_ICON[e.verdict] ?? "⚪️"} <b>$${esc(e.symbol)}</b> · ${e.score ?? "—"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · FDV $${fmtUsd(e.fdv)}${e.ageH != null ? ` · ${e.ageH < 1 ? `${Math.round(e.ageH * 60)}m` : `${e.ageH}h`} old` : ""}`,
           esc(e.reason),
+          ...(e.narrative ? [`🔮 Called by Narrative Radar: <a href="${siteUrl()}/narratives#n-${e.narrative.id}">${esc(e.narrative.title)}</a>`] : []),
           `<code>${esc(e.id)}</code>`,
         ].join("\n"),
         [[{ text: "🔎 Full scan", url: `${siteUrl()}/scan/${e.id}` }, { text: "👁 Watch", callback_data: `w:${e.id}` }]],

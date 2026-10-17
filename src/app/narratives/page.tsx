@@ -27,6 +27,7 @@ interface Item {
   score: number;
   speed: number;
   refs?: { platform: string; title: string; url: string; where: string }[];
+  onRadar?: { id: string; symbol: string; verdict: string; score: number | null } | null;
   media?: string[];
   reach?: { views: number; likes: number; reposts: number; replies: number; followers: number; firstPostAt: number };
   sightings?: { at: number; heat: string; clones: number | null }[];
@@ -173,6 +174,14 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
         </div>
       </div>
 
+      {n.onRadar && (
+        <Link href={`/scan/${n.onRadar.id}`} className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-lime/50 bg-gradient-to-r from-lime/10 to-teal/5 px-2.5 py-1.5 text-xs hover:border-lime">
+          <span>
+            📡 <b className="text-lime">On Launch Radar:</b> <span className="num font-semibold">${n.onRadar.symbol}</span>
+          </span>
+          <VerdictPill verdict={n.onRadar.verdict} score={n.onRadar.score} />
+        </Link>
+      )}
       {n.outcome && n.outcome.coins > 0 && (
         <div className={cn("mt-2 flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-xs", n.outcome.maxFdv >= 100_000 ? "border-lime/50 bg-lime/[0.07]" : "border-line bg-bg/60")}>
           <span className="text-muted">

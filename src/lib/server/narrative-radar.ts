@@ -216,12 +216,24 @@ function scoreOf(n: NarrativeEntry, stage: string, now: number) {
 
 const handleOf = (u?: string) => u?.match(/(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/status/)?.[1];
 
+// Монеты с Launch Radar на тикерах нарративов (созданные не раньше чем за час до находки) — из хранилища радара.
+function radarHits() {
+  try {
+    const list = JSON.parse(getMeta("radar") ?? "[]") as { id: string; chain: string; symbol: string; verdict: string; score: number | null; ageH: number | null; at: number }[];
+    return list.filter((e) => e.chain === "solana").map((e) => ({ ...e, ticker: e.symbol.toUpperCase().replace(/^\$/, "").replace(/[^A-Z0-9]/g, ""), born: e.at - (e.ageH ?? 0) * HOUR }));
+  } catch {
+    return [];
+  }
+}
+
 // Публичная лента: нарративы со стадией, исходом и тем, кто заметил первым, плюс оценка самого радара.
 export function narrativeFeed() {
   const now = Date.now();
   const list = all();
   const launches = recentLaunches(200).launches;
+  const hits = radarHits();
   const items = list.slice(0, 60).map((n) => {
+    const r = hits.find((e) => e.ticker === n.ticker && e.born >= n.at - HOUR);
     const l = launches.find((x) => x.symbol.toUpperCase() === n.ticker && x.at >= n.at);
     const stage = stageOf(n, now);
     const sc = scoreOf(n, stage, now);
@@ -232,6 +244,7 @@ export function narrativeFeed() {
       stage,
       seen: n.sightings?.length ?? 1,
       firstBy: handleOf(n.posts[0]) ?? null,
+      onRadar: r ? { id: r.id, symbol: r.symbol, verdict: r.verdict, score: r.score } : null,
       launched: l ? { mint: l.mint, symbol: l.symbol, verdict: l.verdict ?? null, score: l.score ?? null } : null,
     };
   });

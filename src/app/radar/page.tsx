@@ -23,6 +23,7 @@ interface Entry {
   ageH: number | null;
   at: number;
   img?: string;
+  narrative?: { id: string; title: string }; // монету заранее назвал Narrative Radar
 }
 interface Feed {
   items: Entry[];
@@ -88,6 +89,15 @@ function LaunchCard({ e, active }: { e: Entry; active: boolean }) {
         <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px]", ch?.c ?? "border-line text-muted")}>{ch?.t ?? e.chain}</span>
       </div>
 
+      {e.narrative && (
+        <Link href={`/narratives#n-${e.narrative.id}`} className="mt-3 flex items-center gap-2 rounded-xl border border-violet/50 bg-gradient-to-r from-violet/15 to-pink/10 px-2.5 py-1.5 text-xs hover:border-violet">
+          <span className="text-base">🔮</span>
+          <span className="min-w-0">
+            <span className="block font-bold text-violet">Called by Narrative Radar</span>
+            <span className="block truncate text-muted">{e.narrative.title}</span>
+          </span>
+        </Link>
+      )}
       <div className="mt-3 flex items-end justify-between gap-2 rounded-xl border border-line bg-bg/60 p-2.5">
         <div>
           <div className="text-[10px] text-muted uppercase tracking-wider">FDV at scan</div>
@@ -133,8 +143,9 @@ export default function RadarPage() {
   const [active, setActive] = useState<string | null>(null);
   const d = data?.day;
   const vf = VERDICTS.find((v) => v[0] === verdict)![2];
-  const items = useMemo(() => (data?.items ?? []).filter((e) => (chain === "all" || e.chain === chain) && vf(e.verdict)), [data, chain, vf]);
-  const blips = items.slice(0, 16).map((e, i) => ({ id: e.id, label: `$${e.symbol}`, img: e.img, glyph: e.symbol.slice(0, 1).toUpperCase(), color: COLOR[e.verdict] ?? "var(--muted)", r: 0.05 + (i / Math.max(1, Math.min(16, items.length) - 1)) * 0.95 }));
+  const [called, setCalled] = useState(false);
+  const items = useMemo(() => (data?.items ?? []).filter((e) => (chain === "all" || e.chain === chain) && vf(e.verdict) && (!called || !!e.narrative)), [data, chain, vf, called]);
+  const blips = items.slice(0, 16).map((e, i) => ({ id: e.id, label: `$${e.symbol}`, img: e.img, glyph: e.symbol.slice(0, 1).toUpperCase(), color: e.narrative ? "var(--violet)" : COLOR[e.verdict] ?? "var(--muted)", r: 0.05 + (i / Math.max(1, Math.min(16, items.length) - 1)) * 0.95 }));
   const pick = (id: string) => {
     setActive(id);
     document.getElementById(`r-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -174,6 +185,9 @@ export default function RadarPage() {
                 {t}
               </Chip>
             ))}
+            <Chip on={called} onClick={() => setCalled((x) => !x)}>
+              🔮 Called by Narrative Radar
+            </Chip>
           </div>
         </div>
         <RadarScope blips={blips} active={active} onPick={pick} tone="var(--lime)" />

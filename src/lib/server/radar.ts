@@ -117,11 +117,33 @@ async function tick() {
 // Все записи без задержки: для оповещений в Telegram (владельцам краулеров — сразу, остальным — после задержки).
 export const radarAll = () => all();
 
+// Связка с Narrative Radar: монета на тикере нарратива, созданная не раньше чем за час до его находки, — «радар
+// нарративов назвал её заранее». Читаем нарративы прямо из хранилища, без импорта модуля (нет циклов).
+const NARR_SPAN = 7 * 24 * 3600_000;
+export function narrativeIndex() {
+  try {
+    const list = JSON.parse(getMeta("narrRadar") ?? "[]") as { id: string; ticker: string; title: string; at: number; takenFdv?: number }[];
+    const now = Date.now();
+    const by = new Map<string, { id: string; title: string; at: number }>();
+    for (const n of list) if (now - n.at < NARR_SPAN && (n.takenFdv ?? 0) < Number(process.env.NARR_TAKEN_FDV ?? 500_000) && !by.has(n.ticker)) by.set(n.ticker, { id: n.id, title: n.title, at: n.at });
+    return by;
+  } catch {
+    return new Map<string, { id: string; title: string; at: number }>();
+  }
+}
+const sym = (s: string) => s.toUpperCase().replace(/^\$/, "").replace(/[^A-Z0-9]/g, "");
+export function withNarrative(e: RadarEntry, idx = narrativeIndex()) {
+  const n = idx.get(sym(e.symbol));
+  const born = e.at - (e.ageH ?? 0) * 3600_000;
+  return n && e.chain === "solana" && born >= n.at - 3600_000 ? { ...e, narrative: { id: n.id, title: n.title } } : e;
+}
+
 // Публичная лента: только то, что старше задержки. Сколько свежих находок ждёт — показываем числом.
 export function radarFeed() {
   const now = Date.now();
   const list = all();
-  const shown = list.filter((e) => now - e.at >= RADAR_DELAY_MS).slice(0, 60);
+  const idx = narrativeIndex();
+  const shown = list.filter((e) => now - e.at >= RADAR_DELAY_MS).slice(0, 60).map((e) => withNarrative(e, idx));
   const day = list.filter((e) => now - e.at < 24 * 3600_000);
   return {
     items: shown,
