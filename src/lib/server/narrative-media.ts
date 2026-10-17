@@ -86,10 +86,12 @@ export async function makeArt(id: string, n: { title: string; why: string; ticke
   if ((q.ip.get(ip) ?? 0) >= ART_IP_DAY) throw new Error("You generated enough art today. Upload your own picture or use the post image.");
   q.n++;
   q.ip.set(ip, (q.ip.get(ip) ?? 0) + 1);
+  // Название и тикер в промпт не кладём: модель тогда пишет их текстом на картинке.
   const prompt = [
-    `Square memecoin logo art for "${n.title}" ($${n.ticker}).`,
-    `What it is about: ${n.why}`,
-    "Bold, bright, funny cartoon style, one clear central character or object, thick outlines, vivid colors, simple background, readable at small size. No text, no letters, no watermarks, no real people's faces.",
+    "Square mascot illustration for a memecoin, used as a round coin logo.",
+    `Subject: ${n.why.replace(/\$[A-Z0-9]+/g, "").replace(/["“”]/g, "")}`,
+    "Bold, bright, funny cartoon style, one clear central character or object, thick outlines, vivid colors, plain simple background, readable at small size.",
+    "Absolutely no text, no letters, no words, no numbers, no logos, no watermarks, no real people's faces.",
   ].join("\n");
   const r = await fetch("https://api.x.ai/v1/images/generations", {
     method: "POST",
