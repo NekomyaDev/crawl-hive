@@ -44,6 +44,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 17 | **More sources, fewer fakes**: each hunt also reads Reddit (top-of-day RSS), Google News, Cointelegraph, Hacker News and pump.fun live coins as labelled hints; Grok answers with labels and we attach the real links, so sources can't be invented; posts with a contract address are dropped as ads, and so are tickers already taken by a coin worth `NARR_TAKEN_FDV` ($500k) or more; confirmations from other platforms add up to +10 to the Narrative Score |
 | Oct 17 | **Narrative Score and launch kits**: reach and spread speed from the verified posts (public fxtwitter API, no X API), post images on the cards, a 0–100 Narrative Score (heat, reach, speed, free ticker, stage) with sorting; Launch this narrative prefills the post image, draws AI art on demand (grok-imagine-image, cached, daily limits) and renders a 1500×500 DexScreener banner in the browser |
 | Oct 17 | **Narratives with a life story**: hourly hunts; each narrative keeps its sightings (new → rising → peak → fading), a heat trail, the first spotter, the coins launched on its ticker afterwards with their best peak from DexScreener, and the radar grades itself by the share of narratives that produced a $100k+ coin |
 | Oct 17 | **Snipers and insiders in scans**: first-block buyers of fresh pump.fun coins (bought, still held, sold out) from the pump.fun trade feed, and top wallets funded by the creator; both lower the score |
