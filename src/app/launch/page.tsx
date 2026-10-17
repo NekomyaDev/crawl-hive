@@ -7,13 +7,14 @@ import { ExternalLink, ImagePlus, Loader2, Palette, Rocket, ShieldCheck, Sparkle
 import { BannerMaker } from "@/components/banner-maker";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
-import { phantom } from "@/components/wallet-provider";
+import { evmProvider, phantom } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
 import { useApi } from "@/lib/client/use-api";
 import { api, post } from "@/lib/client/api";
 import { cn, short, timeAgo } from "@/lib/utils";
 
 interface Launch {
+  chain?: "solana" | "robinhood" | "bsc";
   mint: string;
   name: string;
   symbol: string;
@@ -32,7 +33,21 @@ interface Recent {
 }
 
 type Step = "ipfs" | "sign" | "send" | "live";
-const STEP_LABEL: Record<Step, string> = { ipfs: "Storing the picture on IPFS…", sign: "Confirm in Phantom…", send: "Launching on pump.fun…", live: "Live" };
+const STEP_LABEL: Record<Step, string> = { ipfs: "Storing the picture on IPFS…", sign: "Confirm in your wallet…", send: "Launching…", live: "Live" };
+type Net = "solana" | "robinhood";
+const NETS: { id: Net | "bsc"; t: string; pad: string; soon?: boolean }[] = [
+  { id: "solana", t: "Solana", pad: "pump.fun" },
+  { id: "robinhood", t: "Robinhood Chain", pad: "Pons" },
+  { id: "bsc", t: "BNB Chain", pad: "four.meme", soon: true },
+];
+const RH_CHAIN = {
+  chainId: "0x1237",
+  chainName: "Robinhood Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
+  blockExplorerUrls: ["https://robin.etherscan.io"],
+};
+const CHAIN_BADGE: Record<string, string> = { solana: "SOL", robinhood: "RH", bsc: "BNB" };
 const VERDICT_CLS: Record<string, string> = {
   CLEAN: "border-lime/50 text-lime",
   OK: "border-teal/50 text-teal",
@@ -53,8 +68,11 @@ export default function LaunchPage() {
   const [f, setF] = useState({ name: "", symbol: "", description: "", website: "", twitter: "", telegram: "", devBuySol: "" });
   const [image, setImage] = useState<string>("");
   const [step, setStep] = useState<Step | null>(null);
-  const [done, setDone] = useState<{ mint: string; signature: string; symbol: string } | null>(null);
+  const [done, setDone] = useState<{ mint: string; signature: string; symbol: string; chain: Net } | null>(null);
   const [from, setFrom] = useState<string | null>(null);
+  const [net, setNet] = useState<Net>("solana");
+  const [tax, setTax] = useState(0);
+  const { data: rh } = useApi<{ enabled: boolean; feeEth: number | null }>("/api/launch/evm?chain=robinhood", 60_000);
   const [nid, setNid] = useState("");
   const [imgNote, setImgNote] = useState("");
   const [drawing, setDrawing] = useState(false);
@@ -141,7 +159,7 @@ export default function LaunchPage() {
       }
       if (r.status !== "live") throw new Error(r.status === "failed" ? "The launch failed onchain. Nothing was created." : `Still confirming. Check the transaction in a minute: ${r.signature}`);
       setStep("live");
-      setDone({ mint: r.mint, signature: r.signature, symbol: f.symbol.replace(/^\$/, "").toUpperCase() });
+      setDone({ mint: r.mint, signature: r.signature, symbol: f.symbol.replace(/^\$/, "").toUpperCase(), chain: "solana" });
       toast(`$${f.symbol.replace(/^\$/, "").toUpperCase()} is live 🐙`);
       reload();
     } catch (e) {
@@ -151,8 +169,49 @@ export default function LaunchPage() {
     }
   };
 
+  // Robinhood Chain (Pons): сервер собирает вызов фабрики, кошелёк (MetaMask, Rabby) отправляет его сам.
+  const launchEvm = async () => {
+    const p = evmProvider();
+    if (!p) return toast("Open the site in a browser with MetaMask or Rabby", "error");
+    if (!image) return toast("Add a picture for the coin", "error");
+    setDone(null);
+    try {
+      const [from] = (await p.request({ method: "eth_requestAccounts" })) as string[];
+      try {
+        await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: RH_CHAIN.chainId }] });
+      } catch (e) {
+        if ((e as { code?: number }).code === 4001) throw new Error("You cancelled in your wallet. Nothing was sent.");
+        await p.request({ method: "wallet_addEthereumChain", params: [RH_CHAIN] });
+      }
+      setStep("ipfs");
+      const prep = await post<{ id: string; tx: { to: string; data: string; value: string } }>("/api/launch/evm", { ...f, image, chain: "robinhood", creator: from, taxBps: tax });
+      setStep("sign");
+      let hash: string;
+      try {
+        hash = (await p.request({ method: "eth_sendTransaction", params: [{ from, to: prep.tx.to, data: prep.tx.data, value: prep.tx.value }] })) as string;
+      } catch {
+        throw new Error("You cancelled in your wallet. Nothing was sent.");
+      }
+      setStep("send");
+      let r = { status: "pending", mint: "", hash };
+      for (let i = 0; r.status === "pending" && i < 30; i++) {
+        await new Promise((ok) => setTimeout(ok, 2500));
+        r = await post<typeof r>("/api/launch/evm/submit", { id: prep.id, hash }).catch((e) => ({ ...r, status: (e as Error).message }));
+      }
+      if (r.status !== "live") throw new Error(r.status === "failed" ? "The launch failed onchain. Nothing was created." : r.status === "pending" ? `Still confirming. Check the transaction in a minute: ${hash}` : r.status);
+      setStep("live");
+      setDone({ mint: r.mint, signature: hash, symbol: f.symbol.replace(/^\$/, "").toUpperCase(), chain: "robinhood" });
+      toast(`$${f.symbol.replace(/^\$/, "").toUpperCase()} is live on Robinhood Chain 🐙`);
+      reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setStep((s) => (s === "live" ? s : null));
+    }
+  };
+
   const busy = step !== null && step !== "live";
-  const off = data && !data.enabled;
+  const off = net === "solana" ? data && !data.enabled : rh && !rh.enabled;
 
   return (
     <>
@@ -163,12 +222,12 @@ export default function LaunchPage() {
             Clean Launch
           </>
         }
-        sub="Launch a coin on pump.fun right from CrawlHive. The moment it is live, the swarm scans it by the same rules as every other coin: no special treatment, and the verdict goes on the public Track Record."
+        sub="Launch a coin on pump.fun (Solana) or Pons (Robinhood Chain) right from CrawlHive. The moment it is live, the swarm scans it by the same rules as every other coin: no special treatment, and the verdict goes on the public Track Record."
       />
 
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
         <Card>
-          <CardHeader title="Your coin" sub="0% platform fee · you pay only pump.fun and the network" />
+          <CardHeader title="Your coin" sub={`0% platform fee · you pay only ${net === "solana" ? "pump.fun" : "Pons"} and the network`} />
           <div className="space-y-3 p-4">
             {from !== null && (
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-honey/40 bg-honey/[0.07] px-3 py-2 text-[13px]">
@@ -183,6 +242,23 @@ export default function LaunchPage() {
                 )}
               </div>
             )}
+            <div className="grid grid-cols-3 gap-2">
+              {NETS.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  disabled={n.soon}
+                  onClick={() => !n.soon && setNet(n.id as Net)}
+                  className={cn(
+                    "rounded-xl border px-2 py-2 text-left text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                    net === n.id ? "border-honey/70 bg-honey/10" : "border-line hover:border-honey/40",
+                  )}
+                >
+                  <span className="block font-bold text-fg">{n.t}</span>
+                  <span className="text-muted">{n.soon ? `${n.pad} · soon` : n.pad}</span>
+                </button>
+              ))}
+            </div>
             <div className="flex gap-3">
               <button
                 type="button"
@@ -216,6 +292,17 @@ export default function LaunchPage() {
               <input className={FIELD} placeholder="https://x.com/…" value={f.twitter} onChange={set("twitter")} />
               <input className={FIELD} placeholder="https://t.me/…" value={f.telegram} onChange={set("telegram")} />
             </div>
+            {net === "robinhood" ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted">Creator fee on trades</span>
+                {[0, 100, 200].map((b) => (
+                  <button key={b} type="button" onClick={() => setTax(b)} className={cn("num rounded-lg border px-3 py-1.5 text-sm", tax === b ? "border-honey/70 bg-honey/10 text-honey" : "border-line text-muted hover:text-fg")}>
+                    {b / 100}%
+                  </button>
+                ))}
+                <span className="text-xs text-muted">paid to your wallet by Pons; 0% looks cleanest to scanners</span>
+              </div>
+            ) : (
             <div className="flex items-center gap-2">
               <label className="text-sm text-muted" htmlFor="devbuy">
                 Dev buy
@@ -226,16 +313,22 @@ export default function LaunchPage() {
               </div>
               <span className="text-xs text-muted">optional, up to {data?.maxDevBuySol ?? 5} SOL, in the same transaction</span>
             </div>
+            )}
             <button
               type="button"
               disabled={busy || !!off}
-              onClick={launch}
+              onClick={net === "solana" ? launch : launchEvm}
               className="dex-cta flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-honey via-coral to-pink text-lg font-extrabold text-black disabled:opacity-60"
             >
               {busy ? <Loader2 className="size-5 animate-spin" /> : <Rocket className="size-5" />}
-              {off ? "Launches are paused" : busy ? STEP_LABEL[step!] : "Launch on pump.fun"}
+              {off ? "Launches are paused" : busy ? STEP_LABEL[step!] : net === "solana" ? "Launch on pump.fun" : "Launch on Robinhood Chain"}
             </button>
-            <p className="text-[11px] text-muted">A launch costs about 0.03 SOL in pump.fun and network fees, plus your dev buy. Launching a coin does not make it a good investment.</p>
+            <p className="text-[11px] text-muted">
+              {net === "solana"
+                ? "A launch costs about 0.03 SOL in pump.fun and network fees, plus your dev buy."
+                : `A launch costs ${rh?.feeEth ?? 0.0005} ETH to Pons plus network gas, paid from MetaMask or Rabby.`}{" "}
+              Launching a coin does not make it a good investment.
+            </p>
           </div>
         </Card>
 
@@ -250,11 +343,11 @@ export default function LaunchPage() {
                   <a href={`/scan/${done.mint}`} className="rounded-lg border border-honey/60 px-3 py-1.5 text-honey hover:bg-honey/10">
                     Swarm scan
                   </a>
-                  <a href={`https://pump.fun/coin/${done.mint}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
-                    pump.fun <ExternalLink className="size-3" />
+                  <a href={done.chain === "solana" ? `https://pump.fun/coin/${done.mint}` : `https://dexscreener.com/robinhood/${done.mint}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
+                    {done.chain === "solana" ? "pump.fun" : "DexScreener"} <ExternalLink className="size-3" />
                   </a>
-                  <a href={`https://solscan.io/tx/${done.signature}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
-                    Solscan <ExternalLink className="size-3" />
+                  <a href={done.chain === "solana" ? `https://solscan.io/tx/${done.signature}` : `https://robin.etherscan.io/tx/${done.signature}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 hover:text-honey">
+                    {done.chain === "solana" ? "Solscan" : "Explorer"} <ExternalLink className="size-3" />
                   </a>
                 </div>
               </div>
@@ -271,8 +364,17 @@ export default function LaunchPage() {
           <Card>
             <CardHeader title={<span className="flex items-center gap-2"><ShieldCheck className="size-4 text-lime" /> How it stays safe</span>} />
             <ul className="space-y-2 p-4 text-sm text-fg/80">
-              <li>• <b>The coin&apos;s key is made in your browser.</b> Only its public address is sent to us.</li>
-              <li>• <b>We build the transaction, Phantom signs it.</b> We send it only if it is byte for byte the one we built and both signatures are on it.</li>
+              {net === "solana" ? (
+                <>
+                  <li>• <b>The coin&apos;s key is made in your browser.</b> Only its public address is sent to us.</li>
+                  <li>• <b>We build the transaction, Phantom signs it.</b> We send it only if it is byte for byte the one we built and both signatures are on it.</li>
+                </>
+              ) : (
+                <>
+                  <li>• <b>Your wallet calls the Pons factory itself.</b> We only build the call; MetaMask or Rabby shows it and sends it.</li>
+                  <li>• <b>You are the creator.</b> The creator fee, if you set one, goes to your wallet. We check the receipt is exactly the call we built.</li>
+                </>
+              )}
               <li>• <b>No key on our server, 0% platform fee.</b> The creator fees pump.fun pays go to your wallet as usual.</li>
               <li>• <b>Scanned at birth, by the same rules.</b> Coins launched here get no score boost. If the swarm says DANGER, it says DANGER.</li>
             </ul>
@@ -290,7 +392,8 @@ export default function LaunchPage() {
                       <a href={`/scan/${l.mint}`} className="font-semibold hover:text-honey">
                         ${l.symbol}
                       </a>{" "}
-                      <span className="text-muted">{l.name}</span>
+                      <span className="text-muted">{l.name}</span>{" "}
+                      <span className="num rounded border border-line px-1 text-[10px] text-muted">{CHAIN_BADGE[l.chain ?? "solana"]}</span>
                       <div className="num text-[11px] text-muted">
                         {short(l.creator)} · {timeAgo(l.at)}
                         {l.devBuySol ? ` · dev buy ${l.devBuySol} SOL` : ""}

@@ -44,6 +44,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 18 | **Clean Launch on Robinhood Chain**: a network switch on [/launch](https://crawlhive.xyz/launch); for Robinhood Chain the server pins the logo to IPFS and builds the Pons V2 `launchToken` call (ABI checked against real launches, `previewLaunchEconomics` guard), MetaMask/Rabby sends it, and the server accepts only that exact call from that wallet, finds the token in the receipt and scans it at birth; creator fee 0/1/2% to the creator, Pons fee 0.0005 ETH, 0% platform fee |
 | Oct 17 | **Gem & Rug Replay** ([/replay](https://crawlhive.xyz/replay)): CLEAN/OK verdicts that at least doubled within 24h and DANGER verdicts that fell 90% or were rugged, straight from the Track Record, with the misses (CLEAN/OK that dumped anyway) shown next to the hits; moves over ×50 a day and pools under $2k at scan are left out as price errors; new entries also keep the FDV at scan and the time to peak |
 | Oct 17 | **Called by Narrative Radar**: Launch Radar marks coins whose ticker matches a narrative found before the coin was created (one-hour grace), links to the narrative and has a filter for them; the narrative card shows the coin with its verdict; Telegram radar alerts carry the tag |
 | Oct 17 | **More sources, fewer fakes**: each hunt also reads Reddit (top-of-day RSS), Google News, Cointelegraph, Hacker News and pump.fun live coins as labelled hints; Grok answers with labels and we attach the real links, so sources can't be invented; posts with a contract address are dropped as ads, and so are tickers already taken by a coin worth `NARR_TAKEN_FDV` ($500k) or more; confirmations from other platforms add up to +10 to the Narrative Score |
@@ -276,6 +277,8 @@ Each finding becomes a scored factor (for example *Can mint* −25, *Permanent d
 ### Clean Launch
 
 [crawlhive.xyz/launch](https://crawlhive.xyz/launch) launches a coin on pump.fun from CrawlHive: name, ticker, picture, description, links and an optional dev buy (up to 5 SOL) in the same transaction.
+
+**Robinhood Chain (Pons).** Pick Robinhood Chain on the same page and the coin launches through Pons V2, the chain's main launchpad. The server pins the logo to IPFS, reads `launchFee()` and `previewLaunchEconomics()` from the factory and builds the `launchToken` call with you as the creator (`creatorFeeRecipient`) and a creator fee of 0%, 1% or 2%. MetaMask or Rabby switches to Robinhood Chain (chain id 4663) and sends it; Pons charges 0.0005 ETH, CrawlHive charges nothing. The server accepts only that exact calldata from that wallet, reads the receipt, takes the token from the mint `Transfer` and scans it at birth like any other coin. Code: `src/lib/server/launch-evm.ts`.
 
 - **The mint key is made in the browser.** Only its public half reaches the server.
 - **The server builds, Phantom signs, the server sends only a byte-for-byte match.** The picture and metadata go to IPFS, the server builds pump.fun's `create_v2` (plus the creator's first buy) with a public address lookup table so the launch fits one transaction, the mint co-signs in the browser and the creator signs in Phantom. If anything in the signed message differs from what was built, nothing is sent.

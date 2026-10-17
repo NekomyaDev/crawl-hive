@@ -25,7 +25,8 @@
     "react-dom": "19.3.0",
     "react-force-graph-2d": "^1.29.2",
     "server-only": "^0.0.1",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "viem": "^2.21.55"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

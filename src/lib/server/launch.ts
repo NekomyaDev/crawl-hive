@@ -53,6 +53,7 @@ export interface LaunchRecord {
   at: number;
   verdict?: string | null;
   score?: number | null;
+  chain?: "solana" | "robinhood" | "bsc"; // без поля — Solana (старые записи)
 }
 
 interface LaunchState {
@@ -91,6 +92,35 @@ function imageMatches(type: string, b: Uint8Array) {
   return false;
 }
 
+// Общая часть для всех сетей: имя, тикер, описание, ссылки, картинка.
+export function parseCoin(body: Record<string, unknown>) {
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const name = str(body.name);
+  if (name.length < 2 || name.length > 32) throw new ApiError("Name: 2 to 32 characters");
+  const symbol = str(body.symbol).replace(/^\$/, "").toUpperCase();
+  if (!/^[A-Z0-9]{2,10}$/.test(symbol)) throw new ApiError("Ticker: 2 to 10 letters or digits");
+  const description = str(body.description);
+  if (description.length > 500) throw new ApiError("Description: up to 500 characters");
+  const links: Record<string, string> = {};
+  for (const k of ["website", "twitter", "telegram"]) {
+    const v = str(body[k]);
+    if (v && !URL_RE.test(v)) throw new ApiError(`${k}: a full https:// link`);
+    if (v) links[k] = v;
+  }
+  const m = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec(str(body.image));
+  if (!m) throw new ApiError("Image: a PNG, JPEG, WebP or GIF");
+  const bytes = new Uint8Array(Buffer.from(m[2], "base64"));
+  if (bytes.length > 2_000_000) throw new ApiError("Image: up to 2 MB");
+  if (!imageMatches(m[1], bytes)) throw new ApiError("Image: the file is not the type it claims to be");
+  return { name, symbol, description, links, image: { type: m[1], bytes } };
+}
+
+// Лимиты общие для всех сетей: limit() сам отказывает (ApiError 429) при превышении.
+export const launchLimit = (ip: string) => {
+  limit(`ip:${ip}`, PER_IP_HOUR, 3_600_000);
+  limit("all", PER_DAY, 86_400_000);
+};
+
 function parseLaunch(body: Record<string, unknown>) {
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const name = str(body.name);
@@ -125,7 +155,7 @@ function parseLaunch(body: Record<string, unknown>) {
 
 // ---------- IPFS ----------
 
-async function pin(name: string, body: Uint8Array | string, type: string) {
+export async function pin(name: string, body: Uint8Array | string, type: string) {
   const form = new FormData();
   form.append("network", "public");
   form.append("file", new Blob([typeof body === "string" ? body : Buffer.from(body)], { type }), name);
@@ -213,8 +243,7 @@ function checkSigned(signedB64: string, b: Built) {
 export async function prepareLaunch(ip: string, body: Record<string, unknown>) {
   if (!launchEnabled()) throw new ApiError("Launches are not switched on yet", 503);
   const f = parseLaunch(body);
-  limit(`ip:${ip}`, PER_IP_HOUR, 3_600_000);
-  limit("all", PER_DAY, 86_400_000);
+  launchLimit(ip);
   const ext = f.image.type.split("/")[1];
   const image = await pin(`${f.symbol}.${ext}`, f.image.bytes, f.image.type);
   const metadata = { name: f.name, symbol: f.symbol, description: f.description, image, showName: true, createdOn: "https://crawlhive.xyz/launch", ...f.links };
@@ -247,15 +276,15 @@ const readLog = (): LaunchRecord[] => {
     return [];
   }
 };
-function saveLaunch(r: LaunchRecord) {
+export function saveLaunch(r: LaunchRecord) {
   const list = readLog().filter((x) => x.mint !== r.mint);
   setMeta(LOG_KEY, JSON.stringify([r, ...list].slice(0, LOG_MAX)));
 }
 
 // Рой сканирует новорождённую монету по тем же правилам, что и любую другую: вердикт уходит в Track Record.
-function scanAtBirth(rec: LaunchRecord) {
+export function scanAtBirth(rec: LaunchRecord) {
   setTimeout(() => {
-    runScan(rec.mint, () => {})
+    runScan(rec.mint, () => {}, rec.chain ?? "solana")
       .then((r) => {
         const res = r as { verdict?: string; score?: number } | null;
         saveLaunch({ ...rec, verdict: res?.verdict ?? null, score: res?.score ?? null });
