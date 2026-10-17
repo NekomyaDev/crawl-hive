@@ -20,6 +20,12 @@ interface Item {
   posts: string[];
   clones: number | null;
   at: number;
+  lastAt?: number;
+  stage: "new" | "rising" | "peak" | "fading";
+  seen: number;
+  firstBy: string | null;
+  sightings?: { at: number; heat: string; clones: number | null }[];
+  outcome?: { coins: number; best?: { address: string; symbol: string; fdv: number }; maxFdv: number; checkedAt: number };
   launched: { mint: string; symbol: string; verdict: string | null; score: number | null } | null;
 }
 interface Feed {
@@ -29,6 +35,7 @@ interface Feed {
   nextAt: number | null;
   everyH: number;
   day: { found: number; hot: number; fresh: number };
+  record: { graded: number; wins: number; winFdv: number };
 }
 
 const HEAT: Record<string, { t: string; c: string; color: string; r: number; bar: number }> = {
@@ -36,6 +43,27 @@ const HEAT: Record<string, { t: string; c: string; color: string; r: number; bar
   rising: { t: "📈 rising", c: "border-honey/60 bg-honey/10 text-honey", color: "var(--honey)", r: 0.48, bar: 66 },
   early: { t: "🌱 early", c: "border-lime/50 bg-lime/10 text-lime", color: "var(--lime)", r: 0.82, bar: 33 },
 };
+const STAGE: Record<Item["stage"], { t: string; c: string; r: number }> = {
+  peak: { t: "🔥 peak", c: "text-coral", r: 0.12 },
+  rising: { t: "📈 rising", c: "text-honey", r: 0.42 },
+  new: { t: "🌱 new", c: "text-lime", r: 0.66 },
+  fading: { t: "🌙 fading", c: "text-muted", r: 0.92 },
+};
+const HEAT_N: Record<string, number> = { early: 1, rising: 2, hot: 3 };
+const usd = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}k` : `$${Math.round(n)}`);
+
+// Мини-график: горячесть нарратива по каждой охоте, где его видели.
+function HeatTrail({ s }: { s: NonNullable<Item["sightings"]> }) {
+  if (s.length < 2) return null;
+  return (
+    <div className="flex h-5 items-end gap-0.5" title={`seen in ${s.length} hunts`}>
+      {s.slice(-16).map((x, i) => (
+        <span key={i} className="w-1.5 rounded-sm" style={{ height: `${(HEAT_N[x.heat] ?? 1) * 33}%`, background: x.heat === "hot" ? "var(--coral)" : x.heat === "rising" ? "var(--honey)" : "var(--lime)" }} />
+      ))}
+    </div>
+  );
+}
+
 const GLYPH: Record<string, string> = { meme: "😂", ai: "🤖", animal: "🐾", tech: "💻", culture: "🎭", crypto: "🪙", other: "✨" };
 
 function inH(ts: number) {
@@ -76,7 +104,18 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
         <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold", heat.c)}>{heat.t}</span>
       </div>
 
-      <p className="mt-3 flex-1 text-sm leading-snug text-fg/85">{n.why}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+        <span className={cn("font-semibold", STAGE[n.stage].c)}>{STAGE[n.stage].t}</span>
+        <span className="text-muted">seen in {n.seen} hunt{n.seen > 1 ? "s" : ""}</span>
+        {n.firstBy && (
+          <a href={n.posts[0]} target="_blank" rel="noreferrer" className="text-sky hover:underline">
+            first spotted: @{n.firstBy}
+          </a>
+        )}
+        {n.sightings && <HeatTrail s={n.sightings} />}
+      </div>
+
+      <p className="mt-2 flex-1 text-sm leading-snug text-fg/85">{n.why}</p>
 
       <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-line bg-bg/60 p-2.5">
         <div>
@@ -90,6 +129,23 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
           <div className={cn("num text-sm font-bold", n.clones === 0 ? "text-lime" : n.clones ? "text-honey" : "text-muted")}>{n.clones === null ? "—" : n.clones === 0 ? "0 · fresh" : n.clones}</div>
         </div>
       </div>
+
+      {n.outcome && n.outcome.coins > 0 && (
+        <div className={cn("mt-2 flex items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-xs", n.outcome.maxFdv >= 100_000 ? "border-lime/50 bg-lime/[0.07]" : "border-line bg-bg/60")}>
+          <span className="text-muted">
+            {n.outcome.coins} coin{n.outcome.coins > 1 ? "s" : ""} launched on it
+            {n.outcome.best && (
+              <>
+                {" · best "}
+                <Link href={`/scan/${n.outcome.best.address}`} className="num font-semibold text-fg hover:text-honey">
+                  ${n.outcome.best.symbol}
+                </Link>
+              </>
+            )}
+          </span>
+          <span className={cn("num font-bold", n.outcome.maxFdv >= 100_000 ? "text-lime" : "text-fg")}>peak {usd(n.outcome.maxFdv)}</span>
+        </div>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
         {n.posts.map((u, i) => (
@@ -130,8 +186,14 @@ export default function NarrativesPage() {
   const [heat, setHeat] = useState<string>("all");
   const [active, setActive] = useState<string | null>(null);
   const d = data?.day;
-  const items = useMemo(() => (data?.items ?? []).filter((n) => heat === "all" || (heat === "fresh" ? n.clones === 0 : n.heat === heat)), [data, heat]);
-  const blips = items.slice(0, 18).map((n) => ({ id: n.id, label: `$${n.ticker}`, glyph: GLYPH[n.kind] ?? "✨", color: (HEAT[n.heat] ?? HEAT.early).color, r: (HEAT[n.heat] ?? HEAT.early).r + Math.min(0.12, (Date.now() - n.at) / 864e5 / 8) }));
+  const items = useMemo(
+    () =>
+      (data?.items ?? []).filter((n) =>
+        heat === "all" ? true : heat === "fresh" ? n.clones === 0 : heat === "winner" ? (n.outcome?.maxFdv ?? 0) >= (data?.record.winFdv ?? 1e5) : heat === "fading" ? n.stage === "fading" : n.stage === heat,
+      ),
+    [data, heat],
+  );
+  const blips = items.slice(0, 18).map((n) => ({ id: n.id, label: `$${n.ticker}`, glyph: GLYPH[n.kind] ?? "✨", color: (HEAT[n.heat] ?? HEAT.early).color, r: STAGE[n.stage]?.r ?? 0.6 }));
   const pick = (id: string) => {
     setActive(id);
     document.getElementById(`n-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -154,15 +216,18 @@ export default function NarrativesPage() {
             <Box label="Narratives, 24h" value={d ? d.found : "—"} tone="text-violet" />
             <Box label="Hot now" value={d ? d.hot : "—"} tone="text-coral" />
             <Box label="Fresh tickers" value={d ? d.fresh : "—"} tone="text-lime" />
+            <Box label="Turned into $100k+ coins" value={data ? (data.record.graded ? `${Math.round((data.record.wins / data.record.graded) * 100)}%` : "grading…") : "—"} tone="text-honey" />
             <Box label="Last hunt" value={data?.lastAt ? timeAgo(data.lastAt) : "—"} />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {[
               ["all", "All"],
-              ["hot", "🔥 Hot"],
+              ["peak", "🔥 Peak"],
               ["rising", "📈 Rising"],
-              ["early", "🌱 Early"],
+              ["new", "🌱 New"],
+              ["fading", "🌙 Fading"],
               ["fresh", "✓ Fresh ticker"],
+              ["winner", "🏆 Made a $100k+ coin"],
             ].map(([k, t]) => (
               <Chip key={k} on={heat === k} onClick={() => setHeat(k)}>
                 {t}

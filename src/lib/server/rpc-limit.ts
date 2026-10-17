@@ -39,8 +39,30 @@ const FALLBACK = () => process.env.SOLANA_RPC_FALLBACK?.trim() || "https://api.m
 const g2 = globalThis as unknown as { __crawlhiveRpcDown?: number };
 const nextUtcMidnight = () => Math.ceil(Date.now() / 86400_000) * 86400_000;
 
+// Счётчик вызовов по методам: раз в час пишем в лог, на что уходит дневной лимит узла.
+const g3 = globalThis as unknown as { __crawlhiveRpcStats?: { since: number; by: Map<string, number> } };
+const stats = () => (g3.__crawlhiveRpcStats ??= { since: Date.now(), by: new Map() });
+function count(body: unknown) {
+  try {
+    const j = JSON.parse(String(body));
+    for (const m of (Array.isArray(j) ? j : [j]).map((x: { method?: string }) => x.method ?? "?")) stats().by.set(m, (stats().by.get(m) ?? 0) + 1);
+  } catch {}
+}
+export function rpcStats() {
+  const s = stats();
+  return { since: s.since, total: [...s.by.values()].reduce((a, b) => a + b, 0), by: Object.fromEntries([...s.by].sort((a, b) => b[1] - a[1])) };
+}
+if (!(globalThis as { __crawlhiveRpcLog?: boolean }).__crawlhiveRpcLog) {
+  (globalThis as { __crawlhiveRpcLog?: boolean }).__crawlhiveRpcLog = true;
+  setInterval(() => {
+    const r = rpcStats();
+    console.log(`[rpc] ${r.total} calls in ${Math.round((Date.now() - r.since) / 60_000)} min: ${Object.entries(r.by).slice(0, 8).map(([m, n]) => `${m} ${n}`).join(", ")}`);
+  }, Number(process.env.RPC_STATS_MIN ?? 60) * 60_000);
+}
+
 // fetch для web3.js Connection.
 export const limitedFetch: typeof fetch = async (input, init) => {
+  count(init?.body);
   for (let attempt = 0; ; attempt++) {
     const down = (g2.__crawlhiveRpcDown ?? 0) > Date.now();
     await acquire();
