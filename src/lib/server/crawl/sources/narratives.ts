@@ -7,16 +7,22 @@ import type { LiveJob, LiveSignalInput } from "../../store";
 import { grok } from "../grok";
 import { specBrief } from "../analyze";
 import type { SourceResult } from "./types";
+import { feedBrief, type FeedItem } from "./narrative-feeds";
+import { postInfo } from "../../narrative-media";
 
 const DEDUP_MS = 12 * 3600_000;
+// Адрес контракта (Solana base58 32–44 знака или EVM 0x…40) в тексте — признак рекламы монеты, а не органики.
+export const CA_RE = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b|\b0x[a-fA-F0-9]{40}\b/;
+// Тикер уже занят монетой дороже этого — нарратив опоздал (или это вообще чужая монета).
+const TAKEN_FDV = () => Number(process.env.NARR_TAKEN_FDV ?? 500_000);
 export const SHILL_RE = /\b(launchpad|airdrop|presale|whitelist|stealth launch|fair launch|CA:|contract address)\b/i;
 const HEAT_CONF: Record<string, number> = { early: 0.55, rising: 0.7, hot: 0.85 };
 
 const RULES = `Reply with JSON only, no prose:
-{"narratives":[{"title":"max 6 words","why":"one sentence: what is happening and why people care","ticker":"2-10 letters A-Z/0-9, no $","heat":"early|rising|hot","kind":"meme|ai|animal|tech|culture|crypto|other","posts":["x.com/<user>/status/<id> links you actually found"]}]}
+{"narratives":[{"title":"max 6 words","why":"one sentence: what is happening and why people care","ticker":"2-10 letters A-Z/0-9, no $","heat":"early|rising|hot","kind":"meme|ai|animal|tech|culture|crypto|other","posts":["x.com/<user>/status/<id> links you actually found"],"refs":["labels like R3, N1 from the other-platform list that are about the same thing, if any"]}]}
 Up to 6 narratives. heat: early = a few posts, rising = spreading fast, hot = everywhere.
 Skip tragedies, deaths, disasters, wars, politics, hate, sexual content, anything about minors.
-Skip anything that is an existing coin, token, launchpad or project promoting itself (shills, launch announcements, airdrops, "CA:" posts): the narrative must be organic internet culture. No price predictions. Never invent links.`;
+Skip anything that is an existing coin with a real market (big established tickers like BONK, WIF, PEPE), a token, launchpad or project promoting itself (shills, launch announcements, airdrops, "CA:" posts): the narrative must be organic internet culture. No price predictions. Never invent links.`;
 
 const POST_RE = /(?:x|twitter)\.com\/(?:([A-Za-z0-9_]{1,15})\/|i\/(?:web\/)?)status(?:es)?\/(\d{5,25})/;
 const idOf = (u: string) => POST_RE.exec(u)?.[2] ?? null;
@@ -38,17 +44,19 @@ export async function verifyPost(url: string): Promise<string | null | undefined
   return author ? `https://x.com/${author}/status/${id}` : undefined;
 }
 
-// Сколько монет с этим тикером появилось за сутки на сети краулера: свежий нарратив и выжатый выглядят по-разному.
-async function clones(chain: string, ticker: string): Promise<number | null> {
+// Монеты на этом тикере по DexScreener: сколько появилось за сутки на сети краулера (свежий нарратив и выжатый
+// выглядят по-разному) и самая дорогая монета с таким тикером на любой сети (если дороже порога — тикер занят).
+async function tickerMarket(chain: string, ticker: string): Promise<{ clones: number | null; taken: number }> {
   try {
     const r = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(ticker)}`, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return null;
-    const pairs = ((await r.json()) as { pairs?: { chainId?: string; pairCreatedAt?: number; baseToken?: { address?: string; symbol?: string } }[] }).pairs ?? [];
+    if (!r.ok) return { clones: null, taken: 0 };
+    const pairs = ((await r.json()) as { pairs?: { chainId?: string; pairCreatedAt?: number; fdv?: number; marketCap?: number; baseToken?: { address?: string; symbol?: string } }[] }).pairs ?? [];
+    const same = pairs.filter((p) => p.baseToken?.symbol?.toUpperCase().replace(/^\$/, "") === ticker);
     const day = Date.now() - 86_400_000;
-    const tokens = new Set(pairs.filter((p) => p.chainId === chain && (p.pairCreatedAt ?? 0) > day && p.baseToken?.symbol?.toUpperCase() === ticker).map((p) => p.baseToken!.address));
-    return tokens.size;
+    const tokens = new Set(same.filter((p) => p.chainId === chain && (p.pairCreatedAt ?? 0) > day).map((p) => p.baseToken!.address));
+    return { clones: tokens.size, taken: Math.max(0, ...same.map((p) => p.fdv ?? p.marketCap ?? 0)) };
   } catch {
-    return null;
+    return { clones: null, taken: 0 };
   }
 }
 
@@ -61,11 +69,12 @@ export interface Narrative {
   conf: number;
   posts: string[];
   clones: number | null;
+  refs?: { platform: string; title: string; url: string; where: string }[]; // подтверждения с других площадок
 }
 
 // Одна охота: Grok ищет в X, ссылки проверяются oEmbed, по каждому тикеру считаются клоны. Общая для
 // краулеров пользователей и для Narrative Radar платформы. Возвращает и обновлённый словарь «уже видели».
-export async function huntNarratives(opts: { brief: string; targets: string[]; chain: string; seen: Record<string, number> }) {
+export async function huntNarratives(opts: { brief: string; targets: string[]; chain: string; seen: Record<string, number>; feeds?: FeedItem[] }) {
   const since = Date.now() - 6 * 3600_000;
   const { text, citations } = await grok({
     system: `You are a CrawlHive crawler hunting X for narratives a memecoin could form around right now.\n${RULES}`,
@@ -73,12 +82,15 @@ export async function huntNarratives(opts: { brief: string; targets: string[]; c
       opts.brief,
       opts.targets.length ? `Look around these topics first: ${opts.targets.join(" | ")}.` : "",
       `Search X for what started spreading after ${new Date(since).toISOString()}: new memes and catchphrases, viral animals, new AI models or products, funny tech or internet moments, crypto culture jokes. Prefer things rising now over things that peaked days ago.`,
+      opts.feeds?.length
+        ? `Other platforms right now (hints only: report one only if you also find it spreading on X, and put the matching labels in "refs"):\n${feedBrief(opts.feeds)}`
+        : "",
     ]
       .filter(Boolean)
       .join("\n"),
     xSearch: { fromDate: new Date(since).toISOString().slice(0, 10) },
   });
-  let parsed: { narratives?: { title?: string; why?: string; ticker?: string; heat?: string; kind?: string; posts?: unknown[] }[] } = {};
+  let parsed: { narratives?: { title?: string; why?: string; ticker?: string; heat?: string; kind?: string; posts?: unknown[]; refs?: unknown[] }[] } = {};
   try {
     parsed = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
   } catch {
@@ -96,19 +108,33 @@ export async function huntNarratives(opts: { brief: string; targets: string[]; c
     const title = String(n.title ?? "").trim().slice(0, 60);
     if (!ticker || !title || seen[ticker]) continue;
     // Самореклама проектов и лаунчпадов — не нарратив, даже если Grok её пропустил.
-    if (SHILL_RE.test(`${title} ${n.why ?? ""}`)) continue;
+    if (SHILL_RE.test(`${title} ${n.why ?? ""}`) || CA_RE.test(`${title} ${n.why ?? ""}`)) continue;
     const posts: string[] = [];
     for (const u of (Array.isArray(n.posts) ? n.posts : []).filter((x): x is string => typeof x === "string").slice(0, 3)) {
       const v = await verifyPost(u.startsWith("http") ? u : `https://${u}`);
       // Настоящий пост — берём; oEmbed молчит — оставляем, только если Grok сослался на него из поиска.
-      if (v) posts.push(v);
-      else if (v === undefined && cited.has(idOf(u))) posts.push(u.startsWith("http") ? u : `https://${u}`);
+      const link = v ?? (v === undefined && cited.has(idOf(u)) ? (u.startsWith("http") ? u : `https://${u}`) : null);
+      if (!link) continue;
+      // Пост с адресом контракта — реклама монеты, такой не подтверждает органику.
+      const info = await postInfo(link).catch(() => null);
+      if (info && CA_RE.test(info.text)) continue;
+      posts.push(link);
     }
     if (!posts.length) {
       dropped++;
       continue;
     }
     const heat = ["early", "rising", "hot"].includes(String(n.heat)) ? String(n.heat) : "early";
+    const market = await tickerMarket(opts.chain, ticker);
+    if (market.taken >= TAKEN_FDV()) {
+      dropped++;
+      continue;
+    }
+    const refs = (Array.isArray(n.refs) ? n.refs : [])
+      .map((r) => opts.feeds?.find((f) => f.ref === String(r).trim().toUpperCase()))
+      .filter((f): f is FeedItem => !!f)
+      .slice(0, 4)
+      .map(({ platform, title: t, url, where }) => ({ platform, title: t, url, where }));
     found.push({
       title,
       why: String(n.why ?? "").trim().slice(0, 220),
@@ -117,7 +143,8 @@ export async function huntNarratives(opts: { brief: string; targets: string[]; c
       kind: String(n.kind ?? "other").slice(0, 12),
       conf: HEAT_CONF[heat],
       posts: [...new Set(posts)],
-      clones: await clones(opts.chain, ticker),
+      clones: market.clones,
+      ...(refs.length ? { refs } : {}),
     });
   }
   return { found, seen, dropped, items: citations.length };

@@ -7,7 +7,8 @@ import "server-only";
 import { getMeta, setMeta } from "./store";
 import { grokEnabled } from "./crawl/grok";
 import { searchPairs } from "./crawl/dexscreener";
-import { SHILL_RE, huntNarratives, type Narrative } from "./crawl/sources/narratives";
+import { CA_RE, SHILL_RE, huntNarratives, type Narrative } from "./crawl/sources/narratives";
+import { narrativeFeeds } from "./crawl/sources/narrative-feeds";
 import { recentLaunches } from "./launch";
 import { postInfo } from "./narrative-media";
 
@@ -42,6 +43,7 @@ export interface NarrativeEntry extends Narrative {
   sightings?: Sighting[];
   outcome?: Outcome;
   reach?: Reach;
+  takenFdv?: number; // самая дорогая монета на тикере, появившаяся ДО нарратива
   media?: string[]; // картинки из постов (pbs.twimg.com)
 }
 export interface Reach {
@@ -61,8 +63,9 @@ const read = <T>(k: string, d: T): T => {
     return d;
   }
 };
-// Записи до появления фильтра саморекламы тоже проходят через него.
-const all = () => read<NarrativeEntry[]>(KEY, []).filter((n) => !SHILL_RE.test(`${n.title} ${n.why}`));
+// Записи до появления фильтров тоже проходят через них: самореклама, адрес контракта, тикер уже занят дорогой монетой.
+const TAKEN_FDV = () => Number(process.env.NARR_TAKEN_FDV ?? 500_000);
+const all = () => read<NarrativeEntry[]>(KEY, []).filter((n) => !SHILL_RE.test(`${n.title} ${n.why}`) && !CA_RE.test(`${n.title} ${n.why}`) && (n.takenFdv ?? 0) < TAKEN_FDV());
 const save = (list: NarrativeEntry[]) => setMeta(KEY, JSON.stringify(list.slice(0, MAX)));
 
 const g = globalThis as unknown as { __crawlhiveNarr?: { started: boolean; busy: boolean; outcomesAt: number } };
@@ -82,7 +85,8 @@ function brief(list: NarrativeEntry[]) {
 async function hunt() {
   const before = all();
   // Пустой «уже видели»: повторная находка нужна, это отметка в жизни нарратива.
-  const { found } = await huntNarratives({ brief: brief(before), targets: [], chain: "solana", seen: {} });
+  const feeds = await narrativeFeeds().catch(() => []);
+  const { found } = await huntNarratives({ brief: brief(before), targets: [], chain: "solana", seen: {}, feeds });
   const now = Date.now();
   const list = [...before];
   let added = 0;
@@ -98,6 +102,7 @@ async function hunt() {
       prev.conf = n.conf;
       prev.clones = n.clones;
       prev.posts = [...new Set([...prev.posts, ...n.posts])].slice(0, 6);
+      if (n.refs?.length) prev.refs = [...(prev.refs ?? []), ...n.refs.filter((r) => !prev.refs?.some((x) => x.url === r.url))].slice(0, 6);
       return;
     }
     added++;
@@ -135,9 +140,11 @@ async function refreshOutcomes() {
   for (const n of due) {
     if (now - n.at < 24 * HOUR) await enrich(n).catch(() => {});
     try {
-      const pairs = (await searchPairs(n.ticker)).filter(
-        (p) => p.chainId === "solana" && p.baseToken.symbol.toUpperCase().replace(/^\$/, "") === n.ticker && (p.pairCreatedAt ?? 0) >= n.at - HOUR,
-      );
+      // Один запрос: монеты на тикере до нарратива (занят ли тикер) и после (что он породил).
+      const same = (await searchPairs(n.ticker)).filter((p) => p.baseToken.symbol.toUpperCase().replace(/^\$/, "") === n.ticker);
+      const pairs = same.filter((p) => p.chainId === "solana" && (p.pairCreatedAt ?? 0) >= n.at - HOUR);
+      const before = same.filter((p) => (p.pairCreatedAt ?? 0) < n.at - HOUR);
+      n.takenFdv = Math.max(0, ...before.map((p) => p.fdv ?? p.marketCap ?? 0));
       const byToken = new Map<string, { symbol: string; fdv: number }>();
       for (const p of pairs) {
         const fdv = p.fdv ?? p.marketCap ?? 0;
@@ -202,7 +209,9 @@ function scoreOf(n: NarrativeEntry, stage: string, now: number) {
   const speed = Math.min(20, (Math.log10(1 + speedV) / 5) * 20); // 100k просмотров в час — максимум
   const fresh = n.clones === 0 ? 15 : n.clones !== null && n.clones <= 2 ? 8 : 0;
   const life = stage === "peak" ? 10 : stage === "rising" ? 8 : stage === "new" ? 5 : 0;
-  return { score: Math.round(heat + reach + speed + fresh + life), speed: Math.round(speedV) };
+  // Подтверждение на других площадках (Reddit, новости, HN, лаунчпады): +5 за каждую, до +10.
+  const cross = Math.min(10, new Set((n.refs ?? []).map((r) => r.platform)).size * 5);
+  return { score: Math.min(100, Math.round(heat + reach + speed + fresh + life + cross)), speed: Math.round(speedV) };
 }
 
 const handleOf = (u?: string) => u?.match(/(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/status/)?.[1];

@@ -26,6 +26,7 @@ interface Item {
   firstBy: string | null;
   score: number;
   speed: number;
+  refs?: { platform: string; title: string; url: string; where: string }[];
   media?: string[];
   reach?: { views: number; likes: number; reposts: number; replies: number; followers: number; firstPostAt: number };
   sightings?: { at: number; heat: string; clones: number | null }[];
@@ -54,6 +55,12 @@ const STAGE: Record<Item["stage"], { t: string; c: string; r: number }> = {
   fading: { t: "🌙 fading", c: "text-muted", r: 0.92 },
 };
 const HEAT_N: Record<string, number> = { early: 1, rising: 2, hot: 3 };
+const PLATFORM: Record<string, { icon: string; c: string }> = {
+  reddit: { icon: "🟠", c: "border-coral/40 text-coral" },
+  news: { icon: "📰", c: "border-sky/40 text-sky" },
+  hn: { icon: "🟧", c: "border-honey/40 text-honey" },
+  launchpad: { icon: "🚀", c: "border-pink/40 text-pink" },
+};
 const num = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k` : String(n));
 const img = (u: string) => `/api/narratives/image?u=${encodeURIComponent(u)}`;
 const SCORE_TONE = (s: number) => (s >= 70 ? "text-coral border-coral/60 bg-coral/10" : s >= 50 ? "text-honey border-honey/60 bg-honey/10" : "text-lime border-lime/50 bg-lime/10");
@@ -134,6 +141,15 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
       </div>
 
       <p className="mt-2 flex-1 text-sm leading-snug text-fg/85">{n.why}</p>
+      {!!n.refs?.length && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {n.refs.map((r) => (
+            <a key={r.url} href={r.url} target="_blank" rel="noreferrer" title={r.title} className={cn("max-w-full truncate rounded-md border px-1.5 py-0.5 text-[11px] hover:bg-panel-2", PLATFORM[r.platform]?.c ?? "border-line text-muted")}>
+              {PLATFORM[r.platform]?.icon ?? "🔗"} also on {r.where}
+            </a>
+          ))}
+        </div>
+      )}
       {n.reach && (
         <div className="num mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
           <span title="views across verified posts">👁 {num(n.reach.views)}</span>
@@ -239,7 +255,7 @@ export default function NarrativesPage() {
             Narrative <span className="bg-gradient-to-r from-violet via-pink to-honey bg-clip-text text-transparent">Radar</span>
           </h1>
           <p className="mt-4 max-w-xl text-fg/85">What is starting to spread on X right now, found by the platform&apos;s own Narrative Hunter. Nobody owns it: every find is here for everyone.</p>
-          <p className="mt-1 max-w-xl text-sm text-muted">Every post is verified, invented ones drop out. Each narrative gets a score from its heat, reach, spread speed, free ticker and stage, a life story across hunts, the coins it produced, and one tap turns it into a Clean Launch with the picture, name, ticker and banner ready.</p>
+          <p className="mt-1 max-w-xl text-sm text-muted">Every post is verified and ads with contract addresses drop out, so do tickers already taken by a $500k+ coin. The hunter also reads Reddit, the news, Hacker News and pump.fun streams, and each narrative gets a score from its heat, reach, spread speed, free ticker, stage and how many platforms confirm it, a life story across hunts, the coins it produced, and one tap turns it into a Clean Launch with the picture, name, ticker and banner ready.</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Box label="Narratives, 24h" value={d ? d.found : "—"} tone="text-violet" />
             <Box label="Hot now" value={d ? d.hot : "—"} tone="text-coral" />

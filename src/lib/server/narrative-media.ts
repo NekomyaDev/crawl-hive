@@ -14,6 +14,7 @@ export interface PostInfo {
   followers: number;
   createdAt: number;
   images: string[];
+  text: string;
 }
 
 const POST_TTL = 60 * 60_000;
@@ -32,11 +33,11 @@ export async function postInfo(url: string): Promise<PostInfo | null> {
     const r = await fetch(`https://api.fxtwitter.com/status/${id}`, { signal: AbortSignal.timeout(8000) });
     if (r.ok) {
       const t = ((await r.json()) as { tweet?: Record<string, unknown> }).tweet as
-        | { likes?: number; retweets?: number; replies?: number; views?: number; created_timestamp?: number; author?: { followers?: number }; media?: { photos?: { url: string }[]; videos?: { thumbnail_url?: string }[] } }
+        | { text?: string; likes?: number; retweets?: number; replies?: number; views?: number; created_timestamp?: number; author?: { followers?: number }; media?: { photos?: { url: string }[]; videos?: { thumbnail_url?: string }[] } }
         | undefined;
       if (t) {
         const images = [...(t.media?.photos ?? []).map((p) => p.url), ...(t.media?.videos ?? []).map((x) => x.thumbnail_url ?? "")].filter((u) => /^https:\/\/pbs\.twimg\.com\//.test(u)).slice(0, 4);
-        v = { likes: t.likes ?? 0, reposts: t.retweets ?? 0, replies: t.replies ?? 0, views: t.views ?? 0, followers: t.author?.followers ?? 0, createdAt: (t.created_timestamp ?? 0) * 1000, images };
+        v = { likes: t.likes ?? 0, reposts: t.retweets ?? 0, replies: t.replies ?? 0, views: t.views ?? 0, followers: t.author?.followers ?? 0, createdAt: (t.created_timestamp ?? 0) * 1000, images, text: String(t.text ?? "").slice(0, 600) };
       }
     }
   } catch {
