@@ -33,6 +33,7 @@ export interface RadarEntry {
   fdv: number;
   ageH: number | null;
   at: number;
+  img?: string;
 }
 
 function all(): RadarEntry[] {
@@ -59,21 +60,23 @@ async function tick() {
     const now0 = Date.now();
     const seen = new Set(all().filter((e) => e.verdict !== "TOO_EARLY" || now0 - e.at < RECHECK_MS).map((e) => e.id));
     const cands = new Map<string, string[]>();
+    const icons = new Map<string, string>();
     for (const t of [...(profiles ?? []), ...(boosts ?? [])]) {
+      if (t.icon && !icons.has(t.tokenAddress)) icons.set(t.tokenAddress, t.icon);
       if (!CHAINS.has(t.chainId) || seen.has(t.tokenAddress)) continue;
       const list = cands.get(t.chainId) ?? [];
       if (!list.includes(t.tokenAddress)) list.push(t.tokenAddress);
       cands.set(t.chainId, list);
     }
     // Свежие и с настоящей ликвидностью: пустые пары и старые токены радару не интересны.
-    const picks: { chain: string; id: string; age: number }[] = [];
+    const picks: { chain: string; id: string; age: number; img?: string }[] = [];
     for (const [chain, ids] of cands) {
       const pairs = await bestPairs(chain, ids.slice(0, 60)).catch(() => new Map());
       for (const id of ids) {
         const p = pairs.get(id);
         const age = p?.pairCreatedAt ? (Date.now() - p.pairCreatedAt) / 3600_000 : null;
         if (!p || (p.liquidity?.usd ?? 0) < MIN_LIQ || age === null || age < MIN_AGE_H || age > MAX_AGE_H) continue;
-        picks.push({ chain, id, age });
+        picks.push({ chain, id, age, img: icons.get(id) ?? p.info?.imageUrl });
       }
     }
     picks.sort((a, b) => a.age - b.age);
@@ -97,6 +100,7 @@ async function tick() {
           fdv: Math.round(r.market?.fdv ?? 0),
           ageH: r.market?.ageHours != null ? Math.round(r.market.ageHours * 10) / 10 : null,
           at: Date.now(),
+          img: p.img?.replace(/width=\d+&height=\d+/, "width=128&height=128"),
         };
         setMeta(KEY, JSON.stringify([entry, ...all().filter((e) => e.id !== entry.id)].slice(0, MAX)));
       } catch (e) {

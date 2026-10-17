@@ -201,3 +201,10 @@ body:has([data-tg-app]) main { padding: 0 !important; }
 @keyframes dex-glow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.15) saturate(1.15); } }
 .dex-cta { animation: dex-glow 2.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .dex-cta { animation: none; } }
+
+/* Радар: луч крутится, метки мерцают, когда луч проходит над ними. */
+@keyframes radar-sweep { to { transform: rotate(360deg); } }
+.radar-sweep { animation: radar-sweep 4s linear infinite; }
+@keyframes radar-blip { 0%, 100% { opacity: 0.75; } 8% { opacity: 1; filter: brightness(1.35); } }
+.radar-blip { animation: radar-blip 4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .radar-sweep, .radar-blip { animation: none; } }

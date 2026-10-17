@@ -1,8 +1,7 @@
 "use client";
-// «Новое в рое»: живые плитки свежих функций с настоящими данными — Launch Radar, Track Record, агенты, Jev.
+// «Новое в рое»: живые плитки свежих функций с настоящими данными — Narrative Radar, Clean Launch, Launch Radar, Track Record.
 import Link from "next/link";
-import { ArrowRight, Bot, Radar, Target, Zap } from "lucide-react";
-import { BotOcto } from "@/components/bot-octo";
+import { ArrowRight, Radar, Rocket, Sparkles, Target } from "lucide-react";
 import { VerdictPill } from "@/components/verdict";
 import { useApi } from "@/lib/client/use-api";
 import { cn, fmt } from "@/lib/utils";
@@ -11,6 +10,13 @@ interface RadarFeed {
   items: { id: string; symbol: string; verdict: string; score: number | null; liq: number; at: number; chain: string }[];
   waiting: number;
   day: { scanned: number; danger: number; clean: number };
+}
+interface NarrFeed {
+  items: { id: string; ticker: string; title: string; heat: string; clones: number | null }[];
+  day: { found: number };
+}
+interface Launches {
+  launches: { mint: string; symbol: string; verdict?: string | null; score?: number | null }[];
 }
 interface Track {
   total: number;
@@ -36,6 +42,8 @@ function Tile({ href, icon, tone, title, children, cta }: { href: string; icon: 
 
 export function WhatsNew() {
   const { data: radar } = useApi<RadarFeed>("/api/radar", 60000);
+  const { data: narr } = useApi<NarrFeed>("/api/narratives", 120000);
+  const { data: launch } = useApi<Launches>("/api/launch", 120000);
   const { data: track } = useApi<Track>("/api/track", 120000);
   const by = new Map((track?.by ?? []).map((b) => [b.verdict, b]));
   const danger = by.get("DANGER");
@@ -50,6 +58,34 @@ export function WhatsNew() {
         <span className="text-xs text-muted">live data</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Tile href="/narratives" icon={<Sparkles className="size-4 text-violet" />} tone="bg-violet" title="Narrative Radar" cta={narr?.day.found ? `${narr.day.found} narratives found today` : "See what is spreading"}>
+          <ul className="space-y-1.5">
+            {(narr?.items ?? []).slice(0, 3).map((n) => (
+              <li key={n.id} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate">
+                  <span className="num font-medium text-honey">${n.ticker}</span> <span className="text-muted">{n.title}</span>
+                </span>
+                <span className="shrink-0 text-[11px]">{n.heat === "hot" ? "🔥" : n.heat === "rising" ? "📈" : "🌱"}</span>
+              </li>
+            ))}
+            {narr && !narr.items.length && <li className="text-xs text-muted">The platform&apos;s own hunter walks X every 3 hours. First narratives land here soon.</li>}
+          </ul>
+        </Tile>
+
+        <Tile href="/launch" icon={<Rocket className="size-4 text-coral" />} tone="bg-coral" title="Clean Launch" cta="Launch a coin">
+          <p className="text-muted">Launch on pump.fun right from CrawlHive. 0% platform fee, Phantom signs, the swarm scans every coin at birth.</p>
+          {!!launch?.launches.length && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              {launch.launches.slice(0, 3).map((l) => (
+                <span key={l.mint} className="flex items-center gap-1">
+                  <span className="num font-medium">${l.symbol}</span>
+                  {l.verdict && <VerdictPill verdict={l.verdict} score={l.score} />}
+                </span>
+              ))}
+            </div>
+          )}
+        </Tile>
+
         <Tile href="/radar" icon={<Radar className="size-4 text-lime" />} tone="bg-lime" title="Launch Radar" cta={radar ? `${radar.day.scanned} launches scanned today` : "Open the radar"}>
           <ul className="space-y-1.5">
             {(radar?.items ?? []).slice(0, 3).map((e) => (
@@ -85,25 +121,6 @@ export function WhatsNew() {
           )}
         </Tile>
 
-        <Tile href="/my" icon={<Bot className="size-4 text-sky" />} tone="bg-sky" title="Any AI agent, one click" cta="Connect your agent">
-          <div className="mb-2 flex -space-x-1.5">
-            {["#ffb020", "#5eead4", "#60a5fa", "#c084fc"].map((c) => (
-              <span key={c} className="grid size-8 place-items-center rounded-full border-2 border-panel bg-panel-2">
-                <BotOcto size={22} color={c} live />
-              </span>
-            ))}
-          </div>
-          <p className="text-muted">Grok Bot, ChatGPT Dots, Meta Muse, Claude, Cursor: press Connect, pick crawlers, approve with your wallet.</p>
-        </Tile>
-
-        <Tile href="/track" icon={<Zap className="size-4 text-pink" />} tone="bg-pink" title="Jev decides, Grok researches" cta="How signals are rated">
-          <p className="text-muted">A decision model rates every crawler find in half a second for $0.00002. Noise is skipped, Grok checks only the doubtful ones.</p>
-          {!!track?.signals.scored && (
-            <div className="mt-2 text-[11px] text-muted">
-              Crawler signals hit: <span className="num text-lime">{Math.round((track.signals.hits / track.signals.scored) * 100)}%</span> of {track.signals.scored}
-            </div>
-          )}
-        </Tile>
       </div>
     </section>
   );

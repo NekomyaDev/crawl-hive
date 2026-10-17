@@ -15,6 +15,7 @@ export interface TokenListing {
   tokenAddress: string;
   description?: string;
   url?: string;
+  icon?: string;
 }
 
 export interface PairInfo {
@@ -29,6 +30,7 @@ export interface PairInfo {
   fdv?: number;
   marketCap?: number;
   pairCreatedAt?: number;
+  info?: { imageUrl?: string };
 }
 
 export const latestProfiles = () => get<TokenListing[]>("/token-profiles/latest/v1");

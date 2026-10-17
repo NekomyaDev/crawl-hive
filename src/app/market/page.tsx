@@ -7,7 +7,8 @@ import { TemplateCard } from "@/components/template-card";
 import { useTreasury } from "@/components/treasury-card";
 import { useConfig } from "@/lib/client/use-config";
 import { TEMPLATES } from "@/lib/templates";
-import { Hourglass, Sparkles, Repeat } from "lucide-react";
+import { ArrowRight, Hourglass, Rocket, Sparkles, Repeat } from "lucide-react";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/field";
@@ -152,6 +153,26 @@ export default function Market() {
         }
         sub="Ready-made crawlers with sources and specifications we tested. Buy one and it starts crawling for you right away; after that it's yours to tweak like any other."
       />
+      <div className="mb-5 grid gap-3 md:grid-cols-2">
+        <Link href="/launch" className="group flex items-center gap-4 rounded-2xl border-2 border-coral/50 bg-gradient-to-r from-coral/15 via-panel to-pink/10 p-4 transition-colors hover:border-coral">
+          <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-honey to-pink text-black">
+            <Rocket className="size-6" />
+          </span>
+          <span className="min-w-0">
+            <span className="block font-bold">Clean Launch: launch your coin</span>
+            <span className="block text-sm text-muted">On pump.fun right from CrawlHive · 0% platform fee · scanned by the swarm at birth</span>
+          </span>
+          <ArrowRight className="ml-auto size-5 shrink-0 text-coral transition-transform group-hover:translate-x-1" />
+        </Link>
+        <Link href="/narratives" className="group flex items-center gap-4 rounded-2xl border-2 border-violet/50 bg-gradient-to-r from-violet/15 via-panel to-sky/10 p-4 transition-colors hover:border-violet">
+          <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-violet to-sky text-2xl">🔮</span>
+          <span className="min-w-0">
+            <span className="block font-bold">Narrative Radar: free for everyone</span>
+            <span className="block text-sm text-muted">What is starting to spread on X, found by the platform&apos;s own hunter · one tap to launch it</span>
+          </span>
+          <ArrowRight className="ml-auto size-5 shrink-0 text-violet transition-transform group-hover:translate-x-1" />
+        </Link>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {TEMPLATES.map((t) => (
           <TemplateCard key={t.id} t={t} running={treasury?.templates[t.id] ?? 0} />

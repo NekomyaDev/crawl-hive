@@ -9,6 +9,7 @@ import { specBrief } from "../analyze";
 import type { SourceResult } from "./types";
 
 const DEDUP_MS = 12 * 3600_000;
+const SHILL_RE = /\b(launchpad|airdrop|presale|whitelist|stealth launch|fair launch|CA:|contract address)\b/i;
 const HEAT_CONF: Record<string, number> = { early: 0.55, rising: 0.7, hot: 0.85 };
 
 const RULES = `Reply with JSON only, no prose:
@@ -94,6 +95,8 @@ export async function huntNarratives(opts: { brief: string; targets: string[]; c
     const ticker = tickerOf(n.ticker);
     const title = String(n.title ?? "").trim().slice(0, 60);
     if (!ticker || !title || seen[ticker]) continue;
+    // Самореклама проектов и лаунчпадов — не нарратив, даже если Grok её пропустил.
+    if (SHILL_RE.test(`${title} ${n.why ?? ""}`)) continue;
     const posts: string[] = [];
     for (const u of (Array.isArray(n.posts) ? n.posts : []).filter((x): x is string => typeof x === "string").slice(0, 3)) {
       const v = await verifyPost(u.startsWith("http") ? u : `https://${u}`);

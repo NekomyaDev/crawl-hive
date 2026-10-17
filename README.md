@@ -42,6 +42,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 17 | **New radar screens**: [Launch Radar](https://crawlhive.xyz/radar) and [Narrative Radar](https://crawlhive.xyz/narratives) show a live radar (rotating sweep, one blip per find, tap to jump to the card), cards with token logos, FDV at scan, score, copyable contract, chain and verdict filters; Clean Launch and Narrative Radar tiles on the home page and in the marketplace |
 | Oct 17 | **Narrative Radar** ([/narratives](https://crawlhive.xyz/narratives)): the platform's own Narrative Hunter, owned by nobody; every 3 hours it hunts X, verifies every post with oEmbed and shows each narrative to everyone with its heat, the coin count on the ticker and a Launch this narrative button; coins later launched on CrawlHive under that ticker show up on the card; `/narratives` in the bot |
 | Oct 17 | **DEX fund back to the profile**: the third party who paid for the profile moved the payment to another token and DexScreener deleted the profile, so the fund is raising for Enhanced Token Info ($299) again before any boosts |
 | Oct 17 | **Fourth buyback & burn**: 0.5 SOL → 1,719,136 $CRAWLHIVE bought, 1,667,562 burned ([tx](https://solscan.io/tx/z7cAhcHfPKa8jVoturZCGcpoqSQsV5sziWTci1FLbo4fZpgAXTiVUsJx4YvfcTxYx5bFG1fH2hRgbcANMrnNBdy)); 4.33M burned in total across 4 buybacks, 1.02 SOL spent |
