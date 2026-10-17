@@ -181,7 +181,19 @@ async function resolve(q: string, log: (l: ScanLog) => void, hint = "solana"): P
   return { chain: net, address: pairs[0].baseToken.address, pair: pairs[0] };
 }
 
+// Держатели меняются, но не каждую секунду: повторный скан того же токена в течение 90 секунд берёт из кэша.
+const gh = globalThis as unknown as { __crawlhiveHolders?: Map<string, { at: number; v: Awaited<ReturnType<typeof readHolders>> }> };
 async function holdersOf(mint: string) {
+  const m = (gh.__crawlhiveHolders ??= new Map());
+  const hit = m.get(mint);
+  if (hit && Date.now() - hit.at < 90_000) return hit.v;
+  const v = await readHolders(mint);
+  if (m.size > 2000) m.clear();
+  m.set(mint, { at: Date.now(), v });
+  return v;
+}
+
+async function readHolders(mint: string) {
   const conn = rpcConnection();
   const key = new PublicKey(mint);
   const [info, supply, largest] = await Promise.all([

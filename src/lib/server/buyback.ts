@@ -17,8 +17,9 @@ import { dexFundStats } from "./dexfund";
 export const BUYBACK_RESERVE_SOL = 0.05;
 const MAX_RECORDS = 500;
 const MARKET_TTL_MS = 45_000;
-const MINT_TTL_MS = 60_000;
-const BAL_TTL_MS = 30_000;
+const MINT_TTL_MS = 5 * 60_000;
+const BAL_TTL_MS = 90_000;
+const USDC_TTL_MS = 10 * 60_000; // USDC приходит редко (оплаты x402), после байбека кэш сбрасывается
 
 export function tokenConfig() {
   const mint = process.env.TOKEN_MINT?.trim() || null;
@@ -91,7 +92,7 @@ export async function treasurySol(force = false): Promise<number | null> {
 // USDC на казне: сюда приходят оплаты x402 от ИИ-агентов.
 export async function treasuryUsdc(force = false): Promise<number | null> {
   const c = cache();
-  if (!force && c.usdc && Date.now() - c.usdc.at < BAL_TTL_MS) return c.usdc.v;
+  if (!force && c.usdc && Date.now() - c.usdc.at < USDC_TTL_MS) return c.usdc.v;
   try {
     const ata = getAssociatedTokenAddressSync(new PublicKey(USDC_MINT), new PublicKey(BUYBACK_TREASURY), false, TOKEN_PROGRAM_ID);
     const b = await rpcConnection().getTokenAccountBalance(ata).catch(() => null);

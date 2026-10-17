@@ -37,6 +37,36 @@ async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Prom
   return out;
 }
 
+// Кэши: первое пополнение кошелька не меняется никогда, баланс крупного спонсора (биржа или нет) — медленно.
+// Одни и те же кошельки встречаются в повторных сканах и у соседних токенов, а каждый промах — два-три вызова RPC.
+const FUND_TTL = 24 * 3600_000;
+const BAL_TTL = 6 * 3600_000;
+const CACHE_MAX = 20_000;
+type Funding = { funder?: string; firstAt?: number } | null;
+const gc = globalThis as unknown as { __crawlhiveFund?: Map<string, { at: number; v: Funding }>; __crawlhiveFunderBal?: Map<string, { at: number; sol: number }> };
+const fundCache = () => (gc.__crawlhiveFund ??= new Map());
+const balCache = () => (gc.__crawlhiveFunderBal ??= new Map());
+function remember<V>(m: Map<string, { at: number } & V>, k: string, v: { at: number } & V) {
+  if (m.size >= CACHE_MAX) for (const key of [...m.keys()].slice(0, 1000)) m.delete(key);
+  m.set(k, v);
+}
+
+async function cachedFunding(conn: Connection, wallet: string): Promise<Funding> {
+  const hit = fundCache().get(wallet);
+  if (hit && Date.now() - hit.at < FUND_TTL) return hit.v;
+  const v = await firstFunding(conn, wallet);
+  remember(fundCache(), wallet, { at: Date.now(), v });
+  return v;
+}
+
+async function funderSol(conn: Connection, wallet: string): Promise<number> {
+  const hit = balCache().get(wallet);
+  if (hit && Date.now() - hit.at < BAL_TTL) return hit.sol;
+  const sol = (await conn.getBalance(new PublicKey(wallet))) / 1e9;
+  remember(balCache(), wallet, { at: Date.now(), sol });
+  return sol;
+}
+
 // Кто первым прислал SOL на кошелёк и когда это было. Кошельки с историей длиннее 1000 транзакций
 // старые и активные — их не трассируем (и они точно не свежие).
 async function firstFunding(conn: Connection, wallet: string): Promise<{ funder?: string; firstAt?: number } | null> {
@@ -85,7 +115,7 @@ export async function traceBundles(conn: Connection, holders: HolderAccount[]): 
   });
   const wallets = [...pctBy.keys()].slice(0, MAX_WALLETS);
 
-  const traced = await pool(wallets, 4, (w) => firstFunding(conn, w).catch(() => null));
+  const traced = await pool(wallets, 4, (w) => cachedFunding(conn, w).catch(() => null));
   const now = Date.now();
   const fresh = { wallets: 0, pct: 0 };
   const funderOf = new Map<string, string>();
@@ -102,8 +132,8 @@ export async function traceBundles(conn: Connection, holders: HolderAccount[]): 
   const count = new Map<string, number>();
   for (const f of funderOf.values()) count.set(f, (count.get(f) ?? 0) + 1);
   const candidates = [...count.keys()].filter((f) => (count.get(f) ?? 0) > 1 || pctBy.has(f));
-  const balances = await pool(candidates, 4, (f) => conn.getBalance(new PublicKey(f)).catch(() => 0));
-  const exchange = new Set(candidates.filter((_, i) => balances[i] / 1e9 > EXCHANGE_SOL));
+  const balances = await pool(candidates, 4, (f) => funderSol(conn, f).catch(() => 0));
+  const exchange = new Set(candidates.filter((_, i) => balances[i] > EXCHANGE_SOL));
 
   // Объединение: держатель ↔ его спонсор. Кластер — компонента, где не меньше двух держателей.
   const parent = new Map<string, string>();
