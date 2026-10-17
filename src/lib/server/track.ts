@@ -25,7 +25,10 @@ export interface TrackEntry {
   at: number;
   price0: number;
   liq0: number;
+  fdv0?: number; // капитализация на момент скана (для Replay: «$41k → $392k»)
   peakPct?: number;
+  peakAt?: number; // когда был пик
+  name?: string;
   lowPct?: number;
   lastPct?: number;
   liqNow?: number;
@@ -52,7 +55,8 @@ export function trackVerdict(r: {
   symbol: string;
   verdict: TrackVerdict;
   score: number | null;
-  market?: { priceUsd?: number; liquidityUsd?: number };
+  name?: string;
+  market?: { priceUsd?: number; liquidityUsd?: number; fdv?: number };
 }, src: TrackEntry["src"]) {
   const price0 = Number(r.market?.priceUsd);
   const liq0 = Number(r.market?.liquidityUsd);
@@ -65,7 +69,8 @@ export function trackVerdict(r: {
     if (list[prev].verdict !== "TOO_EARLY" || r.verdict === "TOO_EARLY") return;
     list.splice(prev, 1);
   }
-  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, verdict: r.verdict, score: r.score, src, at: now, price0, liq0 });
+  const fdv0 = Number(r.market?.fdv) > 0 ? Math.round(Number(r.market?.fdv)) : undefined;
+  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, ...(fdv0 ? { fdv0 } : {}) });
   save(list);
 }
 
@@ -96,6 +101,7 @@ export async function sampleTrack() {
       } else {
         e.missing = 0;
         const pct = Math.round(((price - e.price0) / e.price0) * 1000) / 10;
+        if (e.peakPct === undefined || pct > e.peakPct) e.peakAt = now;
         e.peakPct = Math.max(e.peakPct ?? pct, pct);
         e.lowPct = Math.min(e.lowPct ?? pct, pct);
         e.lastPct = pct;
@@ -177,4 +183,49 @@ export function trackEntry(id: string, at: number) {
 // Вердикты, записанные в окне [from, to): их отпечатки уходят в блокчейн (proof.ts).
 export function trackBetween(from: number, to: number) {
   return all().filter((e) => e.at >= from && e.at < to);
+}
+
+// ---------- Replay: витрина попаданий, но честная ----------
+// Gem Replay — CLEAN/OK, которые за сутки выросли хотя бы вдвое; Rug Replay — DANGER, которые потом рухнули на 90%+
+// или потеряли ликвидность. Рядом всегда счётчики промахов: сколько CLEAN/OK всё равно рухнули.
+const MAX_SANE_PCT = 4900; // больше ×50 за сутки — почти всегда ошибка цены на момент скана
+const MIN_LIQ0 = 2000;
+
+export function replayFeed() {
+  const list = all();
+  const now = Date.now();
+  const sane = (e: TrackEntry) => e.liq0 >= MIN_LIQ0 && (e.peakPct ?? 0) <= MAX_SANE_PCT;
+  const good = (e: TrackEntry) => e.verdict === "CLEAN" || e.verdict === "OK";
+  const view = (e: TrackEntry) => ({
+    id: e.id,
+    chain: e.chain,
+    symbol: e.symbol,
+    name: e.name ?? null,
+    verdict: e.verdict,
+    score: e.score,
+    src: e.src,
+    at: e.at,
+    fdv0: e.fdv0 ?? null,
+    multiple: e.peakPct != null ? Math.round((1 + e.peakPct / 100) * 10) / 10 : null,
+    hoursToPeak: e.peakAt ? Math.round(((e.peakAt - e.at) / 3600_000) * 10) / 10 : null,
+    lowPct: e.lowPct ?? null,
+    rugged: !!e.rugged,
+  });
+  const gems = list.filter((e) => good(e) && sane(e) && (e.peakPct ?? 0) >= 100).sort((a, b) => (b.peakPct ?? 0) - (a.peakPct ?? 0));
+  const rugs = list.filter((e) => e.verdict === "DANGER" && e.liq0 >= MIN_LIQ0 && (e.rugged || (e.lowPct ?? 0) <= -90));
+  const settledGood = list.filter((e) => good(e) && e.done && now - e.at >= WINDOW_MS);
+  const settledDanger = list.filter((e) => e.verdict === "DANGER" && e.done && now - e.at >= WINDOW_MS);
+  return {
+    gems: gems.slice(0, 60).map(view),
+    rugs: rugs.slice(0, 60).map(view),
+    stats: {
+      good: settledGood.length,
+      goodDoubled: settledGood.filter((e) => sane(e) && (e.peakPct ?? 0) >= 100).length,
+      goodDumped: settledGood.filter((e) => e.dumped).length,
+      danger: settledDanger.length,
+      dangerDumped: settledDanger.filter((e) => e.dumped).length,
+      gems: gems.length,
+      rugs: rugs.length,
+    },
+  };
 }
