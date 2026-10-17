@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 17", title: "Narrative Score and ready-to-launch kits", text: "Every narrative now shows its reach (views, likes, reposts, biggest author), how fast it spreads per hour and a Narrative Score that blends heat, reach, speed, a free ticker and its stage, with the post's picture on the card. Launch this narrative now fills in the picture from the post too, can draw AI art for the coin in one click, and draws a 3:1 DexScreener banner in your browser." },
   { date: "Oct 17", title: "Narratives with a life story", text: "Narrative Radar now hunts every hour and follows each narrative over time: new, rising, peak, fading, with a heat trail across hunts and who spotted it first. It also checks which coins launched on the ticker afterwards and their best peak, and grades itself: how many of its narratives turned into a $100k+ coin." },
   { date: "Oct 17", title: "Snipers and insiders in every scan", text: "Scans of fresh pump.fun coins now show who bought in the first blocks after creation, how much they bought and how much they still hold, plus top wallets that were funded by the creator. Both lower the score when they hold a lot." },
   { date: "Oct 17", title: "Simpler token block", text: "The token block on the home page now shows only what is live: buyback & burn with treasury revenue by source, and the DEX fund. Crawler of the day is retired." },
