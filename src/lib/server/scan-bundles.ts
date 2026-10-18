@@ -17,9 +17,11 @@ export interface BundleReport {
   clusters: { wallets: number; pct: number; funder: string }[];
   fresh: { wallets: number; pct: number }; // кошельки моложе 3 дней
   links?: { wallet: string; funder: string; pct: number }[]; // кто кого пополнил первым — для поиска кошельков создателя
+  wallets?: { wallet: string; pct: number }[]; // топ-кошельки с долями; для «операторов», из ответа API убирается
+  exchanges?: string[]; // спонсоры-биржи (их связи не считаем)
 }
 
-const EXCHANGE_SOL = 5_000; // спонсор с таким балансом — почти наверняка горячий кошелёк биржи
+export const EXCHANGE_SOL = 5_000; // спонсор с таким балансом — почти наверняка горячий кошелёк биржи
 const FRESH_MS = 3 * 86400_000;
 const MAX_WALLETS = 12;
 
@@ -51,7 +53,7 @@ function remember<V>(m: Map<string, { at: number } & V>, k: string, v: { at: num
   m.set(k, v);
 }
 
-async function cachedFunding(conn: Connection, wallet: string): Promise<Funding> {
+export async function cachedFunding(conn: Connection, wallet: string): Promise<Funding> {
   const hit = fundCache().get(wallet);
   if (hit && Date.now() - hit.at < FUND_TTL) return hit.v;
   const v = await firstFunding(conn, wallet);
@@ -59,7 +61,7 @@ async function cachedFunding(conn: Connection, wallet: string): Promise<Funding>
   return v;
 }
 
-async function funderSol(conn: Connection, wallet: string): Promise<number> {
+export async function funderSol(conn: Connection, wallet: string): Promise<number> {
   const hit = balCache().get(wallet);
   if (hit && Date.now() - hit.at < BAL_TTL) return hit.sol;
   const sol = (await conn.getBalance(new PublicKey(wallet))) / 1e9;
@@ -156,5 +158,5 @@ export async function traceBundles(conn: Connection, holders: HolderAccount[]): 
     .sort((a, b) => b.pct - a.pct);
 
   const links = [...funderOf].map(([wallet, funder]) => ({ wallet, funder, pct: pctBy.get(wallet) ?? 0 }));
-  return { checked: traced.filter(Boolean).length, clusters, fresh, links };
+  return { checked: traced.filter(Boolean).length, clusters, fresh, links, wallets: wallets.map((w) => ({ wallet: w, pct: pctBy.get(w) ?? 0 })), exchanges: [...exchange] };
 }

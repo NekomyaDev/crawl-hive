@@ -58,6 +58,7 @@ interface Result {
   dev?: { creator: string; launched: number; graduated: number; walletAgeHours?: number; walletTxs: number; holdsPct?: number };
   snipers?: { wallets: number; boughtPct: number; holdPct: number; sold: number; slots: number };
   insiders?: { wallets: number; pct: number };
+  operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number } };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   xray?: XRayView;
   core?: string;
@@ -408,6 +409,14 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
         {r.bundles && <BundleFlag b={r.bundles} />}
         {r.dev && <DevFlag d={r.dev} />}
         {r.insiders && <Flag ok={false} label={`${r.insiders.wallets} dev-funded wallet${r.insiders.wallets > 1 ? "s" : ""} · ${r.insiders.pct.toFixed(1)}%`} />}
+        {r.operators?.operators[0] && (
+          <Flag
+            ok={r.operators.operators[0].roles.length < 2 && r.operators.operators[0].pct < 20}
+            label={`operator: ${r.operators.operators[0].wallets} wallets · ${r.operators.operators[0].pct.toFixed(1)}% · ${r.operators.operators[0].roles.join("+")}`}
+          />
+        )}
+        {!!r.operators?.devSnipers && <Flag ok={false} label={`${r.operators.devSnipers} dev-funded sniper${r.operators.devSnipers > 1 ? "s" : ""}`} />}
+        {r.operators?.history && <Flag ok={r.operators.history.dumped < 3} label={`wallets seen on ${r.operators.history.tokens} other tokens · ${r.operators.history.dumped} dumped`} />}
         {r.snipers && (r.snipers.wallets ? <Flag ok={r.snipers.holdPct < 5} label={`${r.snipers.wallets} sniper${r.snipers.wallets > 1 ? "s" : ""} · hold ${r.snipers.holdPct.toFixed(1)}%${r.snipers.sold ? ` · ${r.snipers.sold} sold` : ""}`} /> : <Flag ok label="no snipers" />)}
         {r.evm && (
           <>

@@ -10,6 +10,7 @@ import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceSnipers, type SniperReport } from "./scan-snipers";
+import { buildOperators, type OperatorReport } from "./scan-operators";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
@@ -53,6 +54,7 @@ export interface ScanResult {
   dev?: DevReport;
   snipers?: SniperReport; // кто купил в первых блоках и сколько держит сейчас
   insiders?: { wallets: number; pct: number }; // топ-держатели, которых пополнил кошелёк создателя
+  operators?: OperatorReport; // связанные кошельки, склеенные в владельцев, и их история на других токенах
   evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
   xray?: XRayView; // Contract X-Ray: рычаги владельца из байткода (EVM) или расширений Token-2022 (Solana)
   core?: string; // базовый актив сети (SOL, USDC…): мем-проверки к нему не применяются
@@ -364,17 +366,17 @@ export async function runScan(
         )
       : Promise.resolve(undefined);
 
-  // Снайперы: только молодые токены pump.fun и только сканы людей (радар и краулеры не тратят ленту pump.fun).
+  // Снайперы: только молодые токены на Solana и только сканы людей (радар и краулеры не тратят RPC на историю минта).
   const snipersP: Promise<SniperReport | undefined> =
-    chain === "solana" && !core && address.endsWith("pump") && opts.record !== false
-      ? Promise.all([devP, marketP]).then(([d, m]) => {
+    chain === "solana" && !core && opts.record !== false
+      ? Promise.all([holdersP, devP, marketP]).then(([h, d, m]) => {
           const age = m?.pair.pairCreatedAt ? (Date.now() - m.pair.pairCreatedAt) / 3600_000 : undefined;
           if (age !== undefined && age > 72) return undefined;
-          // У всех монет pump.fun эмиссия 1 млрд.
-          return withTimeout(traceSnipers(address, 1_000_000_000, d?.creator), 12_000)
+          const supplyP = h?.supplyRaw ? Promise.resolve(h.supplyRaw) : rpcConnection().getTokenSupply(new PublicKey(address)).then((x) => Number(x.value.amount) || 0);
+          return withTimeout(supplyP.then((supply) => traceSnipers(rpcConnection(), address, supply, d?.creator)), 16_000)
             .then((r) => {
               if (!r) {
-                log({ crawler: "crawler_snipers", text: "too many trades to reach the first block", tone: "info" });
+                log({ crawler: "crawler_snipers", text: "too much history to reach the first block", tone: "info" });
                 return undefined;
               }
               log({
@@ -487,7 +489,28 @@ export async function runScan(
   // Инсайдеры: топ-держатели, которым первый SOL прислал (или первую транзакцию оплатил) сам создатель.
   const devLinks = dev ? (bundles?.links ?? []).filter((l) => l.funder === dev.creator && l.wallet !== dev.creator) : [];
   const insiders = devLinks.length ? { wallets: devLinks.length, pct: Math.round(devLinks.reduce((x, l) => x + l.pct, 0) * 100) / 100 } : undefined;
-  let xray = xr && "program" in xr ? xrayViewSol(xr) : xr ? xrayViewEvm(xr, !!evm?.owner) : undefined;
+
+  // Операторы: склеиваем держателей, снайперов и инсайдеров по связям; плюс память кошельков между сканами.
+  const operators: OperatorReport | undefined =
+    chain === "solana" && !core && (bundles || snipers)
+      ? await withTimeout(buildOperators(rpcConnection(), { bundles, snipers, creator: dev?.creator, mint: address }), 10_000)
+          .then((o) => {
+            if (o) {
+              const top = o.operators[0];
+              log({
+                crawler: "crawler_operators",
+                text: [
+                  top ? `${o.operators.length} operator${o.operators.length > 1 ? "s" : ""} · biggest: ${top.wallets} wallets hold ${pct(top.pct)} (${top.roles.join(" + ")})` : "no linked operators among holders and snipers",
+                  o.devSnipers ? `${o.devSnipers} sniper${o.devSnipers > 1 ? "s" : ""} funded by the creator` : "",
+                  o.history ? `${o.history.wallets} wallet${o.history.wallets > 1 ? "s" : ""} seen on ${o.history.tokens} other token${o.history.tokens > 1 ? "s" : ""}, ${o.history.dumped} dumped` : "",
+                ].filter(Boolean).join(" · "),
+                tone: o.devSnipers || (top && top.roles.length > 1 && top.pct >= 20) ? "bad" : top ? "warn" : "ok",
+              });
+            }
+            return o;
+          })
+          .catch(() => undefined)
+      : undefined;  let xray = xr && "program" in xr ? xrayViewSol(xr) : xr ? xrayViewEvm(xr, !!evm?.owner) : undefined;
   if (siteR) {
     const siteView = { host: siteR.host, wallet: siteR.wallet, error: siteR.error, findings: siteR.findings.map((f) => ({ label: f.label, note: f.note, severity: f.severity, detail: f.evidence })) };
     xray = xray ? { ...xray, site: siteView } : { kind: chain === "solana" ? "solana" : "evm", summary: "token contract not read", findings: [], site: siteView };
@@ -518,6 +541,11 @@ export async function runScan(
   else if (cluster && (cluster.pct >= 4 || cluster.wallets >= 3)) hit("Linked wallets", -10, `${cluster.wallets} top wallets share a funder (${pct(cluster.pct)})`);
   if (insiders && insiders.pct >= 5) hit("Dev-funded holders", -20, `${insiders.wallets} top wallet${insiders.wallets > 1 ? "s were" : " was"} funded by the creator and hold ${pct(insiders.pct)}`);
   else if (insiders) hit("Dev-funded wallets", -10, `${insiders.wallets} top wallet${insiders.wallets > 1 ? "s were" : " was"} funded by the creator (${pct(insiders.pct)})`);
+  if (operators?.devSnipers) hit("Dev-funded snipers", -20, `${operators.devSnipers} wallet${operators.devSnipers > 1 ? "s" : ""} that bought in the first blocks were funded by the creator`);
+  const bigOp = operators?.operators[0];
+  if (bigOp && ((bigOp.roles.length > 1 && bigOp.pct >= 15) || bigOp.pct >= 30)) hit("One operator", -15, `${bigOp.wallets} linked wallets (${bigOp.roles.join(" + ")}) hold ${pct(bigOp.pct)}`);
+  const hist = operators?.history;
+  if (hist && hist.dumped >= 3 && hist.dumped / hist.tokens >= 0.5) hit("Known dump wallets", -10, `${hist.wallets} of these wallets were on ${hist.tokens} other tokens, ${hist.dumped} of them dumped`);
   if (snipers && snipers.holdPct >= 15) hit("Snipers hold a lot", -15, `${snipers.wallets} first-block buyers still hold ${pct(snipers.holdPct)}`);
   else if (snipers && snipers.holdPct >= 5) hit("Snipers", -5, `first-block buyers still hold ${pct(snipers.holdPct)}`);
   if (bundles && bundles.fresh.pct >= 15) hit("Fresh wallets", -10, `${bundles.fresh.wallets} wallets under 3 days old hold ${pct(bundles.fresh.pct)}`);
@@ -553,7 +581,7 @@ export async function runScan(
   // Жёсткое правило по данным Track Record (13.10): молодые токены со связанными или свежими кошельками
   // в первые часы массово рушились на 60–98% при вердикте OK/CLEAN. Взвешенная сумма тут обманывает:
   // такой токен не выше RISKY, сколько бы баллов он ни набрал.
-  const YOUNG_RISK = ["Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Fresh dev wallet", "Fresh wallets", "Owner active", "Dev holds a lot"];
+  const YOUNG_RISK = ["Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Dev-funded snipers", "One operator", "Known dump wallets", "Fresh dev wallet", "Fresh wallets", "Owner active", "Dev holds a lot"];
   const youngFlag = market?.ageHours !== undefined && market.ageHours < 24 ? factors.find((f) => YOUNG_RISK.includes(f.label)) : undefined;
   if (youngFlag && score >= 60) {
     hit("Young and linked", -(score - 59), `under a day old with "${youngFlag.label.toLowerCase()}": such launches often dump in the first hours`);
@@ -562,7 +590,7 @@ export async function runScan(
 
   // «Слишком рано» — только если явных красных флагов нет: связанные кошельки или серийного создателя видно
   // уже в первые минуты, и молчать о них нельзя.
-  const SERIOUS = ["Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
+  const SERIOUS = ["Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Dev-funded snipers", "One operator", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
   const tooEarly =
     !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !xray?.findings.some((f) => f.severity === "high") && !factors.some((f) => SERIOUS.includes(f.label));
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";
@@ -601,9 +629,10 @@ export async function runScan(
         }
       : undefined,
     holders: holders && { top1: holders.top1, top10: holders.top10, mintAuthority: holders.mintAuthority, freezeAuthority: holders.freezeAuthority },
-    bundles: bundles && { ...bundles, links: undefined },
-    snipers,
+    bundles: bundles && { ...bundles, links: undefined, wallets: undefined, exchanges: undefined },
+    snipers: snipers && { ...snipers, buyers: undefined },
     insiders,
+    operators,
     dev,
     evm,
     xray,

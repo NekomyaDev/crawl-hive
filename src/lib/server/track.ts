@@ -229,3 +229,13 @@ export function replayFeed() {
     },
   };
 }
+
+// Исходы токенов по адресам (для памяти кошельков: сколько из «их» токенов потом рухнули).
+export function trackOutcomes(): Map<string, { dumped: boolean; rugged: boolean; done: boolean }> {
+  const m = new Map<string, { dumped: boolean; rugged: boolean; done: boolean }>();
+  for (const e of all()) {
+    const prev = m.get(e.id);
+    m.set(e.id, { dumped: !!e.dumped || !!prev?.dumped, rugged: !!e.rugged || !!prev?.rugged, done: !!e.done || !!prev?.done });
+  }
+  return m;
+}
