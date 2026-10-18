@@ -15,6 +15,9 @@ import { dexFundOff, dexFundStats } from "./dexfund";
 
 // Сколько SOL оставляем в казне на комиссии и аренду аккаунтов, кнопка Max считает от остатка.
 export const BUYBACK_RESERVE_SOL = 0.05;
+// Плановое сжигание раз в 12 часов (BUYBACK_PLAN_SOL, по умолчанию 0.2 SOL). Подписывает всё равно владелец в Phantom:
+// ключа казны на сервере нет, сумма просто подставляется в панель и в напоминание.
+export const buybackPlanSol = () => Math.max(0, Number(process.env.BUYBACK_PLAN_SOL ?? 0.2));
 const MAX_RECORDS = 500;
 const MARKET_TTL_MS = 45_000;
 const MINT_TTL_MS = 5 * 60_000;
@@ -208,6 +211,7 @@ export async function buybackStats() {
     last: l.items.find((x) => x.kind === "buyback") ?? null,
     items: l.items,
     nextAt: nextBuybackAt(),
+    planSol: buybackPlanSol(),
     paused: buybackPaused(),
   };
 }

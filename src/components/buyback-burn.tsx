@@ -73,10 +73,10 @@ function OwnerBuyback({ stats, reload, due }: { stats: BuybackStats; reload: () 
   const [quote, setQuote] = useState<string>("");
   const [pendingSig, setPendingSig] = useState<string | null>(null);
 
-  // Пришло время планового байбека — подставляем весь баланс казны минус резерв на комиссии.
+  // Пришло время планового байбека — подставляем плановую сумму (0.2 SOL), но не больше свободного баланса.
   useEffect(() => {
-    if (due && !amount && max > 0 && source === "sol") setAmount(String(Math.floor(max * 1e4) / 1e4));
-  }, [due, max, amount, source]);
+    if (due && !amount && max > 0 && source === "sol") setAmount(String(Math.floor(Math.min(max, stats.planSol || max) * 1e4) / 1e4));
+  }, [due, max, amount, source, stats.planSol]);
 
   const busy = step !== null;
   const run = async (kind: "buyback" | "burn") => {
@@ -298,7 +298,7 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
             </div>
 
             <p className="mt-4 text-sm text-fg/80">
-              Every 12 hours everything the treasury earned buys ${symbol} on the market: SOL from crawler spawns and USDC from AI agents paying per scan over x402. The bought tokens are burned in the same transaction. The supply only goes down.
+              Every 12 hours {stats?.planSol ? <b className="text-fg">{stats.planSol} SOL</b> : "the treasury"} buys ${symbol} on the market and the bought tokens are burned in the same transaction. The treasury is fed by crawler spawns (SOL) and AI agents paying per scan over x402 (USDC). The supply only goes down.
             </p>
           </>
         )}

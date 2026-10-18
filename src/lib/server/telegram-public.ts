@@ -771,7 +771,8 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
 // Напоминание команде: каждые 12 часов (00:00 и 12:00 UTC) — пора выкупить и сжечь токен на деньги казны.
 // Один раз на окно; без адреса токена молчим.
 export async function buybackReminder() {
-  const { tokenConfig, nextBuybackAt, treasurySol, buybackPaused } = await import("./buyback");
+  const { tokenConfig, nextBuybackAt, treasurySol, buybackPaused, buybackPlanSol } = await import("./buyback");
+  const plan = buybackPlanSol();
   if (!tokenConfig().mint || buybackPaused()) return;
   const slot = nextBuybackAt() - 12 * 3600_000; // начало текущего окна
   if (Date.now() - slot > 30 * 60_000 || getMeta("buybackRemind") === String(slot)) return;
@@ -781,7 +782,7 @@ export async function buybackReminder() {
   for (const a of adminChats())
     send(
       a,
-      `🔥 <b>Buyback time</b>\n\nTreasury: <b>${sol == null ? "—" : sol.toFixed(3)} SOL</b>${spendable ? ` · ${spendable.toFixed(3)} SOL to spend` : ""}.\nOpen the site with the treasury wallet in Phantom and press <b>Buy back &amp; burn</b>.`,
+      `🔥 <b>Buyback time: ${plan} SOL</b>\n\nTreasury: <b>${sol == null ? "—" : sol.toFixed(3)} SOL</b>${spendable ? ` · ${spendable.toFixed(3)} SOL to spend` : ""}.${spendable != null && spendable < plan ? " ⚠️ Less than the plan in the treasury." : ""}\nOpen the site with the treasury wallet in Phantom: the amount is already filled in, press <b>Buy back &amp; burn</b>.`,
       [[{ text: "🔥 Open buyback", url: `${siteUrl()}/#treasury` }]],
     );
 }

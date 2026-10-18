@@ -44,6 +44,7 @@
 
 | Date | Update |
 | --- | --- |
+| Oct 18 | **0.2 SOL burn every 12 hours**: `BUYBACK_PLAN_SOL` (0.2) is shown on the buyback card, prefilled in the treasury panel when the window opens and named in the Telegram reminder; the treasury wallet still signs every buyback in Phantom |
 | Oct 18 | **DEX fund closed**: the fund's buttons are gone (`DEX_FUND_OFF=1`), new gifts are refused, and transfers from the treasury to itself never count as gifts, so treasury SOL is free for buybacks again |
 | Oct 18 | **Wallet tracker**: a Wallet trades feed for on-chain crawlers (targets become Solana wallets); one Helius webhook on the server holds every watched wallet and pushes their swaps to `/api/helius/webhook` (secret header), the watching crawlers wake up at once and turn each buy or sell into a Wallet trade signal through the usual pipeline (dedupe, Jev, token safety check, Telegram) |
 | Oct 18 | **Clean Launch on BNB Chain**: four.meme through the same page; the wallet signs the four.meme login text (no transaction), the server logs in with that signature inside one request (the session is never stored), uploads the logo, gets the signed create arguments and builds `createToken`, MetaMask/Rabby sends it with an optional dev buy up to 1 BNB, and the coin is found in the receipt and scanned at birth; 0% platform fee |

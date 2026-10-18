@@ -60,6 +60,7 @@ export interface BuybackStats {
   items: BuybackRecord[];
   nextAt: number;
   paused?: string | null;
+  planSol?: number; // плановая сумма сжигания раз в 12 часов
   owner?: { leftover: number; creatorFees: { sol: number; creator: string } | null };
 }
 
