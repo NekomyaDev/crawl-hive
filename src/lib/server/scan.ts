@@ -156,7 +156,7 @@ function isSolanaMint(s: string) {
 
 const pct = (n: number) => `${n.toFixed(n < 10 ? 1 : 0)}%`;
 const usd = (n?: number) =>
-  n === undefined ? "—" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${Math.round(n)}`;
+  n === undefined ? "-" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${Math.round(n)}`;
 
 // Разбор ввода: адрес Solana, адрес EVM или $ТИКЕР (самая ликвидную пару в выбранной сети: Solana или Robinhood Chain).
 async function resolve(q: string, log: (l: ScanLog) => void, hint = "solana"): Promise<{ chain: string; address: string; pair?: PairX }> {
@@ -701,7 +701,7 @@ export async function runScan(
   };
   log({
     crawler: "verdict",
-    text: `${result.score ?? "—"} ${verdict.replace("_", " ")} · ${reason}`,
+    text: `${result.score ?? "-"} ${verdict.replace("_", " ")} · ${reason}`,
     tone: verdict === "CLEAN" || verdict === "OK" ? "ok" : verdict === "TOO_EARLY" ? "info" : "bad",
   });
   const cache = mem().cache;

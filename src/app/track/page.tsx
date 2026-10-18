@@ -92,12 +92,12 @@ export default function TrackPage() {
         sub={`Every verdict is checked against the real price for ${data?.windowHours ?? 24} hours after the scan. A token counts as dumped when it falls ${Math.abs(data?.dumpPct ?? 50)}% below the scan price or its liquidity is pulled. Hits and misses, nothing hidden, and every record is committed to Solana.`}
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Verdicts tracked" value={data ? fmt(data.total) : "—"} hint={data?.since ? `since ${new Date(data.since).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "starting now"} tone="honey" />
-        <Stat label="DANGER that dumped" value={share(bad.dumped, bad.settled) == null ? "—" : `${share(bad.dumped, bad.settled)}%`} hint={`${bad.dumped} of ${bad.settled} settled`} tone="coral" />
-        <Stat label="CLEAN / OK that dumped" value={share(good.dumped, good.settled) == null ? "—" : `${share(good.dumped, good.settled)}%`} hint={`${good.dumped} of ${good.settled} settled`} tone="teal" />
+        <Stat label="Verdicts tracked" value={data ? fmt(data.total) : "-"} hint={data?.since ? `since ${new Date(data.since).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "starting now"} tone="honey" />
+        <Stat label="DANGER that dumped" value={share(bad.dumped, bad.settled) == null ? "-" : `${share(bad.dumped, bad.settled)}%`} hint={`${bad.dumped} of ${bad.settled} settled`} tone="coral" />
+        <Stat label="CLEAN / OK that dumped" value={share(good.dumped, good.settled) == null ? "-" : `${share(good.dumped, good.settled)}%`} hint={`${good.dumped} of ${good.settled} settled`} tone="teal" />
         <Stat
           label="Crawler signals hit"
-          value={sig?.scored ? `${share(sig.hits, sig.scored)}%` : "—"}
+          value={sig?.scored ? `${share(sig.hits, sig.scored)}%` : "-"}
           hint={sig ? `${sig.hits} of ${sig.scored} · median peak ${pct(sig.medianPeak)}` : undefined}
           tone="lime"
         />

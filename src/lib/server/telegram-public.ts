@@ -27,7 +27,7 @@ const TICKER_RE = /^\$?([A-Za-z][A-Za-z0-9]{1,11})$/;
 const VERDICT_ICON: Record<string, string> = { CLEAN: "🟢", OK: "🟢", RISKY: "🟠", DANGER: "🔴", TOO_EARLY: "⚪️" };
 const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain" };
 const fmtUsd = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`);
-const pct = (n: number | null | undefined) => (n == null ? "—" : `${n > 0 ? "+" : ""}${Math.round(n)}%`);
+const pct = (n: number | null | undefined) => (n == null ? "-" : `${n > 0 ? "+" : ""}${Math.round(n)}%`);
 const day = () => new Date().toISOString().slice(0, 10);
 
 // ---------- настройки чатов ----------
@@ -145,7 +145,7 @@ function caption(r: ScanResult, take: { take: string; conf: number } | null, com
     : "no tradable pair yet";
   const flags = r.factors.filter((f) => f.impact < 0).slice(0, compact ? 2 : 4);
   return [
-    `${VERDICT_ICON[r.verdict] ?? "⚪️"} <b>$${esc(r.symbol)}</b> · <b>${r.score ?? "—"} ${r.verdict.replace("_", " ")}</b> · ${CHAIN_LABEL[r.chain] ?? r.chain}`,
+    `${VERDICT_ICON[r.verdict] ?? "⚪️"} <b>$${esc(r.symbol)}</b> · <b>${r.score ?? "-"} ${r.verdict.replace("_", " ")}</b> · ${CHAIN_LABEL[r.chain] ?? r.chain}`,
     esc(r.reason),
     mk,
     ...flags.map((f) => `▫️ ${esc(f.label)}${compact ? "" : `: ${esc(f.note).slice(0, 80)}`}`),
@@ -358,7 +358,7 @@ export async function checkWatches() {
       const r = await runScan(w.id, () => {}, w.chain, { record: false }).catch(() => null);
       if (r && r.verdict === "DANGER" && w.verdict !== "DANGER") {
         w.alerted.push("danger");
-        send(chat, `🔴 <b>$${esc(w.symbol)}</b> turned <b>DANGER</b> (${r.score ?? "—"}): ${esc(r.reason)}`, [[{ text: "🔎 Open scan", url: `${siteUrl()}/scan/${w.id}` }]]);
+        send(chat, `🔴 <b>$${esc(w.symbol)}</b> turned <b>DANGER</b> (${r.score ?? "-"}): ${esc(r.reason)}`, [[{ text: "🔎 Open scan", url: `${siteUrl()}/scan/${w.id}` }]]);
       }
       if (r) w.verdict = r.verdict;
     }
@@ -406,7 +406,7 @@ export async function sendFollowups() {
     }
     if (prefs(p.chat).followups === false || !takeQuota(p.chat, "fu", FOLLOWUPS_PER_DAY)) continue;
     const bad = p.verdict === "DANGER" || p.verdict === "RISKY";
-    const head = `${VERDICT_ICON[p.verdict] ?? ""} 24h ago you scanned <b>$${esc(p.symbol)}</b>: ${p.score ?? "—"} ${p.verdict}.`;
+    const head = `${VERDICT_ICON[p.verdict] ?? ""} 24h ago you scanned <b>$${esc(p.symbol)}</b>: ${p.score ?? "-"} ${p.verdict}.`;
     const what = e.rugged ? "the liquidity was pulled" : e.dumped ? `it fell ${pct(e.lowPct)}` : `low ${pct(e.lowPct)}, peak ${pct(e.peakPct)}, now ${pct(e.lastPct)}`;
     const line = bad
       ? e.dumped
@@ -461,7 +461,7 @@ export async function pushRadar() {
         chat,
         [
           `📡 <b>New launch</b>${isOwner ? " · live" : ""} · ${CHAIN_LABEL[e.chain] ?? e.chain}`,
-          `${VERDICT_ICON[e.verdict] ?? "⚪️"} <b>$${esc(e.symbol)}</b> · ${e.score ?? "—"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · FDV $${fmtUsd(e.fdv)}${e.ageH != null ? ` · ${e.ageH < 1 ? `${Math.round(e.ageH * 60)}m` : `${e.ageH}h`} old` : ""}`,
+          `${VERDICT_ICON[e.verdict] ?? "⚪️"} <b>$${esc(e.symbol)}</b> · ${e.score ?? "-"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · FDV $${fmtUsd(e.fdv)}${e.ageH != null ? ` · ${e.ageH < 1 ? `${Math.round(e.ageH * 60)}m` : `${e.ageH}h`} old` : ""}`,
           esc(e.reason),
           ...(e.narrative ? [`🔮 Called by Narrative Radar: <a href="${siteUrl()}/narratives#n-${e.narrative.id}">${esc(e.narrative.title)}</a>`] : []),
           `<code>${esc(e.id)}</code>`,
@@ -537,7 +537,7 @@ async function radarMessage(chat: string) {
     chat,
     [
       `📡 <b>Launch Radar</b> · last ${Math.min(8, f.items.length)} launches (${f.delayMin} min delay)`,
-      ...f.items.slice(0, 8).map((e) => `${VERDICT_ICON[e.verdict] ?? "⚪️"} <a href="${siteUrl()}/scan/${e.id}">$${esc(e.symbol)}</a> · ${e.score ?? "—"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · ${e.chain === "robinhood" ? "RH" : e.chain === "bsc" ? "BNB" : "SOL"}`),
+      ...f.items.slice(0, 8).map((e) => `${VERDICT_ICON[e.verdict] ?? "⚪️"} <a href="${siteUrl()}/scan/${e.id}">$${esc(e.symbol)}</a> · ${e.score ?? "-"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · ${e.chain === "robinhood" ? "RH" : e.chain === "bsc" ? "BNB" : "SOL"}`),
     ].join("\n"),
     [[{ text: "🔔 Get these as alerts", callback_data: "a:menu" }, { text: "🐝 Live with a crawler", url: `${siteUrl()}/spawn` }]],
   );
@@ -599,7 +599,7 @@ export async function handleInline(q: { id: string; query: string }) {
       {
         type: "article",
         id: r.id.slice(0, 60),
-        title: `$${r.symbol} · ${r.score ?? "—"} ${r.verdict.replace("_", " ")}`,
+        title: `$${r.symbol} · ${r.score ?? "-"} ${r.verdict.replace("_", " ")}`,
         description: r.reason.slice(0, 120),
         thumbnail_url: `${siteUrl()}/scan/${r.id}/opengraph-image?v=${r.scannedAt}`,
         input_message_content: { message_text: `${caption(r, null, true)}\n\n<a href="${siteUrl()}/scan/${r.id}">Full scan on CrawlHive</a>`, parse_mode: "HTML", link_preview_options: { is_disabled: true } },
@@ -689,17 +689,17 @@ async function submitSupport(chat: string, from: { id: number; first_name?: stri
 async function adminMessage(chat: string) {
   const st = await adminStats();
   const v = st.scans.verdicts24h;
-  const usd = (n?: number) => (n == null ? "—" : `$${Math.round(n).toLocaleString("en-US")}`);
+  const usd = (n?: number) => (n == null ? "-" : `$${Math.round(n).toLocaleString("en-US")}`);
   send(
     chat,
     [
       "📊 <b>CrawlHive dashboard</b>",
       "",
       `👥 Telegram users: <b>${st.users.telegram}</b> (24h active ${st.users.telegram24h}, new ${st.users.new24h}, app ${st.users.app24h})`,
-      `🌐 Site today: <b>${st.traffic.visitorsToday ?? "—"}</b> visitors, ${st.traffic.requestsToday ?? "—"} page views, ${st.traffic.blocked} blocked`,
+      `🌐 Site today: <b>${st.traffic.visitorsToday ?? "-"}</b> visitors, ${st.traffic.requestsToday ?? "-"} page views, ${st.traffic.blocked} blocked`,
       `🔎 Verdicts 24h: scans ${v.scan ?? 0} · crawlers ${v.crawler ?? 0} · radar ${v.radar ?? 0} · agents ${v.agent ?? 0}`,
       `🐝 Crawlers: <b>${st.crawlers.live}</b> live (${st.crawlers.active} active) · signals 24h ${st.crawlers.signals24h} · hit ${st.crawlers.scored ? Math.round((st.crawlers.hits / st.crawlers.scored) * 100) : 0}%`,
-      `💰 Payments: ${st.money.payments} · ${st.money.sol.toFixed(3)} SOL + ${st.money.eth.toFixed(4)} ETH · treasury ${st.money.treasury.sol != null ? `${st.money.treasury.sol.toFixed(3)} SOL` : "—"} (${usd(st.money.treasury.sol != null && st.money.treasury.solUsd ? st.money.treasury.sol * st.money.treasury.solUsd : undefined)})`,
+      `💰 Payments: ${st.money.payments} · ${st.money.sol.toFixed(3)} SOL + ${st.money.eth.toFixed(4)} ETH · treasury ${st.money.treasury.sol != null ? `${st.money.treasury.sol.toFixed(3)} SOL` : "-"} (${usd(st.money.treasury.sol != null && st.money.treasury.solUsd ? st.money.treasury.sol * st.money.treasury.solUsd : undefined)})`,
       `🤖 AI today: Grok ${st.ai.grok.calls}/${st.ai.grok.limit} · Jev ${st.ai.jev.calls} calls, $${st.ai.jev.cost.toFixed(4)}`,
       `🔌 Agents: ${st.agents.bots} bots (${st.agents.botsLive} live), ${st.agents.oauthApps} connected apps, ${st.agents.dutyCrawlers} Grok duty`,
       st.x402.enabled ? `🪙 x402: ${st.x402.calls24h} paid calls 24h, $${st.x402.usdc24h.toFixed(2)} USDC (total ${st.x402.callsTotal}, $${st.x402.usdcTotal.toFixed(2)})` : "🪙 x402: off",
@@ -829,7 +829,7 @@ export async function buybackReminder() {
   for (const a of adminChats())
     send(
       a,
-      `🔥 <b>Buyback time: ${plan} SOL</b>\n\nTreasury: <b>${sol == null ? "—" : sol.toFixed(3)} SOL</b>${spendable ? ` · ${spendable.toFixed(3)} SOL to spend` : ""}.${spendable != null && spendable < plan ? " ⚠️ Less than the plan in the treasury." : ""}\nOpen the site with the treasury wallet in Phantom: the amount is already filled in, press <b>Buy back &amp; burn</b>.`,
+      `🔥 <b>Buyback time: ${plan} SOL</b>\n\nTreasury: <b>${sol == null ? "-" : sol.toFixed(3)} SOL</b>${spendable ? ` · ${spendable.toFixed(3)} SOL to spend` : ""}.${spendable != null && spendable < plan ? " ⚠️ Less than the plan in the treasury." : ""}\nOpen the site with the treasury wallet in Phantom: the amount is already filled in, press <b>Buy back &amp; burn</b>.`,
       [[{ text: "🔥 Open buyback", url: `${siteUrl()}/#treasury` }]],
     );
 }

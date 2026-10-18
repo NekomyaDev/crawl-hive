@@ -45,7 +45,7 @@ const VERDICTS: [string, string, (v: string) => boolean][] = [
   ["danger", "Danger", (v) => v === "DANGER"],
 ];
 
-const age = (h: number | null) => (h == null ? "—" : h < 1 ? `${Math.round(h * 60)}m` : `${Math.round(h)}h`);
+const age = (h: number | null) => (h == null ? "-" : h < 1 ? `${Math.round(h * 60)}m` : `${Math.round(h)}h`);
 
 function Box({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
   return (
@@ -162,9 +162,9 @@ export default function RadarPage() {
           <p className="mt-4 max-w-xl text-fg/85">Fresh launches on Solana, Robinhood Chain and BNB Chain, scanned by the swarm on its own. Nobody asked for these scans.</p>
           <p className="mt-1 max-w-xl text-sm text-muted">Holders, bundles and clusters, dev history, copycats, contract powers. Every verdict also goes on the Track Record and is checked against the price for 24 hours.</p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Box label="Scanned, 24h" value={d ? fmt(d.scanned) : "—"} tone="text-lime" />
-            <Box label="Flagged DANGER" value={d ? `${d.scanned ? Math.round((d.danger / d.scanned) * 100) : 0}%` : "—"} tone="text-danger" />
-            <Box label="Clean or OK" value={d ? `${d.scanned ? Math.round((d.clean / d.scanned) * 100) : 0}%` : "—"} tone="text-teal" />
+            <Box label="Scanned, 24h" value={d ? fmt(d.scanned) : "-"} tone="text-lime" />
+            <Box label="Flagged DANGER" value={d ? `${d.scanned ? Math.round((d.danger / d.scanned) * 100) : 0}%` : "-"} tone="text-danger" />
+            <Box label="Clean or OK" value={d ? `${d.scanned ? Math.round((d.clean / d.scanned) * 100) : 0}%` : "-"} tone="text-teal" />
             <Box label="Chains" value="3" />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">

@@ -57,8 +57,8 @@
   async function show(d) {
     lastData = d;
     const { collapsed } = await chrome.storage.local.get("collapsed");
-    if (!d) return render(`<div class="p"><div class="h">${logo}<b>CrawlHive</b><div class="s"><button class="x" data-x title="Minimize">–</button></div></div><div class="m">Scanning this token…</div></div>`);
-    if (d.error) return render(`<div class="p"><div class="h">${logo}<b>CrawlHive</b><div class="s"><button class="x" data-x>–</button></div></div><div class="m">${esc(d.error)}</div></div>`);
+    if (!d) return render(`<div class="p"><div class="h">${logo}<b>CrawlHive</b><div class="s"><button class="x" data-x title="Minimize">−</button></div></div><div class="m">Scanning this token…</div></div>`);
+    if (d.error) return render(`<div class="p"><div class="h">${logo}<b>CrawlHive</b><div class="s"><button class="x" data-x>−</button></div></div><div class="m">${esc(d.error)}</div></div>`);
     const c = COLOR[d.verdict] || "#8a9099";
     if (collapsed || hiddenFor === lastUrl)
       return render(`<div class="min" data-open><span class="dot" style="background:${c}"></span>${logo}${esc(d.score ?? "")} ${esc(d.verdict.replace("_", " "))} · $${esc(d.symbol)}</div>`);
@@ -72,8 +72,8 @@
     if (d.operator) items.push(`<li class="${d.operator.pct >= 15 ? "bad" : "warn"}">👥 operator: ${d.operator.wallets} wallets hold ${pct(d.operator.pct)} <i>· ${esc(d.operator.roles.join(" + "))}</i></li>`);
     if (d.devSnipers) items.push(`<li class="bad">✕ ${d.devSnipers} snipers funded by the dev</li>`);
     if (d.dev) items.push(`<li>🧾 dev: ${d.dev.launched > 1 ? `${d.dev.launched - 1} earlier launches · ${d.dev.graduated} graduated` : "first launch"} <i>· <a href="https://crawlhive.xyz/dev/${esc(d.dev.creator)}" target="_blank" style="color:#7cc4ff">history</a></i></li>`);
-    render(`<div class="p"><div class="h">${logo}<b>CrawlHive</b><span style="color:#8a9099">$${esc(d.symbol)}</span><div class="s"><button class="x" data-x title="Minimize">–</button></div></div>
-      <div class="b"><div class="v"><div class="sc" style="border-color:${c};color:${c}">${esc(d.score ?? "—")}</div><div><div class="vt" style="color:${c}">${esc(d.verdict.replace("_", " "))}</div><div class="rs">${esc(d.reason)}</div></div></div>
+    render(`<div class="p"><div class="h">${logo}<b>CrawlHive</b><span style="color:#8a9099">$${esc(d.symbol)}</span><div class="s"><button class="x" data-x title="Minimize">−</button></div></div>
+      <div class="b"><div class="v"><div class="sc" style="border-color:${c};color:${c}">${esc(d.score ?? "-")}</div><div><div class="vt" style="color:${c}">${esc(d.verdict.replace("_", " "))}</div><div class="rs">${esc(d.reason)}</div></div></div>
       <ul>${items.join("")}</ul><a class="f" href="${esc(d.url)}" target="_blank">Full scan on CrawlHive</a></div></div>`);
   }
 

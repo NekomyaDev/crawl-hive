@@ -79,12 +79,12 @@ export function TreasuryCard({ className }: { className?: string }) {
               <div className="flex items-center gap-1.5 text-[11px] tracking-wider text-muted uppercase md:justify-end">
                 <Landmark className="size-3.5" /> From crawlers
               </div>
-              <div className="num mt-0.5 text-xl font-semibold">{t ? `${solFmt(t.sol)} SOL` : "—"}</div>
+              <div className="num mt-0.5 text-xl font-semibold">{t ? `${solFmt(t.sol)} SOL` : "-"}</div>
               {eth !== null && <div className="num text-sm font-semibold text-muted">{solFmt(t?.eth ?? 0)} ETH</div>}
             </div>
             <div className="rounded-xl border border-line bg-bg/60 px-4 py-3 md:text-right">
               <div className="text-[11px] tracking-wider text-muted uppercase">Payments</div>
-              <div className="num mt-0.5 text-xl font-semibold">{t?.payments ?? "—"}</div>
+              <div className="num mt-0.5 text-xl font-semibold">{t?.payments ?? "-"}</div>
             </div>
           </div>
           <a href={solscan} target="_blank" rel="noreferrer" className="num inline-flex items-center gap-1 text-xs text-muted hover:text-honey">

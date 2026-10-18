@@ -105,7 +105,7 @@ export const VERDICT_STYLE: Record<Verdict, { text: string; ring: string; bg: st
 const TONE: Record<string, string> = { ok: "text-lime", warn: "text-honey", bad: "text-danger", info: "text-sky" };
 
 const usd = (n?: number) =>
-  n === undefined ? "—" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(n < 1 ? 6 : 0)}`;
+  n === undefined ? "-" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(n < 1 ? 6 : 0)}`;
 const clock = (ts: number) => new Date(ts).toLocaleTimeString("en-GB", { hour12: false });
 type XState = XBuzz | null | "offer" | "loading" | undefined;
 
@@ -350,7 +350,7 @@ function ScoreRing({ score, verdict }: { score: number | null; verdict: Verdict 
       style={{ background: `conic-gradient(${st.ring} ${pctv * 3.6}deg, rgba(255,255,255,0.06) 0)` }}
     >
       <div className="grid size-16 place-items-center rounded-full bg-panel">
-        <span className={cn("num text-2xl font-bold", st.text)}>{score ?? "—"}</span>
+        <span className={cn("num text-2xl font-bold", st.text)}>{score ?? "-"}</span>
       </div>
     </div>
   );
@@ -368,7 +368,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
   const st = VERDICT_STYLE[r.verdict];
   const toast = useToast();
   const m = r.market;
-  const age = m?.ageHours === undefined ? "—" : m.ageHours < 48 ? `${m.ageHours.toFixed(1)}h` : `${Math.round(m.ageHours / 24)}d`;
+  const age = m?.ageHours === undefined ? "-" : m.ageHours < 48 ? `${m.ageHours.toFixed(1)}h` : `${Math.round(m.ageHours / 24)}d`;
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-line bg-panel p-4">
       <div className="flex items-center gap-4">
@@ -389,10 +389,10 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           ["FDV", usd(m?.fdv)],
           ["Age", age],
           ["Vol 1h", usd(m?.volume1h)],
-          ["Buys / sells 1h", m ? `${m.buys1h ?? 0} / ${m.sells1h ?? 0}` : "—"],
+          ["Buys / sells 1h", m ? `${m.buys1h ?? 0} / ${m.sells1h ?? 0}` : "-"],
           r.evm
-            ? ["Holders", r.evm.holders !== undefined ? r.evm.holders.toLocaleString("en-US") : "—"]
-            : ["Top 10 wallets", r.holders ? `${r.holders.top10.toFixed(0)}%` : "—"],
+            ? ["Holders", r.evm.holders !== undefined ? r.evm.holders.toLocaleString("en-US") : "-"]
+            : ["Top 10 wallets", r.holders ? `${r.holders.top10.toFixed(0)}%` : "-"],
         ].map(([k, v]) => (
           <div key={k} className="rounded-lg bg-panel-2 px-2 py-1.5">
             <div className="text-[10px] text-muted uppercase">{k}</div>
@@ -626,7 +626,7 @@ function RecentScans({ rows, onOpen }: { rows: Recent[]; onOpen: (id: string) =>
             >
               <span className="truncate font-medium">${r.symbol}</span>
               <span className="num hidden truncate text-xs text-muted sm:block">{short(r.id)}</span>
-              <span className={cn("num w-8 text-right font-semibold", st.text)}>{r.score ?? "—"}</span>
+              <span className={cn("num w-8 text-right font-semibold", st.text)}>{r.score ?? "-"}</span>
               <span className={cn("w-20 text-[11px] font-semibold", st.text)}>{st.label}</span>
               <span className="hidden w-16 text-right text-[11px] text-muted sm:block">{timeAgo(r.at)}</span>
             </button>

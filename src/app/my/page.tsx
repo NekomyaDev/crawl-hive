@@ -71,10 +71,10 @@ export default function MyCrawlers() {
         }
       />
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Balance" value={info ? fmt(info.balance) : "—"} hint={CREDITS} accent />
+        <Stat label="Balance" value={info ? fmt(info.balance) : "-"} hint={CREDITS} accent />
         <Stat label="Crawlers" value={owned.length} hint={rented.length ? `+${rented.length} rented` : undefined} />
-        <Stat label="Avg reputation" value={info?.reputation ?? "—"} />
-        <Stat label="Burned by you" value={info ? fmt(info.burned) : "—"} hint={`all-time earned ${fmt(earned)}`} />
+        <Stat label="Avg reputation" value={info?.reputation ?? "-"} />
+        <Stat label="Burned by you" value={info ? fmt(info.burned) : "-"} hint={`all-time earned ${fmt(earned)}`} />
       </div>
 
       {data && !owned.length && !rented.length && (
@@ -101,7 +101,7 @@ export default function MyCrawlers() {
               bots={duty.get(c.id)}
               footer={
                 c.status === "rented" ? (
-                  <span className="text-xs text-violet">Rented out — rewards go to the renter until the lease ends</span>
+                  <span className="text-xs text-violet">Rented out: rewards go to the renter until the lease ends</span>
                 ) : (
                   <div>
                   <div className="flex gap-2">

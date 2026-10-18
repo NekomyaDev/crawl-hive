@@ -588,9 +588,9 @@ export function validateSpawn(input: SpawnInput): SpawnInput {
   if (!SOURCES.includes(input.source)) throw new ApiError("Unknown source");
   if (!CHAINS.includes(input.chain)) throw new ApiError("Unknown chain");
   const name = String(input.name ?? "").trim();
-  if (name.length < 2 || name.length > 24) throw new ApiError("Name must be 2–24 characters");
+  if (name.length < 2 || name.length > 24) throw new ApiError("Name must be 2-24 characters");
   const narratives = (input.narratives ?? []).filter((n) => NARRATIVES.includes(n));
-  if (!narratives.length || narratives.length > 3) throw new ApiError("Pick 1–3 narratives");
+  if (!narratives.length || narratives.length > 3) throw new ApiError("Pick 1-3 narratives");
   const targets = normalizeTargets(input.source, input.targets ?? []);
   // On-chain может работать только по лентам DexScreener, остальным нужны цели.
   if (!targets.length && input.source !== "onchain") throw new ApiError("Add at least one target");
@@ -739,12 +739,12 @@ export function updateCrawlerConfig(
   if (patch.targets) {
     const clean = normalizeTargets(c.source, patch.targets);
     if ((!clean.length && c.source !== "onchain") || clean.length > tier.maxTargets)
-      throw new ApiError(`1–${tier.maxTargets} targets for ${tier.label}`);
+      throw new ApiError(`1-${tier.maxTargets} targets for ${tier.label}`);
     c.targets = clean;
   }
   if (patch.frequencyMin !== undefined) {
     const freq = Math.round(Number(patch.frequencyMin));
-    if (!(freq >= tier.minFrequency && freq <= 1440)) throw new ApiError(`Frequency must be ${tier.minFrequency}–1440 min`);
+    if (!(freq >= tier.minFrequency && freq <= 1440)) throw new ApiError(`Frequency must be ${tier.minFrequency}-1440 min`);
     c.frequencyMin = freq;
   }
   if (patch.spec) {
@@ -781,7 +781,7 @@ export function createListing(
   if (!(price > 0 && price < 1e9)) throw new ApiError("Bad price");
   if (input.type !== "sale" && input.type !== "rent") throw new ApiError("Bad listing type");
   const days = input.type === "rent" ? Math.round(Number(input.rentDays)) : undefined;
-  if (input.type === "rent" && !(days && days >= 1 && days <= 30)) throw new ApiError("Rent 1–30 days");
+  if (input.type === "rent" && !(days && days >= 1 && days <= 30)) throw new ApiError("Rent 1-30 days");
   const l: Listing = {
     id: `L-${c.id.slice(5)}-${Date.now().toString(36)}`,
     crawlerId: c.id,
@@ -873,9 +873,9 @@ export function createProposal(
   if ((s.balances.get(wallet) ?? 0) < PROPOSAL_MIN_BALANCE)
     throw new ApiError(`Need ${PROPOSAL_MIN_BALANCE.toLocaleString()} credits to create a proposal`);
   const title = String(input.title ?? "").trim();
-  if (title.length < 6 || title.length > 90) throw new ApiError("Title must be 6–90 characters");
+  if (title.length < 6 || title.length > 90) throw new ApiError("Title must be 6-90 characters");
   const options = (input.options ?? []).map((o) => String(o).trim()).filter(Boolean);
-  if (options.length < 2 || options.length > 6) throw new ApiError("2–6 options");
+  if (options.length < 2 || options.length > 6) throw new ApiError("2-6 options");
   if (!["priority", "rewards", "params"].includes(input.kind)) throw new ApiError("Bad kind");
   const days = Math.min(14, Math.max(1, Math.round(Number(input.days) || 3)));
   const id = `HIP-${s.proposals.size + 7}`;

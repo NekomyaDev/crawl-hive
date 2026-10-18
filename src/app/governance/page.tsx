@@ -162,7 +162,7 @@ function CreateProposal({ onDone }: { onDone: () => void }) {
           <Input type="number" min={1} max={14} value={days} onChange={(e) => setDays(Number(e.target.value))} />
         </div>
         <div className="md:col-span-2">
-          <Label hint="2–6">Options</Label>
+          <Label hint="2-6">Options</Label>
           <div className="space-y-2">
             {options.map((o, i) => (
               <div key={i} className="flex gap-2">

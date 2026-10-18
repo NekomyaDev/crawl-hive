@@ -32,7 +32,7 @@ interface Feed {
 
 const SRC: Record<Row["src"], string> = { scan: "user scan", radar: "Launch Radar", crawler: "crawler check", agent: "AI agent" };
 const CHAIN: Record<string, string> = { solana: "Solana", robinhood: "Robinhood", bsc: "BNB" };
-const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
+const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "-");
 
 function Card({ r, kind }: { r: Row; kind: "gem" | "rug" }) {
   const gem = kind === "gem";
@@ -98,17 +98,17 @@ export default function ReplayPage() {
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-lime/40 bg-lime/[0.05] p-4">
           <div className="text-xs text-muted">CLEAN / OK that doubled</div>
-          <div className="num mt-1 text-3xl font-black text-lime">{s ? pct(s.goodDoubled, s.good) : "—"}</div>
+          <div className="num mt-1 text-3xl font-black text-lime">{s ? pct(s.goodDoubled, s.good) : "-"}</div>
           <div className="num text-xs text-muted">{s ? `${s.goodDoubled} of ${s.good} settled` : ""}</div>
         </div>
         <div className="rounded-2xl border border-danger/40 bg-danger/[0.05] p-4">
           <div className="text-xs text-muted">DANGER that dumped</div>
-          <div className="num mt-1 text-3xl font-black text-danger">{s ? pct(s.dangerDumped, s.danger) : "—"}</div>
+          <div className="num mt-1 text-3xl font-black text-danger">{s ? pct(s.dangerDumped, s.danger) : "-"}</div>
           <div className="num text-xs text-muted">{s ? `${s.dangerDumped} of ${s.danger} settled` : ""}</div>
         </div>
         <div className="rounded-2xl border border-honey/40 bg-honey/[0.05] p-4">
           <div className="text-xs text-muted">Our misses: CLEAN / OK that dumped anyway</div>
-          <div className="num mt-1 text-3xl font-black text-honey">{s ? pct(s.goodDumped, s.good) : "—"}</div>
+          <div className="num mt-1 text-3xl font-black text-honey">{s ? pct(s.goodDumped, s.good) : "-"}</div>
           <div className="num text-xs text-muted">{s ? `${s.goodDumped} of ${s.good} settled · memecoins are risky even when clean` : ""}</div>
         </div>
       </div>

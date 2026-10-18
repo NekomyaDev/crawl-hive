@@ -36,7 +36,7 @@ export default function ScanPage({ params }: PageProps<"/scan/[id]">) {
 }
 
 const usd = (n?: number) =>
-  n === undefined ? "—" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(n < 1 ? 6 : 0)}`;
+  n === undefined ? "-" : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(n < 1 ? 6 : 0)}`;
 
 async function ScanView({ params }: { params: Promise<{ id: string }> }) {
   await connection();
@@ -45,7 +45,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
   if (!r) redirect(`/?scan=${encodeURIComponent(id)}`);
   const color = VERDICT_COLOR[r.verdict];
   const m = r.market;
-  const age = m?.ageHours === undefined ? "—" : m.ageHours < 48 ? `${m.ageHours.toFixed(1)}h` : `${Math.round(m.ageHours / 24)}d`;
+  const age = m?.ageHours === undefined ? "-" : m.ageHours < 48 ? `${m.ageHours.toFixed(1)}h` : `${Math.round(m.ageHours / 24)}d`;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -63,7 +63,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
           >
             <div className="grid size-22 place-items-center rounded-full bg-panel">
               <span className="num text-4xl font-bold" style={{ color }}>
-                {r.score ?? "—"}
+                {r.score ?? "-"}
               </span>
             </div>
           </div>
@@ -86,7 +86,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
             ["FDV", usd(m?.fdv)],
             ["Age", age],
             ["Vol 24h", usd(m?.volume24h)],
-            ["Top 10", r.holders ? `${r.holders.top10.toFixed(0)}%` : "—"],
+            ["Top 10", r.holders ? `${r.holders.top10.toFixed(0)}%` : "-"],
             ["Copycats", String(r.clones)],
           ].map(([k, v]) => (
             <div key={k} className="rounded-lg bg-panel-2 px-2 py-1.5">

@@ -114,7 +114,7 @@ function evmApproval(b: Bundle): SiteFinding | undefined {
     return {
       key: "evm-approval",
       label: "Asks for unlimited approvals",
-      note: `Code requests an unlimited token approval / permit to a hard-coded address ${addr.slice(0, 10)}... — the classic drainer move.`,
+      note: `Code requests an unlimited token approval / permit to a hard-coded address ${addr.slice(0, 10)}..., the classic drainer move.`,
       severity: "high",
       evidence: snippet(code, m.index, Math.min(m[0].length, 24)),
     };
@@ -128,7 +128,7 @@ function evmApproval(b: Bundle): SiteFinding | undefined {
     return {
       key: "evm-approval",
       label: "Asks for unlimited approvals",
-      note: `Code calls setApprovalForAll for a hard-coded operator ${addr.slice(0, 10)}... — hands over every NFT in the wallet.`,
+      note: `Code calls setApprovalForAll for a hard-coded operator ${addr.slice(0, 10)}..., which hands over every NFT in the wallet.`,
       severity: "high",
       evidence: snippet(code, m.index, m[0].length),
     };
@@ -193,7 +193,7 @@ function knownKit(b: Bundle): SiteFinding | undefined {
   }
   // Браузерный код не ходит в Bot API: токен бота окажется у каждого посетителя. Так дрейнеры логируют жертв.
   const tg = first(code, TG_BOT);
-  if (tg) return { key: "kit", label: "Known drainer kit", note: "Browser code calls the Telegram Bot API directly — drainers log victims and wallets to TG bots this way.", severity: "high", evidence: snippet(code, tg.idx, tg.len) };
+  if (tg) return { key: "kit", label: "Known drainer kit", note: "Browser code calls the Telegram Bot API directly. Drainers log victims and wallets to TG bots this way.", severity: "high", evidence: snippet(code, tg.idx, tg.len) };
   return undefined;
 }
 
@@ -241,7 +241,7 @@ export function analyzeCode(html: string, scripts: string[]): { wallet: boolean;
   if (wallet && !found.size) for (const b of bundles) add(hidden(b));
   if (wallet && !found.size) {
     const w = bundles.map((b) => ({ b, m: first(b.code, WALLET) })).find((x) => x.m)!;
-    add({ key: "wallet", label: "Wallet connect on a meme page", note: "Site asks to connect a wallet. A meme landing page rarely needs that — never sign approvals here.", severity: "low", evidence: snippet(w.b.code, w.m!.idx, w.m!.len) });
+    add({ key: "wallet", label: "Wallet connect on a meme page", note: "Site asks to connect a wallet. A meme landing page rarely needs that, so never sign approvals here.", severity: "low", evidence: snippet(w.b.code, w.m!.idx, w.m!.len) });
   }
   return { wallet, findings: [...found.values()] };
 }

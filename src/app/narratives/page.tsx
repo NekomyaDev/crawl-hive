@@ -172,7 +172,7 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
         </div>
         <div className="text-right">
           <div className="text-[10px] text-muted uppercase tracking-wider">Coins on ticker, 24h</div>
-          <div className={cn("num text-sm font-bold", n.clones === 0 ? "text-lime" : n.clones ? "text-honey" : "text-muted")}>{n.clones === null ? "—" : n.clones === 0 ? "0 · fresh" : n.clones}</div>
+          <div className={cn("num text-sm font-bold", n.clones === 0 ? "text-lime" : n.clones ? "text-honey" : "text-muted")}>{n.clones === null ? "-" : n.clones === 0 ? "0 · fresh" : n.clones}</div>
         </div>
       </div>
 
@@ -285,11 +285,11 @@ export default function NarrativesPage() {
           <p className="mt-4 max-w-xl text-fg/85">What is starting to spread on X right now, found by the platform&apos;s own Narrative Hunter. Nobody owns it: every find is here for everyone.</p>
           <p className="mt-1 max-w-xl text-sm text-muted">Every post is verified and ads with contract addresses drop out, so do tickers already taken by a $500k+ coin. The hunter also reads Reddit, the news, Hacker News and pump.fun streams, and each narrative gets a score from its heat, reach, spread speed, free ticker, stage and how many platforms confirm it, a life story across hunts, the coins it produced, and one tap turns it into a Clean Launch with the picture, name, ticker and banner ready.</p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Box label="Narratives, 24h" value={d ? d.found : "—"} tone="text-violet" />
-            <Box label="Hot now" value={d ? d.hot : "—"} tone="text-coral" />
-            <Box label="Fresh tickers" value={d ? d.fresh : "—"} tone="text-lime" />
-            <Box label="Turned into $100k+ coins" value={data ? (data.record.graded ? `${Math.round((data.record.wins / data.record.graded) * 100)}%` : "grading…") : "—"} tone="text-honey" />
-            <Box label="Last hunt" value={data?.lastAt ? timeAgo(data.lastAt) : "—"} />
+            <Box label="Narratives, 24h" value={d ? d.found : "-"} tone="text-violet" />
+            <Box label="Hot now" value={d ? d.hot : "-"} tone="text-coral" />
+            <Box label="Fresh tickers" value={d ? d.fresh : "-"} tone="text-lime" />
+            <Box label="Turned into $100k+ coins" value={data ? (data.record.graded ? `${Math.round((data.record.wins / data.record.graded) * 100)}%` : "grading…") : "-"} tone="text-honey" />
+            <Box label="Last hunt" value={data?.lastAt ? timeAgo(data.lastAt) : "-"} />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {[

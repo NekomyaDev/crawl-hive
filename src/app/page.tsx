@@ -69,10 +69,10 @@ export default function Dashboard() {
       <TokenSection />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat tone="honey" icon={<Bug className="size-3.5" />} label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "—"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
-        <Stat tone="violet" icon={<Users className="size-3.5" />} label="Wallets" value={stats ? stats.wallets : "—"} />
-        <Stat tone="teal" icon={<Activity className="size-3.5" />} label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "—"} />
-        <Stat tone="sky" icon={<Zap className="size-3.5" />} label="Signals 24h" value={stats ? fmt(stats.signals24h) : "—"} />
+        <Stat tone="honey" icon={<Bug className="size-3.5" />} label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "-"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
+        <Stat tone="violet" icon={<Users className="size-3.5" />} label="Wallets" value={stats ? stats.wallets : "-"} />
+        <Stat tone="teal" icon={<Activity className="size-3.5" />} label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "-"} />
+        <Stat tone="sky" icon={<Zap className="size-3.5" />} label="Signals 24h" value={stats ? fmt(stats.signals24h) : "-"} />
         {stats && !stats.demo ? (
           <>
             <Stat tone="pink" icon={<Target className="size-3.5" />} label="Signals scored" value={fmt(stats.scored)} hint="checked against price" />
@@ -80,14 +80,14 @@ export default function Dashboard() {
               tone="lime"
               icon={<Flame className="size-3.5" />}
               label="Hit rate"
-              value={stats.scored ? `${Math.round((stats.hits / stats.scored) * 100)}%` : "—"}
+              value={stats.scored ? `${Math.round((stats.hits / stats.scored) * 100)}%` : "-"}
               hint={stats.scored ? `${fmt(stats.hits)} hits` : "no scored signals yet"}
             />
           </>
         ) : (
           <>
-            <Stat tone="pink" label="Credits burned" value={stats ? fmt(stats.totalBurned) : "—"} />
-            <Stat tone="lime" label="Epoch reward" value={stats ? fmt(stats.epochReward) : "—"} hint={stats ? timeLeft(stats.epochEndsAt) : ""} />
+            <Stat tone="pink" label="Credits burned" value={stats ? fmt(stats.totalBurned) : "-"} />
+            <Stat tone="lime" label="Epoch reward" value={stats ? fmt(stats.epochReward) : "-"} hint={stats ? timeLeft(stats.epochEndsAt) : ""} />
           </>
         )}
       </div>

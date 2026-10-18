@@ -93,7 +93,7 @@ export function AdminDashboard() {
       <Section title="Users">
         <div className="grid grid-cols-2 gap-2">
           <Card title="Telegram users" value={fmt(s.users.telegram)} sub={`${s.users.telegram24h} active 24h · ${s.users.new24h} new`} tone="text-sky" />
-          <Card title="Site visitors today" value={s.traffic.visitorsToday ?? "—"} sub={`${s.traffic.requestsToday ?? "—"} page views · ${s.traffic.blocked} blocked`} tone="text-lime" />
+          <Card title="Site visitors today" value={s.traffic.visitorsToday ?? "-"} sub={`${s.traffic.requestsToday ?? "-"} page views · ${s.traffic.blocked} blocked`} tone="text-lime" />
           <Card title="App opens 24h" value={s.users.app24h} sub={`${s.users.tgScans} scans in Telegram`} />
           <Card title="Wallets" value={s.users.owners} sub={`crawler owners · ${s.users.walletsLinked} linked to Telegram`} />
         </div>
@@ -101,7 +101,7 @@ export function AdminDashboard() {
           {s.users.recent.map((u, i) => (
             <div key={i} className="flex items-center justify-between border-b border-line/60 px-3 py-2 text-sm last:border-0">
               <span className="truncate">
-                {u.name || "—"} {u.username && <span className="text-muted">@{u.username}</span>}
+                {u.name || "-"} {u.username && <span className="text-muted">@{u.username}</span>}
               </span>
               <span className="num shrink-0 text-[11px] text-muted">
                 {u.scans} scans · {timeAgo(u.last)}
@@ -137,7 +137,7 @@ export function AdminDashboard() {
       <Section title="Money">
         <div className="grid grid-cols-2 gap-2">
           <Card title="Payments" value={s.money.payments} sub={`${s.money.sol.toFixed(3)} SOL · ${s.money.eth.toFixed(4)} ETH`} tone="text-honey" />
-          <Card title="Treasury" value={s.money.treasury.sol != null ? `${s.money.treasury.sol.toFixed(3)} SOL` : "—"} sub={`${solUsd != null ? `$${Math.round(solUsd)}` : ""}${s.money.treasury.eth != null ? ` · ${s.money.treasury.eth.toFixed(4)} ETH` : ""}`} />
+          <Card title="Treasury" value={s.money.treasury.sol != null ? `${s.money.treasury.sol.toFixed(3)} SOL` : "-"} sub={`${solUsd != null ? `$${Math.round(solUsd)}` : ""}${s.money.treasury.eth != null ? ` · ${s.money.treasury.eth.toFixed(4)} ETH` : ""}`} />
           {s.money.buybacks && (
             <>
               <Card title="Buybacks" value={s.money.buybacks.count} sub={`${s.money.buybacks.sol.toFixed(3)} SOL spent`} tone="text-honey" />

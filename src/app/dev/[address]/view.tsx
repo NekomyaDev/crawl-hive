@@ -80,7 +80,7 @@ export function DevView() {
             <Box label="Still alive" value={data.summary.live} tone="text-lime" />
             <Box label="Dead" value={data.summary.dead} tone="text-muted" />
             <Box label="Rugged" value={data.summary.rugged} tone="text-danger" />
-            <Box label="Best FDV now" value={data.summary.bestFdv ? `$${fmt(data.summary.bestFdv)}` : "—"} tone="text-honey" />
+            <Box label="Best FDV now" value={data.summary.bestFdv ? `$${fmt(data.summary.bestFdv)}` : "-"} tone="text-honey" />
           </div>
           {data.coins.length ? (
             <div className="overflow-x-auto rounded-2xl border border-line bg-panel">
@@ -104,8 +104,8 @@ export function DevView() {
                         {c.name && <span className="ml-2 text-xs text-muted">{c.name}</span>}
                       </td>
                       <td className="num px-3 py-2.5 text-xs text-muted">{timeAgo(c.createdAt)}</td>
-                      <td className="num px-3 py-2.5 text-right">{c.fdv ? `$${fmt(c.fdv)}` : "—"}</td>
-                      <td className="num px-3 py-2.5 text-right">{c.liq ? `$${fmt(c.liq)}` : "—"}</td>
+                      <td className="num px-3 py-2.5 text-right">{c.fdv ? `$${fmt(c.fdv)}` : "-"}</td>
+                      <td className="num px-3 py-2.5 text-right">{c.liq ? `$${fmt(c.liq)}` : "-"}</td>
                       <td className="px-4 py-2.5">
                         <span className={cn("rounded border px-1.5 py-px text-[11px] font-semibold", STATUS[c.status].c)}>{STATUS[c.status].t}</span>
                       </td>

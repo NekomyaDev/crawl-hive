@@ -55,7 +55,7 @@ export default async function Image({ params }: { params: Promise<{ id: string }
                 />
               </svg>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <span style={{ fontSize: 112, fontWeight: 700, color, lineHeight: 1 }}>{r.score ?? "—"}</span>
+                <span style={{ fontSize: 112, fontWeight: 700, color, lineHeight: 1 }}>{r.score ?? "-"}</span>
                 <span style={{ fontSize: 24, color: MUTED }}>/ 100</span>
               </div>
             </div>

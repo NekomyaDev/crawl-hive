@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   // Абсолютные ссылки на превью (og:image) для X и Telegram.
   metadataBase: new URL(process.env.PUBLIC_URL?.trim() || "https://crawlhive.xyz"),
-  title: "CrawlHive — the crawler swarm",
+  title: "CrawlHive: the crawler swarm",
   description: "Spawn a crawler, join the swarm. Reputation, marketplace, leaderboard and governance for memecoin data.",
 };
 

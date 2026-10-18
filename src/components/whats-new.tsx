@@ -106,11 +106,11 @@ export function WhatsNew() {
           {danger?.settled || good.s ? (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <div className="num text-2xl font-bold text-danger">{danger?.settled ? Math.round((danger.dumped / danger.settled) * 100) : "—"}%</div>
+                <div className="num text-2xl font-bold text-danger">{danger?.settled ? Math.round((danger.dumped / danger.settled) * 100) : "-"}%</div>
                 <div className="text-[11px] text-muted">of DANGER calls dumped</div>
               </div>
               <div>
-                <div className="num text-2xl font-bold text-lime">{good.s ? Math.round((good.d / good.s) * 100) : "—"}%</div>
+                <div className="num text-2xl font-bold text-lime">{good.s ? Math.round((good.d / good.s) * 100) : "-"}%</div>
                 <div className="text-[11px] text-muted">of CLEAN / OK dumped anyway</div>
               </div>
             </div>

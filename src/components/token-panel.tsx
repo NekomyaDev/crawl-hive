@@ -51,12 +51,12 @@ function Chart({ t }: { t: TokenInfo | null }) {
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-panel">
       <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
-        <MarketStat label="Price" value={m?.priceUsd ? priceFmt(m.priceUsd) : "—"} />
-        <MarketStat label="Market cap" value={m?.marketCap ?? m?.fdv ? usdFmt((m?.marketCap ?? m?.fdv)!) : "—"} />
-        <MarketStat label={m?.onCurve ? "Liquidity · curve" : "Liquidity"} value={m?.liquidityUsd ? usdFmt(m.liquidityUsd) : m?.onCurve ? "pump.fun" : "—"} />
+        <MarketStat label="Price" value={m?.priceUsd ? priceFmt(m.priceUsd) : "-"} />
+        <MarketStat label="Market cap" value={m?.marketCap ?? m?.fdv ? usdFmt((m?.marketCap ?? m?.fdv)!) : "-"} />
+        <MarketStat label={m?.onCurve ? "Liquidity · curve" : "Liquidity"} value={m?.liquidityUsd ? usdFmt(m.liquidityUsd) : m?.onCurve ? "pump.fun" : "-"} />
         <MarketStat
           label="24h"
-          value={change === null ? "—" : `${change > 0 ? "+" : ""}${change.toFixed(1)}%`}
+          value={change === null ? "-" : `${change > 0 ? "+" : ""}${change.toFixed(1)}%`}
           tone={change === null ? undefined : change >= 0 ? "text-lime" : "text-danger"}
         />
       </div>
@@ -148,15 +148,15 @@ function TokenCard({ t, s }: { t: TokenInfo | null; s: BuybackStats | null }) {
         <div className="mt-5 grid grid-cols-3 gap-2">
           <div className="rounded-xl border border-line bg-bg/60 px-3 py-2">
             <div className="text-[10px] tracking-wider text-muted uppercase">SOL spent</div>
-            <div className="num text-lg font-semibold">{s ? solFmt(s.solSpent) : "—"}</div>
+            <div className="num text-lg font-semibold">{s ? solFmt(s.solSpent) : "-"}</div>
           </div>
           <div className="rounded-xl border border-line bg-bg/60 px-3 py-2">
             <div className="text-[10px] tracking-wider text-muted uppercase">Burned</div>
-            <div className="num text-lg font-semibold text-honey">{s ? tokFmt(s.burned) : "—"}</div>
+            <div className="num text-lg font-semibold text-honey">{s ? tokFmt(s.burned) : "-"}</div>
           </div>
           <div className="rounded-xl border border-line bg-bg/60 px-3 py-2">
             <div className="text-[10px] tracking-wider text-muted uppercase">Of supply</div>
-            <div className="num text-lg font-semibold text-lime">{s ? `${s.burnedPct >= 0.01 || !s.burnedPct ? s.burnedPct.toFixed(2) : "<0.01"}%` : "—"}</div>
+            <div className="num text-lg font-semibold text-lime">{s ? `${s.burnedPct >= 0.01 || !s.burnedPct ? s.burnedPct.toFixed(2) : "<0.01"}%` : "-"}</div>
           </div>
         </div>
 

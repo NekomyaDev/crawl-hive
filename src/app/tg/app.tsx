@@ -91,7 +91,7 @@ function ScoreRing({ score, verdict }: { score: number | null; verdict: string }
       <circle cx="44" cy="44" r={r} fill="none" stroke="#22262c" strokeWidth="7" />
       <circle cx="44" cy="44" r={r} fill="none" stroke={c} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${((score ?? 0) / 100) * len} ${len}`} transform="rotate(-90 44 44)" />
       <text x="44" y="50" textAnchor="middle" className="num" fontSize="22" fontWeight="700" fill={c}>
-        {score ?? "—"}
+        {score ?? "-"}
       </text>
     </svg>
   );
@@ -253,9 +253,9 @@ function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: 
           {m && (
             <div className="grid grid-cols-3 border-t border-line text-center">
               {[
-                ["Liquidity", m.liquidityUsd ? `$${fmt(m.liquidityUsd)}` : "—"],
-                ["FDV", m.fdv ? `$${fmt(m.fdv)}` : "—"],
-                ["Age", m.ageHours == null ? "—" : m.ageHours < 1 ? `${Math.round(m.ageHours * 60)}m` : m.ageHours < 48 ? `${Math.round(m.ageHours)}h` : `${Math.round(m.ageHours / 24)}d`],
+                ["Liquidity", m.liquidityUsd ? `$${fmt(m.liquidityUsd)}` : "-"],
+                ["FDV", m.fdv ? `$${fmt(m.fdv)}` : "-"],
+                ["Age", m.ageHours == null ? "-" : m.ageHours < 1 ? `${Math.round(m.ageHours * 60)}m` : m.ageHours < 48 ? `${Math.round(m.ageHours)}h` : `${Math.round(m.ageHours / 24)}d`],
               ].map(([k, v]) => (
                 <div key={k} className="border-r border-line py-2.5 last:border-0">
                   <div className="num text-sm font-semibold">{v}</div>
@@ -541,11 +541,11 @@ function TrackView() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-line bg-panel p-4">
-          <div className="num text-2xl font-bold">{t?.total ?? "—"}</div>
+          <div className="num text-2xl font-bold">{t?.total ?? "-"}</div>
           <div className="text-[11px] text-muted">verdicts tracked</div>
         </div>
         <div className="rounded-2xl border border-line bg-panel p-4">
-          <div className="num text-2xl font-bold text-lime">{t?.signals.scored ? `${Math.round((t.signals.hits / t.signals.scored) * 100)}%` : "—"}</div>
+          <div className="num text-2xl font-bold text-lime">{t?.signals.scored ? `${Math.round((t.signals.hits / t.signals.scored) * 100)}%` : "-"}</div>
           <div className="text-[11px] text-muted">crawler signals hit · median peak {pct(t?.signals.medianPeak)}</div>
         </div>
       </div>

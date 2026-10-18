@@ -57,9 +57,9 @@ export default function MySignals() {
       />
       <TelegramCard />
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Signals" value={signals?.length ?? "—"} />
+        <Stat label="Signals" value={signals?.length ?? "-"} />
         <Stat label="Scored" value={scored.length} />
-        <Stat label="Hit rate" value={scored.length ? `${Math.round((hits / scored.length) * 100)}%` : "—"} accent />
+        <Stat label="Hit rate" value={scored.length ? `${Math.round((hits / scored.length) * 100)}%` : "-"} accent />
         <Stat label="Live crawlers" value={live.length} />
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">

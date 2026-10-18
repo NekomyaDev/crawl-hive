@@ -18,4 +18,4 @@ export function VerdictPill({ verdict, score, className }: { verdict: string; sc
   );
 }
 
-export const pct = (n: number | null | undefined) => (n == null ? "—" : `${n > 0 ? "+" : ""}${Math.round(n)}%`);
+export const pct = (n: number | null | undefined) => (n == null ? "-" : `${n > 0 ? "+" : ""}${Math.round(n)}%`);

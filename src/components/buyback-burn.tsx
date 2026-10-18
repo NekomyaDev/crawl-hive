@@ -322,7 +322,7 @@ function BuybackCard({ token, stats, reload }: { token: TokenInfo | null; stats:
           </div>
           <div className="rounded-xl border border-line bg-bg/60 px-3 py-2.5">
             <Label>Total burned</Label>
-            <div className="num mt-0.5 text-lg font-semibold">{stats ? tokFmt(stats.burned) : "—"}</div>
+            <div className="num mt-0.5 text-lg font-semibold">{stats ? tokFmt(stats.burned) : "-"}</div>
             <div className="num text-xs text-lime">{stats ? `${stats.burnedPct ? stats.burnedPct.toFixed(stats.burnedPct < 0.01 ? 4 : 2) : "0.00"}% of supply` : ""}</div>
             <div className="num text-xs text-muted">{stats ? `${solFmt(stats.solSpent)} SOL${stats.usdcSpent ? ` + ${stats.usdcSpent} USDC` : ""} spent · ${stats.count} buybacks` : ""}</div>
           </div>

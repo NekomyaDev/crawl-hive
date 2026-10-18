@@ -99,7 +99,7 @@ function Result({ m }: { m: Match }) {
           <span className="ml-2 font-normal text-muted">{new Date(Number(r.t === "verdict" ? r.at : r.ts)).toUTCString().slice(5, 22)} UTC</span>
         </span>
         <span className="text-muted">
-          window {new Date(m.from).toISOString().slice(11, 16)}–{new Date(m.to).toISOString().slice(11, 16)} · {m.count} records
+          window {new Date(m.from).toISOString().slice(11, 16)}-{new Date(m.to).toISOString().slice(11, 16)} · {m.count} records
         </span>
       </div>
       <pre className="num mb-2 overflow-x-auto rounded bg-bg/60 p-2 text-[10px] text-fg/80">{canon(r)}</pre>
@@ -168,10 +168,10 @@ export function ProofCard() {
         <div className="space-y-3">
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
             <span>
-              <span className="num font-semibold text-honey">{data ? fmt(data.records) : "—"}</span> <span className="text-muted">records committed</span>
+              <span className="num font-semibold text-honey">{data ? fmt(data.records) : "-"}</span> <span className="text-muted">records committed</span>
             </span>
             <span>
-              <span className="num font-semibold">{data ? fmt(data.onchain) : "—"}</span> <span className="text-muted">roots onchain</span>
+              <span className="num font-semibold">{data ? fmt(data.onchain) : "-"}</span> <span className="text-muted">roots onchain</span>
             </span>
             {data?.notary && (
               <span className="text-muted">

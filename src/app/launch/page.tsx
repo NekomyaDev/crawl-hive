@@ -289,8 +289,8 @@ export default function LaunchPage() {
               </button>
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
               <div className="grid flex-1 gap-2">
-                <input className={FIELD} placeholder="Name (2–32)" maxLength={32} value={f.name} onChange={set("name")} />
-                <input className={cn(FIELD, "num uppercase")} placeholder="TICKER (2–10)" maxLength={11} value={f.symbol} onChange={set("symbol")} />
+                <input className={FIELD} placeholder="Name (2-32)" maxLength={32} value={f.name} onChange={set("name")} />
+                <input className={cn(FIELD, "num uppercase")} placeholder="TICKER (2-10)" maxLength={11} value={f.symbol} onChange={set("symbol")} />
               </div>
             </div>
             {(nid || imgNote) && (
