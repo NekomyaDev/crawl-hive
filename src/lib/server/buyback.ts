@@ -11,7 +11,7 @@ import { publicConfig, rpcConnection } from "./solana";
 import { dexReserveSol } from "./dexfund";
 import { BuybackError, USDC_MINT, buildBurnAllTx, buildBuybackTx, parseBuybackTx, readMint, type MintInfo } from "./buyback-tx";
 import { x402Stats } from "./x402";
-import { dexFundStats } from "./dexfund";
+import { dexFundOff, dexFundStats } from "./dexfund";
 
 // Сколько SOL оставляем в казне на комиссии и аренду аккаунтов, кнопка Max считает от остатка.
 export const BUYBACK_RESERVE_SOL = 0.05;
@@ -222,7 +222,7 @@ export function buybackPaused(): string | null {
 async function revenue(l: Ledger) {
   const p = paymentTotals();
   const x = x402Stats();
-  const dex = await dexFundStats().catch(() => null);
+  const dex = dexFundOff() ? null : await dexFundStats().catch(() => null);
   return {
     spawns: { sol: p.sol, payments: p.payments },
     x402: {

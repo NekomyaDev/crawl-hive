@@ -86,7 +86,11 @@ async function dexLive(mint: string, since: number) {
   return v;
 }
 
-const raisedSol = (f: Fund) => f.gifts.reduce((s, g) => s + g.sol, 0);
+// Перевод казны самой себе (с memo сбора) — не пожертвование: такие взносы не считаем и не замораживаем.
+const raisedSol = (f: Fund) => f.gifts.filter((g) => g.wallet !== BUYBACK_TREASURY).reduce((s, g) => s + g.sol, 0);
+// Сбор закрыт (DEX_FUND_OFF=1): кнопок на сайте нет, новые взносы не принимаются. Внешние пожертвования, если были,
+// остаются отложенными, пока владелец не решит, что с ними делать.
+export const dexFundOff = () => process.env.DEX_FUND_OFF === "1";
 
 // Уровни со статусом: live — куплен в DexScreener, funded — сбор покрыл его цену, иначе открыт.
 async function ladder(f: Fund) {
@@ -145,7 +149,7 @@ export async function dexFundStats() {
   });
   const current = out.find((l) => l.status !== "live" && l.status !== "funded") ?? out.at(-1)!;
   const byWallet = new Map<string, number>();
-  for (const g of f.gifts) byWallet.set(g.wallet, (byWallet.get(g.wallet) ?? 0) + g.sol);
+  for (const g of f.gifts) if (g.wallet !== BUYBACK_TREASURY) byWallet.set(g.wallet, (byWallet.get(g.wallet) ?? 0) + g.sol);
   return {
     // Совместимость со старой карточкой: цель и «оплачено» относятся к профилю.
     goalUsd: current.usd,
@@ -158,12 +162,14 @@ export async function dexFundStats() {
     backers: byWallet.size,
     treasury: BUYBACK_TREASURY,
     top: [...byWallet.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([wallet, sol]) => ({ wallet, sol })),
-    recent: f.gifts.slice(-8).reverse().map((g) => ({ wallet: g.wallet, sol: g.sol, at: g.at, sig: g.sig })),
+    recent: f.gifts.filter((g) => g.wallet !== BUYBACK_TREASURY).slice(-8).reverse().map((g) => ({ wallet: g.wallet, sol: g.sol, at: g.at, sig: g.sig })),
+    off: dexFundOff(),
   };
 }
 
 // Неподписанная транзакция: перевод на казну и memo, по которому сервер узнаёт взнос в сбор.
 export async function buildDexGift(wallet: string, amountSol: unknown) {
+  if (dexFundOff()) throw new ApiError("The DEX fund is closed", 410);
   let from: PublicKey;
   try {
     from = new PublicKey(wallet);

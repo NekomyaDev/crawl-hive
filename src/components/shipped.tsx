@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 18", title: "DEX fund closed", text: "The DexScreener fund is closed and its buttons are gone. Treasury SOL goes back to buybacks and burns." },
   { date: "Oct 18", title: "Wallet tracker", text: "On-chain crawlers can now follow Solana wallets: turn on the Wallet trades feed, put wallets in the targets, and every buy or sell they make reaches you within seconds, in the app and in Telegram, with the swarm's safety verdict on the token. Powered by Helius webhooks, so nothing polls the wallets." },
   { date: "Oct 18", title: "Clean Launch on BNB Chain", text: "Clean Launch now covers three chains: pump.fun on Solana, Pons on Robinhood Chain and four.meme on BNB Chain. On BNB you sign a free four.meme login message, then MetaMask or Rabby sends the launch, with an optional dev buy up to 1 BNB. Your wallet is the creator, CrawlHive takes 0%, and every coin is scanned at birth." },
   { date: "Oct 18", title: "Clean Launch on Robinhood Chain", text: "Clean Launch now launches coins on Robinhood Chain through Pons, the chain's main launchpad, from MetaMask or Rabby. You are the creator, with an optional 1% or 2% creator fee to your wallet; Pons takes 0.0005 ETH, CrawlHive takes nothing, and the swarm scans the coin at birth like any other. BNB Chain is next." },

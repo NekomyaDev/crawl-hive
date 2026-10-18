@@ -8,7 +8,6 @@ import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { APP_URL, TelegramIcon } from "./telegram-cta";
 import { useWallet } from "./wallet-provider";
-import { DexFundButton } from "./dex-fund";
 import { Button } from "./ui/button";
 
 const LINKS = [
@@ -130,7 +129,6 @@ export function NavShell({ path }: { path: string }) {
           <span className="text-base leading-none">🔥</span>${TOKEN.symbol}
           <span className="ml-auto rounded bg-honey px-1.5 py-px text-[9px] font-bold tracking-wide text-black">LIVE</span>
         </Link>
-        <DexFundButton />
         <div className="mt-auto">
           <WalletButton />
         </div>
@@ -148,7 +146,6 @@ export function NavShell({ path }: { path: string }) {
           <Link href="/#treasury" className="ml-auto rounded-md border border-honey/50 bg-honey/10 px-2 py-1 text-[11px] font-bold text-honey">
             ${TOKEN.symbol}
           </Link>
-          <DexFundButton compact />
           <div className="w-40">
             <WalletButton compact />
           </div>

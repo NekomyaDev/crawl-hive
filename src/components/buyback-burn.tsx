@@ -2,7 +2,6 @@
 // «buyback & burn»: таймер байбека раз в 12 часов со статистикой сжиганий, выручкой казны и сбором на DEX.
 // Кнопки владельца видит только подписанный кошелёк казны; сервер проверяет то же самое.
 import { useEffect, useState } from "react";
-import { DexFund } from "@/components/dex-fund";
 import { ChevronDown, ExternalLink, Flame, Loader2 } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
 import { useToast } from "@/components/ui/toast";
@@ -393,7 +392,6 @@ export function BuybackBurn({ token, stats, reload }: { token: TokenInfo | null;
         buyback <span className="text-muted">&</span> <span className="text-gradient">burn</span>
       </h2>
       <BuybackCard token={token} stats={stats} reload={reload} />
-      <DexFund />
     </div>
   );
 }
