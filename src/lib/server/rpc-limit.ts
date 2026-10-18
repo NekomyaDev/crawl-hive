@@ -69,6 +69,14 @@ export const limitedFetch: typeof fetch = async (input, init) => {
     let res: Response;
     try {
       res = await fetch(down ? FALLBACK() : input, init);
+    } catch (e) {
+      // Основной узел не отвечает вовсе (сеть, DNS): 10 минут ходим на запасной и повторяем запрос.
+      if (!down && attempt < RETRIES) {
+        g2.__crawlhiveRpcDown = Date.now() + 10 * 60_000;
+        console.warn("[rpc] primary RPC unreachable, using the fallback for 10 minutes:", (e as Error).message);
+        continue;
+      }
+      throw e;
     } finally {
       release();
     }
