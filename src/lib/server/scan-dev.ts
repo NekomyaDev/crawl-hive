@@ -12,7 +12,7 @@ const PUMP = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
 const COMPLETE_AT = 48;
 const CREATOR_AT = 49;
 // Публичный RPC отвечает на getProgramAccounts по pump.fun за доли секунды; платный тариф может его не пускать.
-const PUBLIC_RPC = "https://api.mainnet-beta.solana.com";
+export const PUBLIC_RPC = "https://api.mainnet-beta.solana.com";
 const CACHE_MS = 30 * 60_000;
 
 export interface DevReport {
@@ -49,7 +49,7 @@ async function creatorOf(conn: Connection, mint: PublicKey): Promise<{ creator: 
 }
 
 // Все кривые создателя: сколько запусков и сколько дошли до пула. Берём только байт complete.
-async function launchesOf(endpoint: string, creator: string) {
+export async function launchesOf(endpoint: string, creator: string) {
   const list = await rpc<{ account: { data: [string, string] } }[]>(endpoint, "getProgramAccounts", [
     PUMP.toBase58(),
     { encoding: "base64", dataSlice: { offset: COMPLETE_AT, length: 1 }, filters: [{ memcmp: { offset: CREATOR_AT, bytes: creator } }] },

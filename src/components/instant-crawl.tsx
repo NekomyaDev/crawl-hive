@@ -464,16 +464,15 @@ function BundleFlag({ b }: { b: NonNullable<Result["bundles"]> }) {
   return b.checked ? <Flag ok label="no linked wallets" /> : null;
 }
 
-// Создатель токена: прошлые запуски на pump.fun и сколько из них дошли до пула; ссылка на кошелёк в Solscan.
+// Создатель токена: прошлые запуски на pump.fun и сколько из них дошли до пула; ссылка на страницу репутации дева.
 function DevFlag({ d }: { d: NonNullable<Result["dev"]> }) {
   const prior = d.launched - 1;
   const bad = (prior >= 10 && d.graduated === 0) || (prior >= 3 && d.graduated / prior < 0.1) || (d.holdsPct ?? 0) > 10;
   const label = prior ? `dev: ${prior} earlier launch${prior > 1 ? "es" : ""} · ${d.graduated} graduated` : "dev: first launch";
   return (
     <a
-      href={`https://solscan.io/account/${d.creator}`}
-      target="_blank"
-      rel="noreferrer"
+      href={`/dev/${d.creator}`}
+      title="Every coin this creator launched and how it ended"
       className={cn("rounded-md border px-1.5 py-0.5 hover:bg-panel-2", bad ? "border-danger/40 text-danger" : "border-lime/40 text-lime")}
     >
       {label}

@@ -20,6 +20,7 @@ export interface TokenListing {
 
 export interface PairInfo {
   chainId: string;
+  dexId?: string;
   pairAddress: string;
   url: string;
   baseToken: { address: string; name: string; symbol: string };

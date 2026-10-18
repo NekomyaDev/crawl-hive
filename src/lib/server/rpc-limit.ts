@@ -4,7 +4,11 @@
 // запросов в секунду и CONCURRENCY одновременно; на 429 — пауза с ростом и до трёх повторов.
 import "server-only";
 
-const RPS = () => Math.max(1, Number(process.env.SOLANA_RPC_RPS ?? 12));
+// На запасном узле свой лимит: у бесплатного Helius около 10 запросов в секунду.
+const RPS = () =>
+  (globalThis as unknown as { __crawlhiveRpcDown?: number }).__crawlhiveRpcDown! > Date.now()
+    ? Math.max(1, Number(process.env.SOLANA_RPC_FALLBACK_RPS ?? 8))
+    : Math.max(1, Number(process.env.SOLANA_RPC_RPS ?? 12));
 const CONCURRENCY = 8;
 const RETRIES = 3;
 
