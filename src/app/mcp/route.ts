@@ -31,12 +31,12 @@ const TOOLS = [
   {
     name: "scan_token",
     description:
-      "Full CrawlHive safety scan of a memecoin: market, holders, bundled wallets, dev history, copycat tickers, Telegram mentions; Robinhood Chain and BNB Chain add owner and honeypot; every scan includes Contract X-Ray (owner powers read from the EVM bytecode, or risky Token-2022 extensions on Solana) and a check of the project website for wallet-drainer code. Returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY). Takes 5-20 seconds.",
+      "Full CrawlHive safety scan of a memecoin: market, holders, bundled wallets, dev history, copycat tickers, Telegram mentions; Robinhood Chain, BNB Chain and Base add owner and honeypot; every scan includes Contract X-Ray (owner powers read from the EVM bytecode, or risky Token-2022 extensions on Solana) and a check of the project website for wallet-drainer code. Returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY). Takes 5-20 seconds.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Token address, DexScreener or pump.fun link, or $TICKER" },
-        chain: { type: "string", enum: ["solana", "robinhood", "bsc"], description: "Where to look up a $TICKER (default solana); 0x addresses find their chain by themselves" },
+        chain: { type: "string", enum: ["solana", "robinhood", "bsc", "base"], description: "Where to look up a $TICKER (default solana); 0x addresses find their chain by themselves" },
       },
       required: ["query"],
     },
@@ -85,7 +85,7 @@ async function callTool(bot: GrokBot, name: string, args: Record<string, unknown
       const q = String(args.query ?? "").trim().slice(0, 200);
       if (!q) throw new ApiError("query is required");
       if (!allowBotScan(bot)) throw new ApiError("Scan limit for this bot reached (20 per hour)", 429);
-      const chain = args.chain === "robinhood" || args.chain === "bsc" ? String(args.chain) : undefined;
+      const chain = args.chain === "robinhood" || args.chain === "bsc" || args.chain === "base" ? String(args.chain) : undefined;
       return scanBrief(await runScan(q, () => {}, chain, { record: false, src: "agent" }));
     }
     case "crawler_signals":

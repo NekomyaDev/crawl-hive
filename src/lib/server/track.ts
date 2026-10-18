@@ -60,7 +60,7 @@ export function trackVerdict(r: {
 }, src: TrackEntry["src"]) {
   const price0 = Number(r.market?.priceUsd);
   const liq0 = Number(r.market?.liquidityUsd);
-  if (!(price0 > 0) || !(liq0 > 0) || !["solana", "robinhood", "bsc"].includes(r.chain)) return;
+  if (!(price0 > 0) || !(liq0 > 0) || !["solana", "robinhood", "bsc", "base"].includes(r.chain)) return;
   const list = all();
   const now = Date.now();
   const prev = list.findIndex((e) => e.id === r.id && now - e.at < WINDOW_MS);

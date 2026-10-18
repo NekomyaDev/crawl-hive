@@ -36,6 +36,7 @@ const CHAIN: Record<string, { t: string; c: string }> = {
   solana: { t: "Solana", c: "text-violet border-violet/40" },
   robinhood: { t: "Robinhood", c: "text-lime border-lime/40" },
   bsc: { t: "BNB", c: "text-honey border-honey/40" },
+  base: { t: "Base", c: "text-sky border-sky/40" },
 };
 const COLOR: Record<string, string> = { CLEAN: "var(--lime)", OK: "var(--teal)", RISKY: "var(--honey)", DANGER: "var(--danger)", TOO_EARLY: "var(--muted)" };
 const VERDICTS: [string, string, (v: string) => boolean][] = [
@@ -159,7 +160,7 @@ export default function RadarPage() {
           <h1 className="mt-4 text-4xl leading-none font-bold tracking-tight lg:text-6xl">
             Launch <span className="bg-gradient-to-r from-lime via-teal to-sky bg-clip-text text-transparent">Radar</span>
           </h1>
-          <p className="mt-4 max-w-xl text-fg/85">Fresh launches on Solana, Robinhood Chain and BNB Chain, scanned by the swarm on its own. Nobody asked for these scans.</p>
+          <p className="mt-4 max-w-xl text-fg/85">Fresh launches on Solana, Robinhood Chain, BNB Chain and Base, scanned by the swarm on its own. Nobody asked for these scans.</p>
           <p className="mt-1 max-w-xl text-sm text-muted">Holders, bundles and clusters, dev history, copycats, contract powers. Every verdict also goes on the Track Record and is checked against the price for 24 hours.</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Box label="Scanned, 24h" value={d ? fmt(d.scanned) : "-"} tone="text-lime" />
@@ -173,6 +174,7 @@ export default function RadarPage() {
               ["solana", "● Solana"],
               ["robinhood", "● Robinhood"],
               ["bsc", "● BNB"],
+              ["base", "● Base"],
             ].map(([k, t]) => (
               <Chip key={k} on={chain === k} onClick={() => setChain(k)}>
                 {t}

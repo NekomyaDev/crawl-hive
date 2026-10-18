@@ -17,7 +17,7 @@ const MIN_LIQ = 5_000;
 const MIN_AGE_H = 0.6; // моложе 30 минут сканер честно отвечает TOO_EARLY — такие ждём
 const MAX_AGE_H = 24;
 const RECHECK_MS = 45 * 60_000; // TOO_EARLY пересканируем, когда токен подрастёт
-const CHAINS = new Set(["solana", "robinhood", "bsc"]);
+const CHAINS = new Set(["solana", "robinhood", "bsc", "base"]);
 export const RADAR_DELAY_MS = Number(process.env.RADAR_DELAY_MIN ?? 10) * 60_000;
 
 export interface RadarEntry {

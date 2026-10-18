@@ -16,7 +16,7 @@ export const xIntent = (text: string, url: string) =>
   `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
 
 // Сети сканера: подпись и ссылка на токен в эксплорере.
-export const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain" };
+export const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain", base: "Base" };
 export const explorerToken = (chain: string, id: string) =>
   chain === "solana"
     ? { href: `https://solscan.io/token/${id}`, label: "Solscan" }
@@ -24,4 +24,6 @@ export const explorerToken = (chain: string, id: string) =>
       ? { href: `https://robin.etherscan.io/token/${id}`, label: "Robinhood explorer" }
       : chain === "bsc"
         ? { href: `https://bscscan.com/token/${id}`, label: "BscScan" }
-        : null;
+        : chain === "base"
+          ? { href: `https://basescan.org/token/${id}`, label: "BaseScan" }
+          : null;

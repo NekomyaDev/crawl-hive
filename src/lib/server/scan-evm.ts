@@ -1,4 +1,4 @@
-// Проверка токена в EVM-сетях (Robinhood Chain, BNB Chain): держатели и флаг honeypot из GeckoTerminal,
+// Проверка токена в EVM-сетях (Robinhood Chain, BNB Chain, Base): держатели и флаг honeypot из GeckoTerminal,
 // владелец контракта из RPC сети.
 // У EVM нет mint/freeze authority, как у Solana: их роль играет владелец контракта, который часто может менять
 // комиссии, ставить торговлю на паузу или чеканить. Отказался от владения — этих рычагов больше нет.
@@ -9,6 +9,8 @@ import { evmRpc } from "./robinhood";
 export const EVM_SCAN: Record<string, { gecko: string; rpc?: () => string }> = {
   robinhood: { gecko: "robinhood" },
   bsc: { gecko: "bsc", rpc: () => process.env.BSC_RPC_URL?.trim() || "https://bsc-dataseed.bnbchain.org" },
+  // mainnet.base.org режет частые запросы, publicnode держит нагрузку сканера.
+  base: { gecko: "base", rpc: () => process.env.BASE_RPC_URL?.trim() || "https://base-rpc.publicnode.com" },
 };
 
 export async function chainRpc<T>(chain: string, method: string, params: unknown[]): Promise<T> {

@@ -618,7 +618,7 @@ export function llmsTxt() {
   const on = !!x402Config();
   return `# CrawlHive
 
-> Memecoin safety scanner for Solana, BNB Chain and Robinhood Chain. A scan returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY) with holders, bundled wallets, dev history, copycat tickers and Contract X-Ray. Every verdict is committed to Solana every 15 minutes, so the track record can be verified.
+> Memecoin safety scanner for Solana, BNB Chain, Robinhood Chain and Base. A scan returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY) with holders, bundled wallets, dev history, copycat tickers and Contract X-Ray. Every verdict is committed to Solana every 15 minutes, so the track record can be verified.
 
 ## For agents
 ${on ? `- [Paid scan, $${p.scan} USDC over x402](${ISSUER}/api/x402/scan?q=%24BONK): GET with q=<address | link | $TICKER>, answers 402 with payment requirements; no account, no API key

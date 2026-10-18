@@ -1,5 +1,5 @@
 // Браузерное расширение CrawlHive: по адресу страницы терминала (GMGN, DexScreener, Axiom, Photon, pump.fun,
-// Birdeye, Solscan) находим токен — у DexScreener, Axiom и Photon в адресе пара, её разворачиваем через
+// Birdeye, Solscan) находим токен на Solana, BNB Chain, Robinhood Chain или Base — у DexScreener, Axiom и Photon в адресе пара, её разворачиваем через
 // DexScreener — и отдаём короткий вердикт для плашки. Скан общий с сайтом: тот же кэш, тот же лимит по IP.
 import "server-only";
 import { runScan, type ScanResult } from "./scan";
@@ -9,6 +9,9 @@ const CHAIN_HINT: [RegExp, string][] = [
   [/\/(sol|solana)\//i, "solana"],
   [/\/(bsc|bnb)\//i, "bsc"],
   [/\/(robinhood|rh)\//i, "robinhood"],
+  [/\/base\//i, "base"],
+  [/basescan\.org/i, "base"],
+  [/bscscan\.com|four\.meme/i, "bsc"],
   [/pump\.fun|axiom\.trade|photon-sol|bullx|padre|letsbonk|bonk\.fun/i, "solana"],
 ];
 // Не только base58: DexScreener пишет адрес пары в URL маленькими буквами (там бывает «l»), пару разворачивает DexScreener.
@@ -21,7 +24,9 @@ export function parsePageUrl(raw: string): { address: string; chain?: string } |
   } catch {
     return null;
   }
-  const hay = `${u.hostname}${u.pathname}`;
+  // Birdeye и часть терминалов пишут сеть в параметре (?chain=bsc), его тоже учитываем.
+  const net = u.searchParams.get("chain") ?? u.searchParams.get("network") ?? "";
+  const hay = `${u.hostname}${u.pathname}${net ? `/${net}/` : ""}`;
   const found: string[] = [...(u.pathname.match(ADDR) ?? []), ...(u.search.match(ADDR) ?? [])];
   const address = found.pop();
   if (!address) return null;

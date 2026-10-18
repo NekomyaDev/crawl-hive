@@ -77,7 +77,7 @@ interface Me {
 }
 type Tab = "scan" | "radar" | "watch" | "crawlers" | "track";
 
-const CHAIN: Record<string, string> = { solana: "SOL", robinhood: "RH", bsc: "BNB" };
+const CHAIN: Record<string, string> = { solana: "SOL", robinhood: "RH", bsc: "BNB", base: "BASE" };
 const RING: Record<string, string> = { CLEAN: "#b6f23a", OK: "#b6f23a", RISKY: "#ffb020", DANGER: "#ef4444", TOO_EARLY: "#8a9099" };
 
 // ---------- скан ----------
@@ -99,7 +99,7 @@ function ScoreRing({ score, verdict }: { score: number | null; verdict: string }
 
 function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: boolean; onWatched: () => void }) {
   const [q, setQ] = useState("");
-  const [net, setNet] = useState<"solana" | "robinhood" | "bsc">("solana");
+  const [net, setNet] = useState<"solana" | "robinhood" | "bsc" | "base">("solana");
   const [logs, setLogs] = useState<string[]>([]);
   const [res, setRes] = useState<ScanRes | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -214,9 +214,9 @@ function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: 
           </button>
         </div>
         <div className="mt-2 flex items-center gap-2">
-          {(["solana", "robinhood", "bsc"] as const).map((n) => (
+          {(["solana", "robinhood", "bsc", "base"] as const).map((n) => (
             <button key={n} onClick={() => setNet(n)} className={cn("rounded-lg border px-2 py-1 text-xs", net === n ? "border-honey/60 bg-honey/10 text-honey" : "border-line text-muted")}>
-              {n === "solana" ? "Solana" : n === "robinhood" ? "Robinhood" : "BNB"}
+              {n === "solana" ? "Solana" : n === "robinhood" ? "Robinhood" : n === "bsc" ? "BNB" : "Base"}
             </button>
           ))}
           <button onClick={() => scan(q)} disabled={busy || !q.trim()} className="ml-auto rounded-xl bg-honey px-5 py-2 text-sm font-semibold text-black disabled:opacity-50">

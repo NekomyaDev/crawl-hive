@@ -179,7 +179,7 @@ async function resolvePair(chain: string, c: Candidate, cache: Map<string, PairI
 const SAFETY_MAX = 6;
 const SAFETY_BUDGET_MS = 110_000; // на всю проверку за обход: обход целиком ограничен 4 минутами
 const SAFETY_SCAN_MS = 35_000;
-const SAFETY_CHAINS = new Set(["solana", "robinhood", "bsc"]);
+const SAFETY_CHAINS = new Set(["solana", "robinhood", "bsc", "base"]);
 
 // Возвращает пропущенные сигналы, отсеянные (DANGER) и отложенные: на них не хватило лимита сканов или времени.
 // Отложенные не уходят непроверенными — краулер увидит их снова на следующем обходе и проверит тогда.

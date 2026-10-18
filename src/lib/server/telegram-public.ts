@@ -25,7 +25,7 @@ const ADDR_RE = /\b(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/;
 const TICKER_RE = /^\$?([A-Za-z][A-Za-z0-9]{1,11})$/;
 
 const VERDICT_ICON: Record<string, string> = { CLEAN: "🟢", OK: "🟢", RISKY: "🟠", DANGER: "🔴", TOO_EARLY: "⚪️" };
-const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain" };
+const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain", base: "Base" };
 const fmtUsd = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`);
 const pct = (n: number | null | undefined) => (n == null ? "-" : `${n > 0 ? "+" : ""}${Math.round(n)}%`);
 const day = () => new Date().toISOString().slice(0, 10);
@@ -210,13 +210,14 @@ async function doScan(chat: string, q: string, chain?: string) {
     if (!chat.startsWith("-")) seenTgUser({ id: Number(chat) }, "scan");
     await scanCard(chat, r);
     rememberForFollowup(chat, r);
-    // По тикеру ищем на Solana — предлагаем ту же монету на Robinhood Chain.
+    // По тикеру ищем на Solana — предлагаем ту же монету в EVM-сетях.
     const t = q.match(TICKER_RE);
     if (q.startsWith("$") && t && r.chain === "solana")
       send(chat, `Looking for $${esc(t[1].toUpperCase())} on another chain?`, [
         [
           { text: "Robinhood Chain", callback_data: `t:rh:${t[1].slice(0, 12)}` },
           { text: "BNB Chain", callback_data: `t:bsc:${t[1].slice(0, 12)}` },
+          { text: "Base", callback_data: `t:base:${t[1].slice(0, 12)}` },
         ],
       ]);
   } catch (e) {
@@ -226,6 +227,7 @@ async function doScan(chat: string, q: string, chain?: string) {
             [
               { text: "Try Robinhood Chain", callback_data: `t:rh:${q.slice(1, 13)}` },
               { text: "Try BNB Chain", callback_data: `t:bsc:${q.slice(1, 13)}` },
+              { text: "Try Base", callback_data: `t:base:${q.slice(1, 13)}` },
             ],
           ]
         : undefined,
@@ -477,7 +479,7 @@ function alertsMenu(chat: string) {
   const mark = (b: boolean) => (b ? "● " : "○ ");
   send(
     chat,
-    `📡 <b>Launch Radar alerts</b>: ${a.on ? "on" : "off"}\nFresh launches on Solana, Robinhood Chain and BNB Chain, scanned by the swarm. Up to ${ALERTS_PER_DAY} a day. Crawler owners get them live, everyone else 10 minutes later.`,
+    `📡 <b>Launch Radar alerts</b>: ${a.on ? "on" : "off"}\nFresh launches on Solana, Robinhood Chain, BNB Chain and Base, scanned by the swarm. Up to ${ALERTS_PER_DAY} a day. Crawler owners get them live, everyone else 10 minutes later.`,
     [
       [{ text: a.on ? "🔕 Turn off" : "🔔 Turn on", callback_data: a.on ? "a:off" : "a:on" }],
       [
@@ -620,6 +622,7 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
   if (d.startsWith("r:")) return doScan(chat, d.slice(2));
   if (d.startsWith("t:rh:")) return doScan(chat, `$${d.slice(5)}`, "robinhood");
   if (d.startsWith("t:bsc:")) return doScan(chat, `$${d.slice(6)}`, "bsc");
+  if (d.startsWith("t:base:")) return doScan(chat, `$${d.slice(7)}`, "base");
   // В группах настройки меняют только админы: иначе любой участник включил бы оповещения на всю группу.
   if (d.startsWith("a:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
   if (d.startsWith("n:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
@@ -731,7 +734,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
       return send(chat, on ? "✅ I will answer contract addresses posted here." : "Autoscan is off. /scan still works.");
     }
     if (cmd === "/start" || cmd === "/help")
-      return send(chat, "🐝 Post any Solana, Robinhood Chain or BNB Chain contract address and I reply with a quick verdict.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track");
+      return send(chat, "🐝 Post any Solana, Robinhood Chain, BNB Chain or Base contract address and I reply with a quick verdict.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track");
     if (!cmd) {
       const q = m.text.match(ADDR_RE)?.[1] ?? scanQuery(m.text);
       if (q && !q.startsWith("$")) return groupAutoscan(chat, m.message_id, q);

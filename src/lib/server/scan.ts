@@ -10,9 +10,9 @@ import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceSnipers, type SniperReport } from "./scan-snipers";
-import { evmSnipersSupported, traceEvmSnipers } from "./scan-snipers-evm";
+import { evmSnipersMaxAgeH, evmSnipersSupported, traceEvmSnipers } from "./scan-snipers-evm";
 import { buildOperators, type OperatorReport } from "./scan-operators";
-import { traceLp, type LpReport } from "./scan-lp";
+import { lpSupported, traceLp, type LpReport } from "./scan-lp";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
@@ -93,10 +93,13 @@ const CORE: Record<string, string> = {
   "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "Wrapped BNB",
   "0x55d398326f99059ff775485246999027b3197955": "USDT",
   "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d": "USDC",
+  // Base
+  "0x4200000000000000000000000000000000000006": "Wrapped ETH",
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": "USDC",
   "0xe9e7cea3dedca5984780bafc599bd69add087d56": "BUSD",
 };
 // Сети, которые умеет сканер. Ключ — chainId DexScreener.
-export const SCAN_CHAINS: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain" };
+export const SCAN_CHAINS: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain", base: "Base" };
 const chainName = (c: string) => SCAN_CHAINS[c] ?? c;
 const RECENT_KEY = "recentScans";
 const SAVED_KEY = "scanResults";
@@ -374,7 +377,7 @@ export async function runScan(
     evmSnipersSupported(chain) && !core && opts.record !== false
       ? marketP.then((m) => {
           const created = m?.pair.pairCreatedAt;
-          if (!created || (Date.now() - created) / 3600_000 > 72) return undefined;
+          if (!created || (Date.now() - created) / 3600_000 > evmSnipersMaxAgeH(chain)) return undefined;
           return withTimeout(traceEvmSnipers(chain, address, created, m?.pair.pairAddress), 20_000)
             .then((r) => {
               if (!r) {
@@ -424,12 +427,12 @@ export async function runScan(
         })
       : Promise.resolve(undefined);
 
-  // LP: сожжена, залочена (и до какого числа) или лежит в кошельке — Solana по RugCheck, BNB по GoPlus.
+  // LP: сожжена, залочена (и до какого числа) или лежит в кошельке — Solana по RugCheck, BNB и Base по GoPlus.
   const days = (ms: number) => Math.max(0, Math.round((ms - Date.now()) / 86_400_000));
   const lpP: Promise<LpReport | undefined> =
-    (chain === "solana" || chain === "bsc") && !core
+    (chain === "solana" || lpSupported(chain)) && !core
       ? marketP.then((m) =>
-          withTimeout(traceLp(chain, address, !!m?.pair && m.pair.liquidity?.usd === undefined), 12_000)
+          withTimeout(traceLp(chain, address, !!m?.pair && m.pair.liquidity?.usd === undefined, m?.pair.pairAddress), 12_000)
             .then((r) => {
               if (!r) return undefined;
               const text =

@@ -18,7 +18,7 @@ export function agentCard() {
   return {
     name: "CrawlHive",
     description:
-      "Memecoin safety scanner for Solana, BNB Chain and Robinhood Chain. Send a token address, a pump.fun or DexScreener link or a $TICKER and get a 0-100 score, a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY), holders, bundled wallets, dev history and Contract X-Ray. Every verdict is committed to Solana every 15 minutes, so the track record is verifiable." +
+      "Memecoin safety scanner for Solana, BNB Chain, Robinhood Chain and Base. Send a token address, a pump.fun or DexScreener link or a $TICKER and get a 0-100 score, a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY), holders, bundled wallets, dev history and Contract X-Ray. Every verdict is committed to Solana every 15 minutes, so the track record is verifiable." +
       (paid ? ` Unlimited scans are sold per call over x402 (USDC on Solana): $${paid.scan} per scan, $${paid.scanX} with an X check, see ${SITE}/.well-known/x402.` : ""),
     version: "1.0.0",
     supportedInterfaces: [{ url: ENDPOINT, protocolBinding: "JSONRPC", protocolVersion: "1.0" }],
@@ -37,7 +37,7 @@ export function agentCard() {
         id: "scan-token",
         name: "Scan a memecoin",
         description: "Full safety scan of a token: market, holders, bundled wallets, dev history, copycat tickers, Contract X-Ray and the project site. Free, 8 scans per 10 minutes per network; takes 5-20 seconds.",
-        tags: ["memecoin", "solana", "bsc", "rug-check", "token-safety"],
+        tags: ["memecoin", "solana", "bsc", "base", "rug-check", "token-safety"],
         examples: ["scan DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", "$BONK", "https://pump.fun/coin/<mint>", "scan 0x... on bsc"],
       },
       {
@@ -104,7 +104,7 @@ async function answer(t: string, ip: string): Promise<{ text: string; data?: unk
     const p = x402Config() ? x402Prices() : null;
     throw new Error(`Free scan limit reached (8 per 10 minutes).${p ? ` Buy unlimited scans over x402: GET ${SITE}/api/x402/scan?q=… for $${p.scan} USDC.` : ""}`);
   }
-  const chain = /\b(bsc|bnb)\b/.test(low) ? "bsc" : /\brobinhood\b/.test(low) ? "robinhood" : undefined;
+  const chain = /\b(bsc|bnb)\b/.test(low) ? "bsc" : /\brobinhood\b/.test(low) ? "robinhood" : /\bbase\b/.test(low) ? "base" : undefined;
   const r = await withDeadline(runScan(q, () => {}, chain, { src: "agent" }), 45_000, "Scan took too long, try again");
   const brief = scanBrief(r);
   return { text: `$${r.symbol} (${r.chain}): ${r.verdict}${r.score != null ? `, score ${r.score}/100` : ""}. ${r.reason} Full report: ${brief.page}`, data: brief };

@@ -1,6 +1,6 @@
 // LP (crawler_lp): кто держит ликвидность и когда её можно вытащить. «Чистый контракт с LP, который
 // разлочится через неделю, — это руг с датой». Solana — по отчёту RugCheck (доля сожжённого или залоченного LP
-// в главном пуле, локеры с датами), BNB Chain — по GoPlus (держатели LP-токена, отметка лока и дата окончания).
+// в главном пуле, локеры с датами), BNB Chain и Base — по GoPlus (держатели LP-токена, отметка лока и дата окончания).
 // Монеты на кривой лаунчпада LP ещё не имеют — вытащить нечего. Для Robinhood Chain источника пока нет.
 import "server-only";
 
@@ -14,15 +14,20 @@ export interface LpReport {
 }
 
 const CACHE_MS = 10 * 60_000;
+// chainId GoPlus для сетей, где он знает держателей LP.
+const GOPLUS_CHAIN: Record<string, number> = { bsc: 56, base: 8453 };
+export const lpSupported = (chain: string) => chain in GOPLUS_CHAIN;
 const g = globalThis as unknown as { __crawlhiveLp?: Map<string, { at: number; r: LpReport | null }> };
 const cache = () => (g.__crawlhiveLp ??= new Map());
 
-export async function traceLp(chain: string, token: string, onCurve: boolean): Promise<LpReport | null> {
+// pool — главный пул токена по DexScreener: GoPlus знает держателей LP только у пулов типа v2, и если главная
+// ликвидность в другом пуле (v3, Aerodrome), его цифры про мелкий пул вводили бы в заблуждение.
+export async function traceLp(chain: string, token: string, onCurve: boolean, pool?: string): Promise<LpReport | null> {
   if (onCurve) return { status: "curve", lockedPct: null, source: chain === "solana" ? "rugcheck" : "goplus" };
-  const key = `${chain}:${token.toLowerCase()}`;
+  const key = `${chain}:${token.toLowerCase()}:${pool?.toLowerCase() ?? ""}`;
   const hit = cache().get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.r;
-  const r = chain === "solana" ? await fromRugcheck(token) : chain === "bsc" ? await fromGoplus(token) : null;
+  const r = chain === "solana" ? await fromRugcheck(token) : lpSupported(chain) ? await fromGoplus(token, GOPLUS_CHAIN[chain], pool) : null;
   if (cache().size > 5000) cache().clear();
   cache().set(key, { at: Date.now(), r });
   return r;
@@ -55,13 +60,19 @@ async function fromRugcheck(mint: string): Promise<LpReport | null> {
 
 const DEAD = new Set(["0x0000000000000000000000000000000000000000", "0x000000000000000000000000000000000000dead", "0xdead000000000000000000000000000000000000"]);
 
-async function fromGoplus(token: string): Promise<LpReport | null> {
-  const res = await fetch(`https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses=${token}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+async function fromGoplus(token: string, chainId: number, pool?: string): Promise<LpReport | null> {
+  const res = await fetch(`https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${token}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
   if (!res?.ok) return null;
-  const j = (await res.json().catch(() => null)) as { result?: Record<string, { lp_holders?: { address: string; tag?: string; percent?: string; is_locked?: number; locked_detail?: { end_time?: string }[] }[] }> } | null;
+  const j = (await res.json().catch(() => null)) as {
+    result?: Record<string, { lp_holders?: { address: string; tag?: string; percent?: string; is_locked?: number; locked_detail?: { end_time?: string }[] }[]; dex?: { pair?: string; liquidity_type?: string }[] }>;
+  } | null;
   const t = Object.values(j?.result ?? {})[0];
+  const main = pool && t?.dex?.find((d) => d.pair?.toLowerCase() === pool.toLowerCase());
+  if (!main || !/v2/i.test(main.liquidity_type ?? "")) return null;
   const holders = t?.lp_holders ?? [];
   if (!holders.length) return null;
+  // Свежий пул GoPlus индексирует не сразу: держатели в сумме дают меньше половины LP — данных ещё нет.
+  if (holders.reduce((s, h) => s + Number(h.percent ?? 0), 0) < 0.5) return null;
   let burned = 0;
   let locked = 0;
   let unlockAt: number | undefined;

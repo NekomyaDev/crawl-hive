@@ -31,7 +31,7 @@ interface Feed {
 }
 
 const SRC: Record<Row["src"], string> = { scan: "user scan", radar: "Launch Radar", crawler: "crawler check", agent: "AI agent" };
-const CHAIN: Record<string, string> = { solana: "Solana", robinhood: "Robinhood", bsc: "BNB" };
+const CHAIN: Record<string, string> = { solana: "Solana", robinhood: "Robinhood", bsc: "BNB", base: "Base" };
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "-");
 
 function Card({ r, kind }: { r: Row; kind: "gem" | "rug" }) {
