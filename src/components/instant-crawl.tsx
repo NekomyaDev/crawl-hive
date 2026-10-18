@@ -58,6 +58,7 @@ interface Result {
   dev?: { creator: string; launched: number; graduated: number; walletAgeHours?: number; walletTxs: number; holdsPct?: number };
   snipers?: { wallets: number; boughtPct: number; holdPct: number; sold: number; slots: number };
   insiders?: { wallets: number; pct: number };
+  lp?: { status: string; lockedPct: number | null; unlockAt?: number; locker?: string };
   operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number } };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   xray?: XRayView;
@@ -409,6 +410,18 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
         {r.bundles && <BundleFlag b={r.bundles} />}
         {r.dev && <DevFlag d={r.dev} />}
         {r.insiders && <Flag ok={false} label={`${r.insiders.wallets} dev-funded wallet${r.insiders.wallets > 1 ? "s" : ""} · ${r.insiders.pct.toFixed(1)}%`} />}
+        {r.lp && r.lp.status !== "curve" && (
+          <Flag
+            ok={r.lp.status === "burned" || (r.lp.status === "locked" && (!r.lp.unlockAt || r.lp.unlockAt - Date.now() > 30 * 86_400_000))}
+            label={
+              r.lp.status === "burned"
+                ? "LP burned"
+                : r.lp.status === "unlocked"
+                  ? `LP not locked (${r.lp.lockedPct ?? 0}%)`
+                  : `LP ${r.lp.lockedPct}% locked${r.lp.unlockAt ? ` · unlocks ${new Date(r.lp.unlockAt).toISOString().slice(0, 10)}` : ""}`
+            }
+          />
+        )}
         {r.operators?.operators[0] && (
           <Flag
             ok={r.operators.operators[0].roles.length < 2 && r.operators.operators[0].pct < 20}

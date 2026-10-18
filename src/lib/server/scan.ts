@@ -12,6 +12,7 @@ import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceSnipers, type SniperReport } from "./scan-snipers";
 import { evmSnipersSupported, traceEvmSnipers } from "./scan-snipers-evm";
 import { buildOperators, type OperatorReport } from "./scan-operators";
+import { traceLp, type LpReport } from "./scan-lp";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
@@ -56,6 +57,7 @@ export interface ScanResult {
   snipers?: SniperReport; // кто купил в первых блоках и сколько держит сейчас
   insiders?: { wallets: number; pct: number }; // топ-держатели, которых пополнил кошелёк создателя
   operators?: OperatorReport; // связанные кошельки, склеенные в владельцев, и их история на других токенах
+  lp?: LpReport; // кто держит ликвидность: сожжена, залочена (до какого числа) или в кошельке
   evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
   xray?: XRayView; // Contract X-Ray: рычаги владельца из байткода (EVM) или расширений Token-2022 (Solana)
   core?: string; // базовый актив сети (SOL, USDC…): мем-проверки к нему не применяются
@@ -422,6 +424,30 @@ export async function runScan(
         })
       : Promise.resolve(undefined);
 
+  // LP: сожжена, залочена (и до какого числа) или лежит в кошельке — Solana по RugCheck, BNB по GoPlus.
+  const days = (ms: number) => Math.max(0, Math.round((ms - Date.now()) / 86_400_000));
+  const lpP: Promise<LpReport | undefined> =
+    (chain === "solana" || chain === "bsc") && !core
+      ? marketP.then((m) =>
+          withTimeout(traceLp(chain, address, !!m?.pair && m.pair.liquidity?.usd === undefined), 12_000)
+            .then((r) => {
+              if (!r) return undefined;
+              const text =
+                r.status === "curve"
+                  ? "still on the launchpad curve: no LP to pull yet"
+                  : r.status === "burned"
+                    ? `LP burned (${r.lockedPct}%): liquidity can't be pulled`
+                    : r.status === "unlocked"
+                      ? `only ${r.lockedPct ?? 0}% of the LP is locked or burned: liquidity can be pulled`
+                      : `${r.lockedPct}% of the LP locked${r.locker ? ` in ${r.locker}` : ""}${r.unlockAt ? `, unlocks in ${days(r.unlockAt)} days (${new Date(r.unlockAt).toISOString().slice(0, 10)})` : ""}`;
+              const soon = !!r.unlockAt && r.unlockAt - Date.now() < 30 * 86_400_000;
+              log({ crawler: "crawler_lp", text, tone: r.status === "unlocked" || soon ? "bad" : r.status === "partly" ? "warn" : "ok" });
+              return r;
+            })
+            .catch(() => undefined),
+        )
+      : Promise.resolve(undefined);
+
   const market = await marketP;
   const symbol = sym(market?.pair.baseToken.symbol);
 
@@ -511,7 +537,7 @@ export async function runScan(
     return found;
   });
 
-  const [holders, cloneInfo, telegram, bundles, dev, evm, xr, siteR, snipers] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP, xrayP, siteP, snipersP]);
+  const [holders, cloneInfo, telegram, bundles, dev, evm, xr, siteR, snipers, lp] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP, xrayP, siteP, snipersP, lpP]);
   // Инсайдеры: топ-держатели, которым первый SOL прислал (или первую транзакцию оплатил) сам создатель.
   const devLinks = dev ? (bundles?.links ?? []).filter((l) => l.funder === dev.creator && l.wallet !== dev.creator) : [];
   const insiders = devLinks.length ? { wallets: devLinks.length, pct: Math.round(devLinks.reduce((x, l) => x + l.pct, 0) * 100) / 100 } : undefined;
@@ -556,6 +582,10 @@ export async function runScan(
   else if (onCurve) hit("Bonding curve", -10, `still on the ${launchpad} curve, not graduated to a pool`);
   else if (liq < 5_000) hit("Thin liquidity", -25, `only ${usd(liq)} in the pool`);
   else if (liq < 20_000) hit("Low liquidity", -10, `${usd(liq)} in the pool`);
+  if (lp && lp.status === "unlocked" && liq >= 5_000) hit("LP not locked", -15, `only ${lp.lockedPct ?? 0}% of the liquidity is locked or burned: it can be pulled any time`);
+  else if (lp?.unlockAt && lp.unlockAt - Date.now() < 7 * 86_400_000) hit("LP unlocks this week", -20, `the locked LP unlocks on ${new Date(lp.unlockAt).toISOString().slice(0, 10)}${lp.locker ? ` (${lp.locker})` : ""}`);
+  else if (lp?.unlockAt && lp.unlockAt - Date.now() < 30 * 86_400_000) hit("LP unlocks soon", -10, `the locked LP unlocks in ${days(lp.unlockAt)} days${lp.locker ? ` (${lp.locker})` : ""}`);
+  else if (lp?.status === "burned") hit("LP burned", 5, "the liquidity tokens are burned: the pool can't be pulled");
   if (holders?.mintAuthority) hit("Mint open", -30, "the creator can still mint new tokens");
   if (holders?.freezeAuthority) hit("Freeze on", -25, "the creator can freeze holders' tokens");
   // Крупнейший держатель — обычно пул ликвидности, поэтому концентрацию считаем по следующим десяти.
@@ -616,7 +646,7 @@ export async function runScan(
 
   // «Слишком рано» — только если явных красных флагов нет: связанные кошельки или серийного создателя видно
   // уже в первые минуты, и молчать о них нельзя.
-  const SERIOUS = ["Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Dev-funded snipers", "One operator", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
+  const SERIOUS = ["LP unlocks this week", "LP not locked", "Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Dev-funded snipers", "One operator", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
   const tooEarly =
     !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !xray?.findings.some((f) => f.severity === "high") && !factors.some((f) => SERIOUS.includes(f.label));
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";
@@ -659,6 +689,7 @@ export async function runScan(
     snipers: snipers && { ...snipers, buyers: undefined },
     insiders,
     operators,
+    lp,
     dev,
     evm,
     xray,
