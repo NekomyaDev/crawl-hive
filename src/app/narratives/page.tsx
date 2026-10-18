@@ -28,6 +28,8 @@ interface Item {
   speed: number;
   refs?: { platform: string; title: string; url: string; where: string }[];
   onRadar?: { id: string; symbol: string; verdict: string; score: number | null } | null;
+  launches?: { mint: string; symbol: string; launchedAt: number; scannedAt: number; verdict: string | null; score: number | null; fdv: number | null }[];
+  firstClean?: string;
   media?: string[];
   reach?: { views: number; likes: number; reposts: number; replies: number; followers: number; firstPostAt: number };
   sightings?: { at: number; heat: string; clones: number | null }[];
@@ -174,6 +176,23 @@ function NarrativeCard({ n, active }: { n: Item; active: boolean }) {
         </div>
       </div>
 
+      {!!n.launches?.length && (
+        <div className="mt-2 rounded-xl border border-coral/40 bg-coral/[0.05] p-2">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-coral">🚨 Coins launched on it · scanned by the swarm</div>
+          <div className="space-y-1">
+            {n.launches.slice(-3).reverse().map((l) => (
+              <Link key={l.mint} href={`/scan/${l.mint}`} className="flex items-center justify-between gap-2 text-xs hover:text-honey">
+                <span className="truncate">
+                  <span className="num font-semibold">${l.symbol}</span>
+                  {n.firstClean === l.mint && <span className="ml-1.5 rounded bg-lime/15 px-1 text-[10px] font-bold text-lime">first clean</span>}
+                  <span className="ml-1.5 text-muted">scanned {Math.max(1, Math.round((l.scannedAt - l.launchedAt) / 60_000))} min after launch</span>
+                </span>
+                {l.verdict ? <VerdictPill verdict={l.verdict} score={l.score} /> : <span className="text-[10px] text-muted">no verdict</span>}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
       {n.onRadar && (
         <Link href={`/scan/${n.onRadar.id}`} className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-lime/50 bg-gradient-to-r from-lime/10 to-teal/5 px-2.5 py-1.5 text-xs hover:border-lime">
           <span>

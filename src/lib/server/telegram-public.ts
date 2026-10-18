@@ -36,6 +36,7 @@ interface ChatPrefs {
   followups?: boolean; // по умолчанию включены в личке
   autoscan?: boolean; // по умолчанию включён в группах
   alerts?: { on: boolean; mode: "clean" | "all"; minLiq: number };
+  narr?: { on: boolean; mode: "first" | "all" }; // алерты о монетах на нарративах Narrative Radar
   alertDay?: string;
   alertCount?: number;
   fuDay?: string;
@@ -488,6 +489,41 @@ function alertsMenu(chat: string) {
   );
 }
 
+// ---------- Narrative Snipe Alerts ----------
+function narrMenu(chat: string) {
+  const n = prefs(chat).narr ?? { on: false, mode: "first" as const };
+  const mark = (b: boolean) => (b ? "● " : "○ ");
+  send(
+    chat,
+    `🔮 <b>Narrative launch alerts</b>: ${n.on ? "on" : "off"}\nWhen a coin launches on a narrative our hunter found, the swarm scans it at once. Get the first clean coin of every narrative, or every launch with its verdict. Up to ${ALERTS_PER_DAY} alerts a day.`,
+    [
+      [{ text: n.on ? "🔕 Turn off" : "🔔 Turn on", callback_data: n.on ? "n:off" : "n:on" }],
+      [
+        { text: `${mark(n.mode === "first")}First clean coin only`, callback_data: "n:m:first" },
+        { text: `${mark(n.mode === "all")}Every launch`, callback_data: "n:m:all" },
+      ],
+    ],
+  );
+}
+
+export async function pushNarrativeLaunch(n: { id: string; title: string; ticker: string }, l: { mint: string; symbol: string; launchedAt: number; scannedAt: number; verdict: string | null; score: number | null; fdv: number | null }, firstClean: boolean) {
+  const subs = Object.entries(prefsAll()).filter(([, p]) => p.narr?.on);
+  if (!subs.length) return;
+  const mins = Math.max(1, Math.round((l.scannedAt - l.launchedAt) / 60_000));
+  const head = firstClean ? `🚨 <b>First clean coin on a narrative</b>` : `🔮 <b>New coin on a narrative</b>`;
+  const text = [
+    head,
+    `“${esc(n.title)}” → <b>$${esc(l.symbol)}</b>`,
+    `${VERDICT_ICON[l.verdict ?? ""] ?? "⚪️"} ${l.verdict ? `${l.verdict.replace("_", " ")}${l.score != null ? ` ${l.score}` : ""}` : "scan failed"}${l.fdv ? ` · FDV $${fmtUsd(l.fdv)}` : ""} · scanned ${mins} min after launch`,
+    `<code>${esc(l.mint)}</code>`,
+  ].join("\n");
+  for (const [chat, p] of subs) {
+    if (p.narr!.mode === "first" && !firstClean) continue;
+    if (!takeQuota(chat, "alert", ALERTS_PER_DAY)) continue;
+    send(chat, text, [[{ text: "🔎 Full scan", url: `${siteUrl()}/scan/${l.mint}` }, { text: "🔮 Narrative", url: `${siteUrl()}/narratives#n-${n.id}` }]]);
+  }
+}
+
 export function setAlerts(chat: string, patch: Partial<NonNullable<ChatPrefs["alerts"]>>) {
   const cur = prefs(chat).alerts ?? { on: false, mode: "clean" as const, minLiq: 10_000 };
   setPrefs(chat, { alerts: { ...cur, ...patch } });
@@ -522,7 +558,7 @@ async function narrativesMessage(chat: string) {
           `${HEAT[n.heat] ?? "🌱"} <b>${esc(n.title)}</b> · $${esc(n.ticker)}\n${esc(n.why)}${n.clones === 0 ? "\n✓ no coin on this ticker yet" : ""}\n${n.launched ? `🚀 launched: <a href="${siteUrl()}/scan/${n.launched.mint}">$${esc(n.launched.symbol)}</a>` : `<a href="${esc(launchHrefFor({ title: n.title, ticker: n.ticker, why: n.why, post: n.posts[0], img: n.media?.[0], nid: n.id }, siteUrl()))}">🚀 Launch this narrative</a>`}`,
       ),
     ].join("\n\n"),
-    [[{ text: "🔮 Open Narrative Radar", url: `${siteUrl()}/narratives` }]],
+    [[{ text: "🔮 Open Narrative Radar", url: `${siteUrl()}/narratives` }], [{ text: "🔔 Alert me on narrative launches", callback_data: "n:menu" }]],
   );
 }
 
@@ -586,6 +622,16 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
   if (d.startsWith("t:bsc:")) return doScan(chat, `$${d.slice(6)}`, "bsc");
   // В группах настройки меняют только админы: иначе любой участник включил бы оповещения на всю группу.
   if (d.startsWith("a:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
+  if (d.startsWith("n:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
+  if (d === "n:menu") return narrMenu(chat);
+  if (d === "n:on" || d === "n:off") {
+    setPrefs(chat, { narr: { ...(prefs(chat).narr ?? { on: false, mode: "first" as const }), on: d === "n:on" } });
+    return narrMenu(chat);
+  }
+  if (d.startsWith("n:m:")) {
+    setPrefs(chat, { narr: { ...(prefs(chat).narr ?? { on: false, mode: "first" as const }), mode: d.slice(4) === "all" ? "all" : "first" } });
+    return narrMenu(chat);
+  }
   if (d === "a:menu") return alertsMenu(chat);
   if (d === "a:on" || d === "a:off") {
     setAlerts(chat, { on: d === "a:on" });
@@ -737,6 +783,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
     return send(chat, "✅ Sent.");
   }
   if (cmd === "/alerts") return alertsMenu(chat);
+  if (cmd === "/narrativealerts") return narrMenu(chat);
   if (cmd === "/watchlist") {
     const mine = (watches()[chat] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
     return send(

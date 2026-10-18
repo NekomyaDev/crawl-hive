@@ -45,6 +45,17 @@ export interface NarrativeEntry extends Narrative {
   reach?: Reach;
   takenFdv?: number; // самая дорогая монета на тикере, появившаяся ДО нарратива
   media?: string[]; // картинки из постов (pbs.twimg.com)
+  launches?: NarrativeLaunch[]; // монеты, вышедшие на тикере после нарратива, с вердиктом роя
+  firstClean?: string; // первая монета с вердиктом CLEAN/OK
+}
+export interface NarrativeLaunch {
+  mint: string;
+  symbol: string;
+  launchedAt: number;
+  scannedAt: number;
+  verdict: string | null;
+  score: number | null;
+  fdv: number | null;
 }
 export interface Reach {
   views: number;
@@ -167,6 +178,65 @@ async function refreshOutcomes() {
   if (due.length) save(list);
 }
 
+// ---------- Narrative Snipe Alerts ----------
+// Каждые 5 минут: не вышла ли монета на тикере живого нарратива. Новую сразу сканирует рой; первая с вердиктом
+// CLEAN/OK — «первая чистая монета нарратива», о ней (и, по желанию подписчика, о каждой) уходит алерт в Telegram.
+const WATCH_MS = 5 * 60_000;
+const SCANS_PER_TICK = 6;
+const SCANS_PER_DAY = () => Number(process.env.NARR_SNIPE_DAILY ?? 80);
+const gs = globalThis as unknown as { __crawlhiveSnipe?: { busy: boolean; day: string; n: number } };
+
+async function watchLaunches() {
+  const w = (gs.__crawlhiveSnipe ??= { busy: false, day: "", n: 0 });
+  if (w.busy) return;
+  const today = new Date().toISOString().slice(0, 10);
+  if (w.day !== today) Object.assign(w, { day: today, n: 0 });
+  w.busy = true;
+  try {
+    const now = Date.now();
+    const list = all();
+    const live = list.filter((n) => now - n.at < 24 * HOUR && stageOf(n, now) !== "fading").slice(0, 25);
+    const fresh: { n: NarrativeEntry; mint: string; symbol: string; launchedAt: number }[] = [];
+    for (const n of live) {
+      const pairs = await searchPairs(n.ticker).catch(() => []);
+      for (const p of pairs) {
+        if (p.chainId !== "solana" || p.baseToken.symbol.toUpperCase().replace(/^\$/, "") !== n.ticker) continue;
+        if ((p.pairCreatedAt ?? 0) < n.at - HOUR) continue;
+        const mint = p.baseToken.address;
+        if (n.launches?.some((l) => l.mint === mint) || fresh.some((f) => f.mint === mint)) continue;
+        fresh.push({ n, mint, symbol: p.baseToken.symbol, launchedAt: p.pairCreatedAt ?? now });
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!fresh.length) return;
+    const { runScan } = await import("./scan");
+    const tg = await import("./telegram-public").catch(() => null);
+    for (const f of fresh.sort((a, b) => a.launchedAt - b.launchedAt).slice(0, SCANS_PER_TICK)) {
+      if (w.n >= SCANS_PER_DAY()) break;
+      w.n++;
+      const r = (await Promise.race([
+        runScan(f.mint, () => {}, "solana", { record: false, src: "radar" }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 45_000)),
+      ]).catch(() => null)) as { verdict?: string; score?: number | null; market?: { fdv?: number } } | null;
+      const launch: NarrativeLaunch = { mint: f.mint, symbol: f.symbol, launchedAt: f.launchedAt, scannedAt: Date.now(), verdict: r?.verdict ?? null, score: r?.score ?? null, fdv: r?.market?.fdv ?? null };
+      // Перечитываем список перед записью: за время скана мог пройти другой проход радара.
+      const cur = all();
+      const entry = cur.find((x) => x.id === f.n.id);
+      if (!entry) continue;
+      entry.launches = [...(entry.launches ?? []), launch].slice(-30);
+      const firstClean = !entry.firstClean && (launch.verdict === "CLEAN" || launch.verdict === "OK");
+      if (firstClean) entry.firstClean = launch.mint;
+      save(cur);
+      console.log(`[narratives] launch on ${entry.ticker}: ${launch.mint} ${launch.verdict ?? "?"}${firstClean ? " (first clean)" : ""}`);
+      await tg?.pushNarrativeLaunch({ id: entry.id, title: entry.title, ticker: entry.ticker }, launch, firstClean).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("[narratives] snipe watch", (e as Error).message);
+  } finally {
+    w.busy = false;
+  }
+}
+
 async function tick(force = false) {
   const s = st();
   if (s.busy) return;
@@ -261,6 +331,7 @@ export function narrativeFeed() {
     everyH: everyMs() / HOUR,
     day: { found: day.length, hot: day.filter((n) => n.heat === "hot").length, fresh: day.filter((n) => n.clones === 0).length },
     record: { graded: graded.length, wins: wins.length, winFdv: WIN_FDV },
+    snipes: { launches: list.reduce((a, n) => a + (n.launches?.length ?? 0), 0), firstClean: list.filter((n) => n.firstClean).length },
   };
 }
 
@@ -273,5 +344,7 @@ export function startNarrativeRadar() {
   if (process.env.NARR_RADAR_OFF === "1" || process.env.CRAWL_DISABLED === "1") return;
   setTimeout(() => tick().catch(() => {}), 60_000);
   setInterval(() => tick().catch(() => {}), TICK_MS);
+  setTimeout(() => watchLaunches().catch(() => {}), 90_000);
+  setInterval(() => watchLaunches().catch(() => {}), WATCH_MS);
   console.log("[crawlhive] narrative radar started");
 }
