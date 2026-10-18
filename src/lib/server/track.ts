@@ -239,3 +239,16 @@ export function trackOutcomes(): Map<string, { dumped: boolean; rugged: boolean;
   }
   return m;
 }
+
+// Для ежедневного контента: лучшее попадание CLEAN/OK и самый наглядный пойманный DANGER за окно.
+export function dayHighlights(fromMs: number) {
+  const list = all().filter((e) => e.at >= fromMs);
+  const sane = (e: TrackEntry) => e.liq0 >= MIN_LIQ0 && (e.peakPct ?? 0) <= MAX_SANE_PCT;
+  const gem = list.filter((e) => (e.verdict === "CLEAN" || e.verdict === "OK") && sane(e) && (e.peakPct ?? 0) >= 100).sort((a, b) => (b.peakPct ?? 0) - (a.peakPct ?? 0))[0];
+  const rug = list.filter((e) => e.verdict === "DANGER" && e.liq0 >= MIN_LIQ0 && (e.rugged || (e.lowPct ?? 0) <= -80)).sort((a, b) => (a.lowPct ?? 0) - (b.lowPct ?? 0))[0];
+  const view = (e?: TrackEntry) =>
+    e && { id: e.id, chain: e.chain, symbol: e.symbol, name: e.name ?? null, verdict: e.verdict, score: e.score, src: e.src, at: e.at, fdv0: e.fdv0 ?? null, peakPct: e.peakPct ?? null, lowPct: e.lowPct ?? null, rugged: !!e.rugged, hoursToPeak: e.peakAt ? Math.round(((e.peakAt - e.at) / 3600_000) * 10) / 10 : null };
+  const by: Record<string, number> = {};
+  for (const e of list) by[e.src] = (by[e.src] ?? 0) + 1;
+  return { gem: view(gem), rug: view(rug), verdicts: list.length, bySource: by };
+}
