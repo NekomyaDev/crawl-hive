@@ -10,6 +10,7 @@ import { rpcConnection } from "./solana";
 import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceSnipers, type SniperReport } from "./scan-snipers";
+import { evmSnipersSupported, traceEvmSnipers } from "./scan-snipers-evm";
 import { buildOperators, type OperatorReport } from "./scan-operators";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
@@ -368,7 +369,32 @@ export async function runScan(
 
   // Снайперы: только молодые токены на Solana и только сканы людей (радар и краулеры не тратят RPC на историю минта).
   const snipersP: Promise<SniperReport | undefined> =
-    chain === "solana" && !core && opts.record !== false
+    evmSnipersSupported(chain) && !core && opts.record !== false
+      ? marketP.then((m) => {
+          const created = m?.pair.pairCreatedAt;
+          if (!created || (Date.now() - created) / 3600_000 > 72) return undefined;
+          return withTimeout(traceEvmSnipers(chain, address, created, m?.pair.pairAddress), 20_000)
+            .then((r) => {
+              if (!r) {
+                log({ crawler: "crawler_snipers", text: "could not find the launch block", tone: "info" });
+                return undefined;
+              }
+              log({
+                crawler: "crawler_snipers",
+                text: r.wallets
+                  ? `${r.wallets} wallet${r.wallets > 1 ? "s" : ""} bought in the first ${r.slots} seconds (${pct(r.boughtPct)}) · still hold ${pct(r.holdPct)}${r.sold ? ` · ${r.sold} sold out` : ""}`
+                  : "no one but the creator bought in the first seconds",
+                tone: r.holdPct >= 15 ? "bad" : r.holdPct >= 5 ? "warn" : "ok",
+              });
+              return r;
+            })
+            .catch((e) => {
+              console.error("[scan] evm snipers:", (e as Error).message);
+              log({ crawler: "crawler_snipers", text: "could not read the first buyers right now", tone: "warn" });
+              return undefined;
+            });
+        })
+      : chain === "solana" && !core && opts.record !== false
       ? Promise.all([holdersP, devP, marketP]).then(([h, d, m]) => {
           const age = m?.pair.pairCreatedAt ? (Date.now() - m.pair.pairCreatedAt) / 3600_000 : undefined;
           if (age !== undefined && age > 72) return undefined;

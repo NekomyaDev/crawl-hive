@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 19", title: "Operators, dev pages, Robinhood snipers", text: "Scans now count operators, not wallets: holders, snipers and dev-funded wallets that share a funder are merged into one owner, snipers funded by the creator are flagged, and wallets remember the other tokens they sniped or bundled and how those ended. Every creator gets a dev page with all their pump.fun coins and how each one ended. Snipers now work on Robinhood Chain too, counted from the moment the pool is funded." },
   { date: "Oct 18", title: "0.2 SOL burn every 12 hours", text: "The buyback now runs on a plan: 0.2 SOL of $CRAWLHIVE bought back and burned every 12 hours, at 00:00 and 12:00 UTC, with the countdown on the home page. It is still signed by hand in Phantom, because the server never holds the treasury key." },
   { date: "Oct 18", title: "DEX fund closed", text: "The DexScreener fund is closed and its buttons are gone. Treasury SOL goes back to buybacks and burns." },
   { date: "Oct 18", title: "Wallet tracker", text: "On-chain crawlers can now follow Solana wallets: turn on the Wallet trades feed, put wallets in the targets, and every buy or sell they make reaches you within seconds, in the app and in Telegram, with the swarm's safety verdict on the token. Powered by Helius webhooks, so nothing polls the wallets." },
