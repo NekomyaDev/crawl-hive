@@ -74,7 +74,14 @@
     if (d.dev) items.push(`<li>🧾 dev: ${d.dev.launched > 1 ? `${d.dev.launched - 1} earlier launches · ${d.dev.graduated} graduated` : "first launch"} <i>· <a href="https://crawlhive.xyz/dev/${esc(d.dev.creator)}" target="_blank" style="color:#7cc4ff">history</a></i></li>`);
     render(`<div class="p"><div class="h">${logo}<b>CrawlHive</b><span style="color:#8a9099">$${esc(d.symbol)}</span><div class="s"><button class="x" data-x title="Minimize">−</button></div></div>
       <div class="b"><div class="v"><div class="sc" style="border-color:${c};color:${c}">${esc(d.score ?? "-")}</div><div><div class="vt" style="color:${c}">${esc(d.verdict.replace("_", " "))}</div><div class="rs">${esc(d.reason)}</div></div></div>
-      <ul>${items.join("")}</ul><a class="f" href="${esc(d.url)}" target="_blank">Full scan on CrawlHive</a></div></div>`);
+      <ul>${items.join("")}</ul>${larpBox(d.larp)}<a class="f" href="${esc(d.url)}" target="_blank">Full scan on CrawlHive</a></div></div>`);
+  }
+
+  // Второе мнение Larpcheck о проекте за токеном; ссылка на их проверку обязательна.
+  function larpBox(l) {
+    if (!l || !l.verdict || !l.url) return "";
+    const lc = /SCAM|LARP/.test(l.verdict) ? "#f87171" : /REAL/.test(l.verdict) && !/PARTLY/.test(l.verdict) ? "#a3e635" : "#ffb020";
+    return `<a href="${esc(l.url)}" target="_blank" style="display:flex;align-items:center;gap:8px;margin:8px 0 2px;padding:7px 9px;border-radius:9px;border:1px solid ${lc}66;background:${lc}14;color:#e8eaed;text-decoration:none;font-size:12px"><span style="color:#8a9099;font-size:10px;letter-spacing:.08em">LARPCHECK</span><b style="color:${lc}">${esc(l.verdict)}${l.score != null ? " " + esc(l.score) : ""}</b><span style="margin-left:auto;color:#8a9099">↗</span></a>`;
   }
 
   function tick() {
