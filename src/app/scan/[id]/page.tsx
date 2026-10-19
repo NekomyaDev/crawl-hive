@@ -82,7 +82,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
           </div>
         </div>
 
-        {r.larp && <LarpLine l={r.larp} className="mt-5" />}
+        {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} className="mt-5" />}
 
         <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs sm:grid-cols-6">
           {[

@@ -388,7 +388,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           <div className="mt-1 text-sm">{r.reason}</div>
         </div>
       </div>
-      {r.larp && <LarpLine l={r.larp} />}
+      {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} />}
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         {[
           ["Liquidity", usd(m?.liquidityUsd)],

@@ -7,7 +7,8 @@ export interface LarpVerdict {
   verdict: string; // REAL, LIKELY REAL, PARTLY REAL, UNCLEAR, LIKELY LARP, LARP, SCAM
   score: number | null; // 0-100, 100 = real
   headline: string | null;
-  coin?: { word: string; score: number | null }; // их штамп «насколько честна монета для покупателя»
+  coin?: { word: string; score: number | null; line?: string }; // их штамп «насколько честна монета для покупателя»
+  story?: { word: string; score: number | null; line?: string }; // штамп «тот ли проект, за кого себя выдаёт»
   url: string; // их проверка: ссылка обязательна
   at: number;
 }
@@ -29,12 +30,24 @@ export async function larpVerdict(address: string): Promise<LarpVerdict | null> 
   let v: LarpVerdict | null = null;
   if (res?.ok) {
     const j = (await res.json().catch(() => null)) as {
-      latest?: { verdict?: string | null; score?: number | null; headline?: string | null; url?: string; created?: string; status?: string; stamps?: { id: string; word: string; score?: number }[] } | null;
+      latest?: { id?: string; verdict?: string | null; score?: number | null; headline?: string | null; url?: string; created?: string; status?: string; stamps?: { id: string; word: string; score?: number }[] } | null;
     } | null;
     const l = j?.latest;
     if (l?.verdict && l.url && l.status === "done") {
-      const coin = l.stamps?.find((s) => s.id === "coin");
-      v = { verdict: l.verdict, score: l.score ?? null, headline: l.headline ?? null, ...(coin ? { coin: { word: coin.word, score: coin.score ?? null } } : {}), url: l.url, at: l.created ? Date.parse(l.created) : Date.now() };
+      // Строки фактов за штампами есть только в самой проверке (бесплатное чтение): из них объясняем расхождение вердиктов.
+      const full = l.id
+        ? ((await (await fetch(`${API}/checks/${l.id}`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000) }).catch(() => null))?.json().catch(() => null)) as {
+            verdict?: { stamps?: { id: string; word: string; score?: number; line?: string }[] } | null;
+          } | null)
+        : null;
+      const stamps = full?.verdict?.stamps?.length ? full.verdict.stamps : (l.stamps ?? []);
+      const st = (id: string) => {
+        const x = stamps.find((s) => s.id === id) as { word: string; score?: number; line?: string } | undefined;
+        return x ? { word: x.word, score: x.score ?? null, ...(x.line ? { line: x.line } : {}) } : undefined;
+      };
+      const coin = st("coin");
+      const story = st("story");
+      v = { verdict: l.verdict, score: l.score ?? null, headline: l.headline ?? null, ...(coin ? { coin } : {}), ...(story ? { story } : {}), url: l.url, at: l.created ? Date.parse(l.created) : Date.now() };
     }
   } else if (res && res.status !== 404) console.warn("[larpcheck]", res.status);
   if (cache().size > 5000) cache().clear();

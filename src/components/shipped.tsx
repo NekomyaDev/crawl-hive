@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 19", title: "Larpcheck second opinion", text: "Every scan now shows Larpcheck's verdict on the project right under ours, with a link to their full check. When the two disagree, a \"Why they disagree\" box shows what each side found and what it means before you buy." },
   { date: "Oct 19", title: "Telegram alerts by topic", text: "In a Telegram group with topics, the bot now posts Launch Radar alerts, narrative alerts and $CRAWLHIVE burns into the topic where an admin turned them on. Every burn lands in the group the moment the server confirms the transaction." },
   { date: "Oct 19", title: "Bubble map on every chain", text: "The bubble map now works on BNB Chain, Base and Robinhood Chain too, not just Solana. Wallets are linked when they pass the token to each other, get it from the dev, or buy in the same transaction or block with near-identical amounts: the classic bundle." },
   { date: "Oct 19", title: "Bubble map", text: "Every Solana scan now shows who really holds the token as a bubble map: top holders, first-block snipers and the dev, sized by their share. Wallets of one owner glow in one color and lines show who funded whom, so a bundle hiding behind ten wallets is one glowing cluster. Hover for the wallet, click to open it on Solscan." },
