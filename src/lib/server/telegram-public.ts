@@ -158,7 +158,7 @@ function caption(r: ScanResult, take: { take: string; conf: number } | null, com
     : "no tradable pair yet";
   const flags = r.factors.filter((f) => f.impact < 0).slice(0, compact ? 2 : 4);
   return [
-    `${VERDICT_ICON[r.verdict] ?? "⚪️"} <b>$${esc(r.symbol)}</b> · <b>${r.score ?? "-"} ${r.verdict.replace("_", " ")}</b> · ${CHAIN_LABEL[r.chain] ?? r.chain}`,
+    `${VERDICT_ICON[r.verdict] ?? "⚪️"} <b>$${esc(r.symbol)}</b> · <b>${r.score != null ? `${r.score} ` : ""}${r.verdict.replace("_", " ")}</b> · ${CHAIN_LABEL[r.chain] ?? r.chain}`,
     esc(r.reason),
     mk,
     ...flags.map((f) => `▫️ ${esc(f.label)}${compact ? "" : `: ${esc(f.note).slice(0, 80)}`}`),
@@ -649,7 +649,7 @@ export async function handleInline(q: { id: string; query: string }) {
       {
         type: "article",
         id: r.id.slice(0, 60),
-        title: `$${r.symbol} · ${r.score ?? "-"} ${r.verdict.replace("_", " ")}`,
+        title: `$${r.symbol} · ${r.score != null ? `${r.score} ` : ""}${r.verdict.replace("_", " ")}`,
         description: r.reason.slice(0, 120),
         thumbnail_url: `${siteUrl()}/scan/${r.id}/opengraph-image?v=${r.scannedAt}`,
         input_message_content: { message_text: `${caption(r, null, true)}\n\n<a href="${siteUrl()}/scan/${r.id}">Full scan on CrawlHive</a>`, parse_mode: "HTML", link_preview_options: { is_disabled: true } },
