@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 export const metadata: Metadata = { title: "Browser extension · CrawlHive", description: "The CrawlHive verdict right on the token page in GMGN, DexScreener, Axiom, Photon and pump.fun." };
 
 const SITES = ["GMGN", "DexScreener", "Axiom", "Photon", "pump.fun", "Birdeye", "Solscan"];
+const STORE_URL = "https://chromewebstore.google.com/detail/crawlhive-memecoin-safety/fockphbbbdmefepkngelchjnhnfdkmnm";
 
 export default function ExtensionPage() {
   return (
@@ -45,7 +46,16 @@ export default function ExtensionPage() {
           </Card>
           <Card className="p-5 text-sm">
             <div className="text-lg font-bold">Install</div>
-            <p className="mt-2 text-fg/85">The Chrome Web Store listing is in review. Until it is live, install it in developer mode:</p>
+            <a
+              href={STORE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-honey via-coral to-pink px-4 py-3 text-base font-bold text-black transition-opacity hover:opacity-90"
+            >
+              🧩 Add to Chrome
+            </a>
+            <p className="mt-2 text-center text-xs text-muted">Free on the Chrome Web Store. Works in Chrome, Brave, Edge and Arc.</p>
+            <p className="mt-4 text-fg/85">Or install it by hand in developer mode:</p>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-fg/85">
               <li>
                 Download{" "}
