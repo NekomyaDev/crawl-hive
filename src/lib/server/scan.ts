@@ -14,6 +14,7 @@ import { evmSnipersMaxAgeH, evmSnipersSupported, traceEvmSnipers } from "./scan-
 import { buildOperators, type OperatorReport } from "./scan-operators";
 import { buildEvmMap, evmMapSupported } from "./scan-evm-map";
 import { lpSupported, traceLp, type LpReport } from "./scan-lp";
+import { larpVerdict, type LarpVerdict } from "./larpcheck";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
@@ -58,6 +59,7 @@ export interface ScanResult {
   snipers?: SniperReport; // кто купил в первых блоках и сколько держит сейчас
   insiders?: { wallets: number; pct: number }; // топ-держатели, которых пополнил кошелёк создателя
   operators?: OperatorReport; // связанные кошельки, склеенные в владельцев, и их история на других токенах
+  larp?: LarpVerdict; // второе мнение Larpcheck о проекте за токеном (со ссылкой на их проверку)
   lp?: LpReport; // кто держит ликвидность: сожжена, залочена (до какого числа) или в кошельке
   evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
   xray?: XRayView; // Contract X-Ray: рычаги владельца из байткода (EVM) или расширений Token-2022 (Solana)
@@ -541,7 +543,9 @@ export async function runScan(
     return found;
   });
 
-  const [holders, cloneInfo, telegram, bundles, dev, evm, xr, siteR, snipers, lp] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP, xrayP, siteP, snipersP, lpP]);
+  const larpP = core ? Promise.resolve(null) : larpVerdict(address).catch(() => null);
+  const [holders, cloneInfo, telegram, bundles, dev, evm, xr, siteR, snipers, lp, larp] = await Promise.all([holdersP, clonesP, tgP, bundlesP, devP, evmP, xrayP, siteP, snipersP, lpP, larpP]);
+  if (larp) log({ crawler: "larpcheck", text: `Larpcheck says ${larp.verdict}${larp.score != null ? ` (${larp.score}/100)` : ""}${larp.headline ? `: ${larp.headline}` : ""}`, tone: /LARP|SCAM/.test(larp.verdict) ? "bad" : /REAL/.test(larp.verdict) ? "ok" : "warn" });
   // Инсайдеры: топ-держатели, которым первый SOL прислал (или первую транзакцию оплатил) сам создатель.
   const devLinks = dev ? (bundles?.links ?? []).filter((l) => l.funder === dev.creator && l.wallet !== dev.creator) : [];
   const insiders = devLinks.length ? { wallets: devLinks.length, pct: Math.round(devLinks.reduce((x, l) => x + l.pct, 0) * 100) / 100 } : undefined;
@@ -704,6 +708,7 @@ export async function runScan(
     snipers: snipers && { ...snipers, buyers: undefined },
     insiders,
     operators,
+    ...(larp ? { larp } : {}),
     lp,
     dev,
     evm,

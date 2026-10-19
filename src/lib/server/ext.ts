@@ -63,6 +63,7 @@ export async function extVerdict(input: { url?: string; q?: string; chain?: stri
     snipers: r.snipers ? { wallets: r.snipers.wallets, holdPct: r.snipers.holdPct, sold: r.snipers.sold } : null,
     operator: op ? { wallets: op.wallets, pct: op.pct, roles: op.roles } : null,
     devSnipers: r.operators?.devSnipers ?? 0,
+    larp: r.larp ? { verdict: r.larp.verdict, score: r.larp.score, url: r.larp.url } : null,
     lp: r.lp ? { status: r.lp.status, lockedPct: r.lp.lockedPct, unlockAt: r.lp.unlockAt ?? null, locker: r.lp.locker ?? null } : null,
     dev: r.dev ? { creator: r.dev.creator, launched: r.dev.launched, graduated: r.dev.graduated } : null,
     url: `https://crawlhive.xyz/scan/${r.id}`,

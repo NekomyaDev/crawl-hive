@@ -12,6 +12,7 @@ import { ShareOnX } from "@/components/share-on-x";
 import { XVoices } from "@/components/x-voices";
 import { XRayPanel } from "@/components/xray-panel";
 import { BubbleMap } from "@/components/bubble-map";
+import { LarpLine } from "@/components/larp-line";
 import { cn, timeAgo } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/scan/[id]">): Promise<Metadata> {
@@ -98,6 +99,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
         </div>
 
         <Factors r={r} />
+
+        {r.larp && <LarpLine l={r.larp} className="mt-3" />}
 
         {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} className="mt-4" />}
 
