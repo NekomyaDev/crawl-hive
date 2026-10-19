@@ -62,7 +62,8 @@ export async function buildEvmMap(chain: string, token: string, opts: { snipers?
 // Окно логов: свой узел или Robinhood — от рождения пары вперёд, publicnode — только последние блоки.
 async function logWindow(c: PublicClient, chain: string, pairCreatedAt?: number) {
   const head = await c.getBlockNumber();
-  const chunk = CHUNK[chain] ?? 5_000n;
+  // Свой узел (dRPC и подобные) отдаёт до 10 000 блоков за запрос, publicnode — меньше.
+  const chunk = CHUNK[chain] ?? (evmOwnLogs(chain) ? 9_999n : 5_000n);
   let from = head - PUBLIC_DEPTH;
   if (evmOwnLogs(chain) && pairCreatedAt) {
     const now = await c.getBlock();
