@@ -796,8 +796,11 @@ function save(r: ScanResult) {
   setMeta(SAVED_KEY, JSON.stringify(list.slice(0, SAVED_MAX)));
 }
 
+// EVM-адреса сравниваем без учёта регистра: в ссылке и у DexScreener он бывает разным.
 export function savedScan(id: string): ScanResult | undefined {
-  return savedScans().find((x) => x.id === id);
+  const evm = id.startsWith("0x");
+  const key = evm ? id.toLowerCase() : id;
+  return savedScans().find((x) => (evm ? x.id.toLowerCase() : x.id) === key);
 }
 
 // Сводка из X, сохранённая с прошлого скана, если она ещё свежая: переживает перезапуск, повторно не платим.

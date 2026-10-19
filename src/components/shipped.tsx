@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 20", title: "Share cards v2", text: "Every scan link now unfurls as a branded card on X and Telegram: our score and verdict, the worst flags, a mini bubble map of who holds it and the Larpcheck second opinion. Share a scan and everyone sees the full picture." },
   { date: "Oct 19", title: "Larpcheck second opinion", text: "Every scan now shows Larpcheck's verdict on the project right under ours, with a link to their full check. When the two disagree, a \"Why they disagree\" box shows what each side found and what it means before you buy." },
   { date: "Oct 19", title: "Telegram alerts by topic", text: "In a Telegram group with topics, the bot now posts Launch Radar alerts, narrative alerts and $CRAWLHIVE burns into the topic where an admin turned them on. Every burn lands in the group the moment the server confirms the transaction." },
   { date: "Oct 19", title: "Bubble map on every chain", text: "The bubble map now works on BNB Chain, Base and Robinhood Chain too, not just Solana. Wallets are linked when they pass the token to each other, get it from the dev, or buy in the same transaction or block with near-identical amounts: the classic bundle." },
