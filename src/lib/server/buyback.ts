@@ -370,7 +370,10 @@ export async function confirmBuyback(wallet: string, signature: unknown) {
   setMeta("buybacks", JSON.stringify(l));
   cache().bal = undefined;
   cache().usdc = undefined;
-  return { record: rec, duplicate: false, stats: await buybackStats() };
+  const stats = await buybackStats();
+  // Каждое подтверждённое сжигание — сразу в Telegram: тема 🔥 Burns в группе и все, кто подписался через /burns.
+  import("./telegram-public").then((t) => t.pushBurn(rec, stats)).catch(() => {});
+  return { record: rec, duplicate: false, stats };
 }
 
 // Итоги для админки.

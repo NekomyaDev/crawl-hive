@@ -37,11 +37,24 @@ interface ChatPrefs {
   autoscan?: boolean; // по умолчанию включён в группах
   alerts?: { on: boolean; mode: "clean" | "all"; minLiq: number };
   narr?: { on: boolean; mode: "first" | "all" }; // алерты о монетах на нарративах Narrative Radar
+  burns?: boolean; // каждое подтверждённое сжигание $CRAWLHIVE
+  threads?: Partial<Record<Topic, number>>; // в группе с темами: в какую тему слать каждый вид оповещений
   alertDay?: string;
   alertCount?: number;
   fuDay?: string;
   fuCount?: number;
 }
+type Topic = "radar" | "narr" | "burns";
+// Тема форума запоминается там, где админ включил оповещения: Launch Radar — в 📡, нарративы — в 🔮, сжигания — в 🔥.
+const inTopic = (chat: string, kind: Topic) => {
+  const t = prefs(chat).threads?.[kind];
+  return t ? { message_thread_id: t } : {};
+};
+function rememberTopic(chat: string, kind: Topic, thread?: number) {
+  if (!chat.startsWith("-")) return;
+  setPrefs(chat, { threads: { ...prefs(chat).threads, [kind]: thread || undefined } });
+}
+
 function prefsAll(): Record<string, ChatPrefs> {
   try {
     return JSON.parse(getMeta("tgprefs") ?? "{}");
@@ -469,6 +482,7 @@ export async function pushRadar() {
           `<code>${esc(e.id)}</code>`,
         ].join("\n"),
         [[{ text: "🔎 Full scan", url: `${siteUrl()}/scan/${e.id}` }, { text: "👁 Watch", callback_data: `w:${e.id}` }]],
+        inTopic(chat, "radar"),
       );
     }
   }
@@ -476,6 +490,7 @@ export async function pushRadar() {
 
 function alertsMenu(chat: string) {
   const a = prefs(chat).alerts ?? { on: false, mode: "clean" as const, minLiq: 10_000 };
+  const where = inTopic(chat, "radar");
   const mark = (b: boolean) => (b ? "● " : "○ ");
   send(
     chat,
@@ -488,12 +503,14 @@ function alertsMenu(chat: string) {
       ],
       [5_000, 25_000, 100_000].map((v) => ({ text: `${mark(a.minLiq === v)}liq ≥ $${fmtUsd(v)}`, callback_data: `a:l:${v}` })),
     ],
+    where,
   );
 }
 
 // ---------- Narrative Snipe Alerts ----------
 function narrMenu(chat: string) {
   const n = prefs(chat).narr ?? { on: false, mode: "first" as const };
+  const where = inTopic(chat, "narr");
   const mark = (b: boolean) => (b ? "● " : "○ ");
   send(
     chat,
@@ -505,6 +522,7 @@ function narrMenu(chat: string) {
         { text: `${mark(n.mode === "all")}Every launch`, callback_data: "n:m:all" },
       ],
     ],
+    where,
   );
 }
 
@@ -522,8 +540,38 @@ export async function pushNarrativeLaunch(n: { id: string; title: string; ticker
   for (const [chat, p] of subs) {
     if (p.narr!.mode === "first" && !firstClean) continue;
     if (!takeQuota(chat, "alert", ALERTS_PER_DAY)) continue;
-    send(chat, text, [[{ text: "🔎 Full scan", url: `${siteUrl()}/scan/${l.mint}` }, { text: "🔮 Narrative", url: `${siteUrl()}/narratives#n-${n.id}` }]]);
+    send(chat, text, [[{ text: "🔎 Full scan", url: `${siteUrl()}/scan/${l.mint}` }, { text: "🔮 Narrative", url: `${siteUrl()}/narratives#n-${n.id}` }]], inTopic(chat, "narr"));
   }
+}
+
+// ---------- сжигания $CRAWLHIVE ----------
+function burnsMenu(chat: string) {
+  const on = !!prefs(chat).burns;
+  send(
+    chat,
+    `🔥 <b>$${TOKEN.symbol} burn alerts</b>: ${on ? "on" : "off"}\nEvery buyback and burn from the treasury, posted here with its transaction the moment the server confirms it.`,
+    [[{ text: on ? "🔕 Turn off" : "🔔 Turn on", callback_data: on ? "b:off" : "b:on" }]],
+    inTopic(chat, "burns"),
+  );
+}
+
+const nextBurn = () => {
+  const d = new Date();
+  const h = d.getUTCHours() < 12 ? 12 : 24;
+  return h === 12 ? "12:00 UTC" : "00:00 UTC";
+};
+
+export function pushBurn(rec: { sig: string; kind: "buyback" | "burn"; sol: number; burned: number }, stats: { count: number; burned: number; burnedPct: number }) {
+  const subs = Object.entries(prefsAll()).filter(([, p]) => p.burns);
+  if (!subs.length) return;
+  const n = (x: number) => Math.round(x).toLocaleString("en-US");
+  const text = [
+    rec.kind === "buyback" ? `🔥 <b>Burn #${stats.count}</b>: ${rec.sol.toFixed(2)} SOL bought back <b>${n(rec.burned)} $${TOKEN.symbol}</b> and burned it forever` : `🔥 <b>Burned ${n(rec.burned)} $${TOKEN.symbol}</b> from the treasury`,
+    `Total burned: ${n(stats.burned)} (${stats.burnedPct.toFixed(2)}% of supply)`,
+    `Next burn: ${nextBurn()}`,
+  ].join("\n");
+  for (const [chat] of subs)
+    send(chat, text, [[{ text: "🔎 Transaction", url: `https://solscan.io/tx/${rec.sig}` }, { text: "🔥 All burns", url: `${siteUrl()}/#treasury` }]], inTopic(chat, "burns"));
 }
 
 export function setAlerts(chat: string, patch: Partial<NonNullable<ChatPrefs["alerts"]>>) {
@@ -613,7 +661,7 @@ export async function handleInline(q: { id: string; query: string }) {
 
 // ---------- кнопки ----------
 
-export async function handleCallback(q: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }) {
+export async function handleCallback(q: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number }; message_thread_id?: number } }) {
   call("answerCallbackQuery", { callback_query_id: q.id }).catch(() => {});
   const chat = q.message ? String(q.message.chat.id) : null;
   const d = q.data ?? "";
@@ -625,9 +673,16 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
   if (d.startsWith("t:base:")) return doScan(chat, `$${d.slice(7)}`, "base");
   // В группах настройки меняют только админы: иначе любой участник включил бы оповещения на всю группу.
   if (d.startsWith("a:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
+  if (d.startsWith("b:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
+  if (d === "b:on" || d === "b:off") {
+    if (d === "b:on") rememberTopic(chat, "burns", q.message?.message_thread_id);
+    setPrefs(chat, { burns: d === "b:on" });
+    return burnsMenu(chat);
+  }
   if (d.startsWith("n:") && chat.startsWith("-") && !(await isAdmin(chat, q.from?.id))) return;
   if (d === "n:menu") return narrMenu(chat);
   if (d === "n:on" || d === "n:off") {
+    if (d === "n:on") rememberTopic(chat, "narr", q.message?.message_thread_id);
     setPrefs(chat, { narr: { ...(prefs(chat).narr ?? { on: false, mode: "first" as const }), on: d === "n:on" } });
     return narrMenu(chat);
   }
@@ -637,6 +692,7 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
   }
   if (d === "a:menu") return alertsMenu(chat);
   if (d === "a:on" || d === "a:off") {
+    if (d === "a:on") rememberTopic(chat, "radar", q.message?.message_thread_id);
     setAlerts(chat, { on: d === "a:on" });
     return alertsMenu(chat);
   }
@@ -714,7 +770,7 @@ async function adminMessage(chat: string) {
   );
 }
 
-export async function handlePublic(m: { chat: { id: number; type: string }; text: string; message_id: number; from?: { id: number; first_name?: string; username?: string } }) {
+export async function handlePublic(m: { chat: { id: number; type: string }; text: string; message_id: number; message_thread_id?: number; from?: { id: number; first_name?: string; username?: string } }) {
   const chat = String(m.chat.id);
   if (m.from) seenTgUser(m.from);
   const [cmd0, ...rest] = m.text.trim().split(/\s+/);
@@ -733,8 +789,15 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
       setPrefs(chat, { autoscan: on });
       return send(chat, on ? "✅ I will answer contract addresses posted here." : "Autoscan is off. /scan still works.");
     }
+    // Оповещения в группе включают админы, и бот запоминает тему, где команда отправлена.
+    if (cmd === "/alerts" || cmd === "/narrativealerts" || cmd === "/burns") {
+      if (!(await isAdmin(chat, m.from?.id))) return send(chat, "Only group admins can change this.", undefined, m.message_thread_id ? { message_thread_id: m.message_thread_id } : {});
+      const kind: Topic = cmd === "/alerts" ? "radar" : cmd === "/burns" ? "burns" : "narr";
+      rememberTopic(chat, kind, m.message_thread_id);
+      return kind === "radar" ? alertsMenu(chat) : kind === "narr" ? narrMenu(chat) : burnsMenu(chat);
+    }
     if (cmd === "/start" || cmd === "/help")
-      return send(chat, "🐝 Post any Solana, Robinhood Chain, BNB Chain or Base contract address and I reply with a quick verdict.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track");
+      return send(chat, "🐝 Post any Solana, Robinhood Chain, BNB Chain or Base contract address and I reply with a quick verdict.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track\nAlerts into this topic: /alerts (Launch Radar) · /narrativealerts · /burns ($CRAWLHIVE burns)");
     if (!cmd) {
       const q = m.text.match(ADDR_RE)?.[1] ?? scanQuery(m.text);
       if (q && !q.startsWith("$")) return groupAutoscan(chat, m.message_id, q);
@@ -787,6 +850,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   }
   if (cmd === "/alerts") return alertsMenu(chat);
   if (cmd === "/narrativealerts") return narrMenu(chat);
+  if (cmd === "/burns") return burnsMenu(chat);
   if (cmd === "/watchlist") {
     const mine = (watches()[chat] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
     return send(
