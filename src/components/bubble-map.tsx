@@ -25,7 +25,21 @@ interface Op {
 
 // Неон в цветах маскотов: оранжевый, розовый, лайм, голубой, фиолетовый, бирюзовый.
 const NEON = ["#ff9f1c", "#ff4fa3", "#a3e635", "#38bdf8", "#a78bfa", "#2dd4bf"];
-const MUTED = "#94a3b8";
+// Одиночные кошельки, как на Bubblemaps: у каждого свой яркий цвет (от адреса, чтобы не прыгал между сканами).
+const SOLO = [
+  "#f97316",
+  "#e879f9",
+  "#facc15",
+  "#4ade80",
+  "#22d3ee",
+  "#818cf8",
+  "#fb7185",
+  "#34d399",
+  "#fbbf24",
+  "#60a5fa",
+  "#c084fc",
+  "#f472b6",
+];
 const DEV = "#f43f5e";
 const W = 720;
 const H = 470;
@@ -35,12 +49,15 @@ const ROLE_ICON: Record<string, string> = {
   dev: "🧑‍💻",
 };
 
+const hash = (w: string) =>
+  [...w].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
 const colorOf = (n: BubbleNode) =>
   n.roles.includes("dev") && n.g < 0
     ? DEV
     : n.g >= 0
       ? NEON[n.g % NEON.length]
-      : MUTED;
+      : SOLO[hash(n.w) % SOLO.length];
+const ALL = [...NEON, ...SOLO, DEV];
 const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 const pctText = (p: number) =>
   p >= 10 ? p.toFixed(0) : p >= 1 ? p.toFixed(1) : p.toFixed(2);
@@ -232,7 +249,7 @@ export function BubbleMap({
               aria-label="Bubble map of top holders, snipers and the dev"
             >
               <defs>
-                {[...NEON, MUTED, DEV].map((c, i) => (
+                {ALL.map((c, i) => (
                   <radialGradient
                     key={c}
                     id={`bm-f${i}`}
@@ -240,21 +257,9 @@ export function BubbleMap({
                     cy="38%"
                     r="65%"
                   >
-                    <stop
-                      offset="0%"
-                      stopColor={c}
-                      stopOpacity={c === MUTED ? 0.14 : 0.42}
-                    />
-                    <stop
-                      offset="75%"
-                      stopColor={c}
-                      stopOpacity={c === MUTED ? 0.06 : 0.16}
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor={c}
-                      stopOpacity={c === MUTED ? 0.1 : 0.32}
-                    />
+                    <stop offset="0%" stopColor={c} stopOpacity={0.55} />
+                    <stop offset="75%" stopColor={c} stopOpacity={0.22} />
+                    <stop offset="100%" stopColor={c} stopOpacity={0.42} />
                   </radialGradient>
                 ))}
                 <filter
@@ -313,12 +318,8 @@ export function BubbleMap({
               {data.nodes.map((node, i) => {
                 const p = pos[i];
                 const c = colorOf(node);
-                const fi =
-                  c === MUTED
-                    ? NEON.length
-                    : c === DEV
-                      ? NEON.length + 1
-                      : node.g % NEON.length;
+                const fi = ALL.indexOf(c);
+                // Связанные группы и дев выделены толще и ярче; одиночки тоже цветные, но спокойнее.
                 const strong = node.g >= 0 || node.roles.includes("dev");
                 const icon = node.roles
                   .map((x) => ROLE_ICON[x])
@@ -368,15 +369,29 @@ export function BubbleMap({
                       </>
                     ) : (
                       <>
+                        {/* связанный кошелёк: второе пунктирное кольцо цвета оператора, видно даже рядом с похожим одиночкой */}
+                        {node.g >= 0 && (
+                          <circle
+                            cx={p.x}
+                            cy={p.y}
+                            r={p.r + 7}
+                            fill="none"
+                            stroke={c}
+                            strokeWidth={2}
+                            strokeDasharray="3 5"
+                            strokeLinecap="round"
+                            filter="url(#bm-glow)"
+                          />
+                        )}
                         <circle
                           cx={p.x}
                           cy={p.y}
                           r={p.r}
                           fill={`url(#bm-f${fi})`}
                           stroke={c}
-                          strokeOpacity={strong ? 1 : 0.4}
-                          strokeWidth={hover === i ? 3 : strong ? 2 : 1.2}
-                          filter={strong ? "url(#bm-glow)" : undefined}
+                          strokeOpacity={strong ? 1 : 0.85}
+                          strokeWidth={hover === i ? 3 : strong ? 2.6 : 1.6}
+                          filter="url(#bm-glow)"
                         />
                         {p.r >= 22 && (
                           <text
@@ -385,7 +400,7 @@ export function BubbleMap({
                             textAnchor="middle"
                             fontSize={Math.min(20, p.r * 0.36)}
                             fontWeight={800}
-                            fill={strong ? "#fff" : "rgba(255,255,255,0.75)"}
+                            fill="#fff"
                             className="num"
                           >
                             {pctText(node.pct)}%
@@ -544,7 +559,7 @@ export function BubbleMap({
                         style={{
                           width: `${Math.max(4, (x.pct / top) * 100)}%`,
                           background: c,
-                          opacity: x.g >= 0 ? 1 : 0.5,
+                          opacity: x.g >= 0 ? 1 : 0.8,
                         }}
                       />
                     </div>
@@ -586,10 +601,10 @@ export function BubbleMap({
         </div>
       )}
       <p className="border-t border-white/5 px-5 py-2.5 text-[10px] text-white/35">
-        Top holders, first-block snipers and the dev. Neon bubbles of one color
-        are one owner (shared funder or dev money), lines show who funded whom,
-        gray bubbles are unlinked. 🎯 sniper · 🔗 bundle · ◆ funder. Pools and
-        curves are left out.
+        Top holders, first-block snipers and the dev. Every wallet has its own
+        color; wallets of one owner (shared funder or dev money) share a color,
+        wear a dashed ring and are joined by lines. 🎯 sniper · 🔗 bundle · ◆
+        funder. Pools and curves are left out.
       </p>
     </div>
   );
