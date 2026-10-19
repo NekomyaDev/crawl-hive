@@ -4,6 +4,7 @@
 // спавн краулера-наблюдателя за этим токеном. ?scan=<адрес> в URL запускает скан сразу (для ссылок).
 import { TOKEN } from "@/lib/token";
 import { XRayPanel, type XRayView } from "@/components/xray-panel";
+import { BubbleMap, type BubbleMapData } from "@/components/bubble-map";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -59,7 +60,7 @@ interface Result {
   snipers?: { wallets: number; boughtPct: number; holdPct: number; sold: number; slots: number };
   insiders?: { wallets: number; pct: number };
   lp?: { status: string; lockedPct: number | null; unlockAt?: number; locker?: string };
-  operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number } };
+  operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number }; map?: BubbleMapData };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   xray?: XRayView;
   core?: string;
@@ -448,6 +449,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </a>
         ))}
       </div>
+      {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} />}
       {r.xray && <XRayPanel x={r.xray} />}
       {x !== undefined && <XPanel x={x} onCheck={onCheckX} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">

@@ -208,3 +208,12 @@ body:has([data-tg-app]) main { padding: 0 !important; }
 @keyframes radar-blip { 0%, 100% { opacity: 0.75; } 8% { opacity: 1; filter: brightness(1.35); } }
 .radar-blip { animation: radar-blip 4s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) { .radar-sweep, .radar-blip { animation: none; } }
+
+/* Бабл-карта: шары появляются с пружинкой и потом слегка покачиваются, по связям бежит пунктир. */
+@keyframes bm-pop { from { transform: scale(0); } 70% { transform: scale(1.08); } to { transform: scale(1); } }
+@keyframes bm-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4px; } }
+.bm-node { animation: bm-pop 0.6s cubic-bezier(.2,1.4,.4,1) backwards, bm-float 3.2s ease-in-out infinite; transition: opacity 0.25s; }
+@keyframes bm-flow { to { stroke-dashoffset: -24; } }
+.bm-node:hover > circle { filter: brightness(1.15); }
+.bm-flow { animation: bm-flow 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .bm-node, .bm-flow { animation: none; } }

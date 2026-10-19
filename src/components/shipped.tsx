@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 19", title: "Bubble map", text: "Every Solana scan now shows who really holds the token as a bubble map: top holders, first-block snipers and the dev, sized by their share. Wallets of one owner glow in one color and lines show who funded whom, so a bundle hiding behind ten wallets is one glowing cluster. Hover for the wallet, click to open it on Solscan." },
   { date: "Oct 19", title: "Telegram community", text: "CrawlHive has a Telegram community now: t.me/crawlhive. Drop any contract in the Scan here topic and @crawlhivebot replies with the verdict; burns, Launch Radar and Narrative Radar get their own topics." },
   { date: "Oct 19", title: "Base, and snipers on BNB and Base", text: "The scanner, the bot, the Mini App, Launch Radar and the browser extension now cover Base too. Fresh tokens on BNB Chain and Base get the sniper check: who bought in the first seconds and what they still hold. LP lock numbers now come only from the token's main pool, so big coins with v3 liquidity no longer get a false \"LP not locked\"." },
   { date: "Oct 19", title: "Browser extension", text: "CrawlHive now lives inside your terminal: a browser extension puts the verdict, red flags, snipers, operators, LP lock and the dev's history right on the token page in GMGN, DexScreener, Axiom, Photon, pump.fun, Birdeye and Solscan. Free, no wallet. See crawlhive.xyz/extension. Live on the Chrome Web Store." },

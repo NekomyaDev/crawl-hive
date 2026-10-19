@@ -11,6 +11,7 @@ import { CHAIN_LABEL, VERDICT_COLOR, VERDICT_LABEL, explorerToken, shareText } f
 import { ShareOnX } from "@/components/share-on-x";
 import { XVoices } from "@/components/x-voices";
 import { XRayPanel } from "@/components/xray-panel";
+import { BubbleMap } from "@/components/bubble-map";
 import { cn, timeAgo } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/scan/[id]">): Promise<Metadata> {
@@ -97,6 +98,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
         </div>
 
         <Factors r={r} />
+
+        {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} className="mt-4" />}
 
         {r.xray && <XRayPanel x={r.xray} className="mt-4" />}
 
