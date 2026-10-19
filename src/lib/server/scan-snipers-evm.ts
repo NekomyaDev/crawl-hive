@@ -26,6 +26,9 @@ const RPC: Record<string, () => string | undefined> = {
   base: () => process.env.BASE_LOGS_RPC_URL?.trim() || "https://base-rpc.publicnode.com",
 };
 export const evmSnipersSupported = (chain: string) => !!RPC[chain]?.();
+// Узел с логами для сети (тот же, что у снайперов): им пользуется и бабл-карта EVM.
+export const evmLogsRpc = (chain: string) => RPC[chain]?.();
+export const evmOwnLogs = (chain: string) => !OWN_LOGS[chain] || !!process.env[OWN_LOGS[chain]]?.trim();
 // До какого возраста токена хватает глубины логов узла: свой RPC — трое суток, publicnode — с запасом от предела.
 const OWN_LOGS: Record<string, string> = { bsc: "BSC_LOGS_RPC_URL", base: "BASE_LOGS_RPC_URL" };
 const PUBLIC_MAX_AGE_H: Record<string, number> = { bsc: 0.9, base: 4.5 };

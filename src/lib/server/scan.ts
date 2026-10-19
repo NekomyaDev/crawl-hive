@@ -12,6 +12,7 @@ import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceSnipers, type SniperReport } from "./scan-snipers";
 import { evmSnipersMaxAgeH, evmSnipersSupported, traceEvmSnipers } from "./scan-snipers-evm";
 import { buildOperators, type OperatorReport } from "./scan-operators";
+import { buildEvmMap, evmMapSupported } from "./scan-evm-map";
 import { lpSupported, traceLp, type LpReport } from "./scan-lp";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
@@ -546,9 +547,19 @@ export async function runScan(
   const insiders = devLinks.length ? { wallets: devLinks.length, pct: Math.round(devLinks.reduce((x, l) => x + l.pct, 0) * 100) / 100 } : undefined;
 
   // Операторы: склеиваем держателей, снайперов и инсайдеров по связям; плюс память кошельков между сканами.
-  const operators: OperatorReport | undefined =
-    chain === "solana" && !core && (bundles || snipers)
-      ? await withTimeout(buildOperators(rpcConnection(), { bundles, snipers, creator: dev?.creator, mint: address }), 10_000)
+  // Solana — по спонсорам кошельков, EVM — по держателям из GoPlus и переводам токена между ними.
+  const operatorsP: Promise<OperatorReport | undefined> | undefined =
+    core
+      ? undefined
+      : chain === "solana"
+        ? bundles || snipers
+          ? withTimeout(buildOperators(rpcConnection(), { bundles, snipers, creator: dev?.creator, mint: address }), 10_000)
+          : undefined
+        : evmMapSupported(chain)
+          ? withTimeout(buildEvmMap(chain, address, { snipers, pairCreatedAt: market?.pair.pairCreatedAt, pair: market?.pair.pairAddress }), 20_000)
+          : undefined;
+  const operators: OperatorReport | undefined = operatorsP
+    ? await operatorsP
           .then((o) => {
             if (o) {
               const top = o.operators[0];
@@ -556,7 +567,7 @@ export async function runScan(
                 crawler: "crawler_operators",
                 text: [
                   top ? `${o.operators.length} operator${o.operators.length > 1 ? "s" : ""} · biggest: ${top.wallets} wallets hold ${pct(top.pct)} (${top.roles.join(" + ")})` : "no linked operators among holders and snipers",
-                  o.devSnipers ? `${o.devSnipers} sniper${o.devSnipers > 1 ? "s" : ""} funded by the creator` : "",
+                  o.devSnipers ? `${o.devSnipers} sniper${o.devSnipers > 1 ? "s" : ""} ${chain === "solana" ? "funded by" : "linked to"} the creator` : "",
                   o.history ? `${o.history.wallets} wallet${o.history.wallets > 1 ? "s" : ""} seen on ${o.history.tokens} other token${o.history.tokens > 1 ? "s" : ""}, ${o.history.dumped} dumped` : "",
                 ].filter(Boolean).join(" · "),
                 tone: o.devSnipers || (top && top.roles.length > 1 && top.pct >= 20) ? "bad" : top ? "warn" : "ok",
@@ -600,9 +611,10 @@ export async function runScan(
   else if (cluster && (cluster.pct >= 4 || cluster.wallets >= 3)) hit("Linked wallets", -10, `${cluster.wallets} top wallets share a funder (${pct(cluster.pct)})`);
   if (insiders && insiders.pct >= 5) hit("Dev-funded holders", -20, `${insiders.wallets} top wallet${insiders.wallets > 1 ? "s were" : " was"} funded by the creator and hold ${pct(insiders.pct)}`);
   else if (insiders) hit("Dev-funded wallets", -10, `${insiders.wallets} top wallet${insiders.wallets > 1 ? "s were" : " was"} funded by the creator (${pct(insiders.pct)})`);
-  if (operators?.devSnipers) hit("Dev-funded snipers", -20, `${operators.devSnipers} wallet${operators.devSnipers > 1 ? "s" : ""} that bought in the first blocks were funded by the creator`);
+  if (operators?.devSnipers) hit("Dev-funded snipers", -20, `${operators.devSnipers} wallet${operators.devSnipers > 1 ? "s" : ""} that bought in the first blocks ${chain === "solana" ? "were funded by" : "got tokens from or sent tokens to"} the creator`);
   const bigOp = operators?.operators[0];
-  if (bigOp && ((bigOp.roles.length > 1 && bigOp.pct >= 15) || bigOp.pct >= 30)) hit("One operator", -15, `${bigOp.wallets} linked wallets (${bigOp.roles.join(" + ")}) hold ${pct(bigOp.pct)}`);
+  // Один кошелёк дева — это «Dev holds a lot», а не оператор: штрафуем только группы из 2+ кошельков.
+  if (bigOp && bigOp.wallets >= 2 && ((bigOp.roles.length > 1 && bigOp.pct >= 15) || bigOp.pct >= 30)) hit("One operator", -15, `${bigOp.wallets} linked wallets (${bigOp.roles.join(" + ")}) hold ${pct(bigOp.pct)}`);
   const hist = operators?.history;
   if (hist && hist.dumped >= 3 && hist.dumped / hist.tokens >= 0.5) hit("Known dump wallets", -10, `${hist.wallets} of these wallets were on ${hist.tokens} other tokens, ${hist.dumped} of them dumped`);
   if (snipers && snipers.holdPct >= 15) hit("Snipers hold a lot", -15, `${snipers.wallets} first-block buyers still hold ${pct(snipers.holdPct)}`);

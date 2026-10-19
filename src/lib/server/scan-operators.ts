@@ -110,7 +110,7 @@ export async function buildOperators(conn: Connection, opts: { bundles?: BundleR
 const MAP_NODES = 40;
 
 // Граф для бабл-карты: все кошельки с долей, дев и спонсоры, через которых связаны кошельки одного оператора.
-function bubbleMap(x: {
+export function bubbleMap(x: {
   ops: { root: string }[];
   held: Map<string, number>;
   roles: Map<string, Set<Role>>;

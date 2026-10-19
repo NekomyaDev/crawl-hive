@@ -49,14 +49,20 @@ const ROLE_ICON: Record<string, string> = {
   dev: "🧑‍💻",
 };
 
-const hash = (w: string) =>
-  [...w].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
-const colorOf = (n: BubbleNode) =>
-  n.roles.includes("dev") && n.g < 0
-    ? DEV
-    : n.g >= 0
-      ? NEON[n.g % NEON.length]
-      : SOLO[hash(n.w) % SOLO.length];
+// Одиночкам цвета раздаются по порядку (по доле), чтобы соседи не повторялись; связанные — цвет оператора.
+const palette = (data: BubbleMapData) => {
+  const solo = new Map(
+    data.nodes
+      .filter((n) => n.g < 0 && !n.roles.includes("dev"))
+      .map((n, k) => [n.w, k]),
+  );
+  return (n: BubbleNode) =>
+    n.roles.includes("dev") && n.g < 0
+      ? DEV
+      : n.g >= 0
+        ? NEON[n.g % NEON.length]
+        : SOLO[(solo.get(n.w) ?? 0) % SOLO.length];
+};
 const ALL = [...NEON, ...SOLO, DEV];
 const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 const pctText = (p: number) =>
@@ -160,6 +166,7 @@ export function BubbleMap({
   className?: string;
 }) {
   const { pts: pos, vb } = useMemo(() => layout(data), [data]);
+  const colorOf = useMemo(() => palette(data), [data]);
   const [hover, setHover] = useState<number | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const explorer = (w: string) =>
