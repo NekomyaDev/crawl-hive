@@ -82,6 +82,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
           </div>
         </div>
 
+        {r.larp && <LarpLine l={r.larp} className="mt-5" />}
+
         <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs sm:grid-cols-6">
           {[
             ["Liquidity", usd(m?.liquidityUsd)],
@@ -99,8 +101,6 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
         </div>
 
         <Factors r={r} />
-
-        {r.larp && <LarpLine l={r.larp} className="mt-3" />}
 
         {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} className="mt-4" />}
 

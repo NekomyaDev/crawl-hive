@@ -388,6 +388,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           <div className="mt-1 text-sm">{r.reason}</div>
         </div>
       </div>
+      {r.larp && <LarpLine l={r.larp} />}
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         {[
           ["Liquidity", usd(m?.liquidityUsd)],
@@ -451,7 +452,6 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </a>
         ))}
       </div>
-      {r.larp && <LarpLine l={r.larp} />}
       {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} />}
       {r.xray && <XRayPanel x={r.xray} />}
       {x !== undefined && <XPanel x={x} onCheck={onCheckX} />}
