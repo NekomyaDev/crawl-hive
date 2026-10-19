@@ -6,6 +6,8 @@ export const BOT_URL = "https://t.me/crawlhivebot";
 // Открывает чат с ботом, и он сразу присылает кнопку «Open the app». Работает всегда, даже без Main Mini App
 // в BotFather (с ним можно перейти на ?startapp — откроет приложение без чата).
 export const APP_URL = "https://t.me/crawlhivebot?start=app";
+// Сообщество проекта: группа с темами, в ней же @crawlhivebot сканирует контракты.
+export const COMMUNITY_URL = "https://t.me/crawlhive";
 const TG = "#229ED9";
 
 export function TelegramIcon({ className = "" }: { className?: string }) {

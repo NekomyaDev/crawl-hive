@@ -22,6 +22,7 @@
 <p align="center">
   <a href="https://crawlhive.xyz"><img alt="Open the app" src="https://img.shields.io/badge/🐝%20Open%20the%20app-crawlhive.xyz-ffb020?style=for-the-badge&labelColor=0b0c0f"></a>
   <a href="https://jup.ag/swap/SOL-D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump"><img alt="Buy $CRAWLHIVE" src="https://img.shields.io/badge/🔥%20Buy-$CRAWLHIVE-ff6b2c?style=for-the-badge&labelColor=0b0c0f"></a>
+  <a href="https://t.me/crawlhive"><img alt="Telegram community" src="https://img.shields.io/badge/💬%20Community-t.me%2Fcrawlhive-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
   <a href="https://t.me/crawlhivebot?start=app"><img alt="Telegram app" src="https://img.shields.io/badge/📱%20Telegram%20app-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
 </p>
 <p align="center">

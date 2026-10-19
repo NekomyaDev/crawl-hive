@@ -6,7 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket, Sparkles, History, Puzzle } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
-import { APP_URL, TelegramIcon } from "./telegram-cta";
+import { APP_URL, COMMUNITY_URL, TelegramIcon } from "./telegram-cta";
 import { useWallet } from "./wallet-provider";
 import { Button } from "./ui/button";
 
@@ -121,6 +121,15 @@ export function NavShell({ path }: { path: string }) {
         >
           <TelegramIcon className="size-4 text-[#5bc4f5]" />
           Telegram app
+        </a>
+        <a
+          href={COMMUNITY_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 flex items-center gap-2.5 rounded-lg border border-[#229ED9]/50 bg-[#229ED9]/15 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#229ED9]/25"
+        >
+          <TelegramIcon className="size-4 text-[#5bc4f5]" />
+          Community
           <span className="ml-auto rounded bg-[#229ED9] px-1.5 py-px text-[9px] font-bold tracking-wide">NEW</span>
         </a>
         <Link

@@ -36,6 +36,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   <a href="https://github.com/h100envy/crawl-hive" target="_blank" rel="noreferrer" className="hover:text-fg">
                     Open source
                   </a>
+                  <a href="https://t.me/crawlhive" target="_blank" rel="noreferrer" className="hover:text-fg">
+                    Telegram community
+                  </a>
+                  <a href="https://x.com/crawlhivexyz" target="_blank" rel="noreferrer" className="hover:text-fg">
+                    X
+                  </a>
                 </footer>
               </main>
             </div>

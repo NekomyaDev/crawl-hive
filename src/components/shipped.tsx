@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 19", title: "Telegram community", text: "CrawlHive has a Telegram community now: t.me/crawlhive. Drop any contract in the Scan here topic and @crawlhivebot replies with the verdict; burns, Launch Radar and Narrative Radar get their own topics." },
   { date: "Oct 19", title: "Base, and snipers on BNB and Base", text: "The scanner, the bot, the Mini App, Launch Radar and the browser extension now cover Base too. Fresh tokens on BNB Chain and Base get the sniper check: who bought in the first seconds and what they still hold. LP lock numbers now come only from the token's main pool, so big coins with v3 liquidity no longer get a false \"LP not locked\"." },
   { date: "Oct 19", title: "Browser extension", text: "CrawlHive now lives inside your terminal: a browser extension puts the verdict, red flags, snipers, operators, LP lock and the dev's history right on the token page in GMGN, DexScreener, Axiom, Photon, pump.fun, Birdeye and Solscan. Free, no wallet. See crawlhive.xyz/extension." },
   { date: "Oct 19", title: "LP lock and unlock dates", text: "Every scan now says who controls the liquidity: burned, locked (in which locker, and until when) or sitting in a wallet. LP that unlocks this week or this month is flagged, because a clean contract with an LP that unlocks next week is still a rug with a date on it. Solana via RugCheck, BNB Chain via GoPlus." },
