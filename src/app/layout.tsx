@@ -42,6 +42,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   <a href="https://x.com/crawlhivexyz" target="_blank" rel="noreferrer" className="hover:text-fg">
                     X
                   </a>
+                  <a href="https://x.com/crawlhivebot" target="_blank" rel="noreferrer" className="hover:text-fg">
+                    X bot @crawlhivebot
+                  </a>
                 </footer>
               </main>
             </div>

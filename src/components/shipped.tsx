@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 20", title: "@crawlhivebot on X", text: "Tag @crawlhivebot under any tweet with a contract address and it replies in the thread with the score, the main red flag, the Larpcheck second opinion and a link to the full scan. No site, no Telegram: the check goes where people shill." },
   { date: "Oct 20", title: "Holder perks", text: "Hold 100,000 $CRAWLHIVE and connect your wallet: Launch Radar goes live with no 10-minute delay on the site and in Telegram alerts, the bot gives you 3x more scans an hour, and a HOLDER badge shows next to your wallet. Scans stay free for everyone." },
   { date: "Oct 20", title: "Share cards v2", text: "Every scan link now unfurls as a branded card on X and Telegram: our score and verdict, the worst flags, a mini bubble map of who holds it and the Larpcheck second opinion. Share a scan and everyone sees the full picture." },
   { date: "Oct 19", title: "Larpcheck second opinion", text: "Every scan now shows Larpcheck's verdict on the project right under ours, with a link to their full check. When the two disagree, a \"Why they disagree\" box shows what each side found and what it means before you buy." },

@@ -22,6 +22,7 @@
 <p align="center">
   <a href="https://crawlhive.xyz"><img alt="Open the app" src="https://img.shields.io/badge/🐝%20Open%20the%20app-crawlhive.xyz-ffb020?style=for-the-badge&labelColor=0b0c0f"></a>
   <a href="https://jup.ag/swap/SOL-D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump"><img alt="Buy $CRAWLHIVE" src="https://img.shields.io/badge/🔥%20Buy-$CRAWLHIVE-ff6b2c?style=for-the-badge&labelColor=0b0c0f"></a>
+  <a href="https://x.com/crawlhivebot"><img alt="X bot" src="https://img.shields.io/badge/🤖%20X%20bot-@crawlhivebot-000000?style=for-the-badge&logo=x&logoColor=white&labelColor=0b0c0f"></a>
   <a href="https://t.me/crawlhive"><img alt="Telegram community" src="https://img.shields.io/badge/💬%20Community-t.me%2Fcrawlhive-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
   <a href="https://t.me/crawlhivebot?start=app"><img alt="Telegram app" src="https://img.shields.io/badge/📱%20Telegram%20app-@crawlhivebot-229ED9?style=for-the-badge&logo=telegram&logoColor=white&labelColor=0b0c0f"></a>
 </p>
@@ -45,7 +46,7 @@
 
 | Date | Update |
 | --- | --- |
-| Oct 20 | **X mentions bot (ready, off until keys are set)** (`src/lib/server/x-bot.ts`): with `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and `X_ACCESS_SECRET` (OAuth 1.0a for the bot account, signed with node:crypto, no extra dependency), the server polls `/2/users/:id/mentions` every `X_BOT_POLL_SEC` (60), takes a contract address from the mention or from the tweet it replies to or quotes, runs the scan and replies with the ticker, score, verdict, the main reason, the Larpcheck verdict when there is one and the `/scan/<address>` link that unfurls into the share card; only mentions are answered, at most `X_BOT_PER_USER_HOUR` (2) replies per person per hour and `X_BOT_DAILY` (200) a day, one reply per coin per thread, old mentions skipped on first start; `X_BOT_OFF=1` pauses it |
+| Oct 20 | **X mentions bot, live as [@crawlhivebot](https://x.com/crawlhivebot)** (`src/lib/server/x-bot.ts`): with `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and `X_ACCESS_SECRET` (OAuth 1.0a for the bot account, signed with node:crypto, no extra dependency), the server polls `/2/users/:id/mentions` every `X_BOT_POLL_SEC` (60), takes a contract address from the mention or from the tweet it replies to or quotes, runs the scan and replies with the ticker, score, verdict, the main reason, the Larpcheck verdict when there is one and the `/scan/<address>` link that unfurls into the share card; only mentions are answered, at most `X_BOT_PER_USER_HOUR` (2) replies per person per hour and `X_BOT_DAILY` (200) a day, one reply per coin per thread, old mentions skipped on first start; `X_BOT_OFF=1` pauses it |
 | Oct 20 | **Holder perks**: wallets holding at least `HOLDER_MIN` $CRAWLHIVE (100,000 by default, balance read from Solana RPC, cached 5 minutes) see Launch Radar live on the site with no 10-minute delay (`/api/radar` checks the signed-in wallet), get Telegram radar alerts live when their wallet is linked to the bot, scan 3x more per hour in the bot, and wear a HOLDER badge next to their wallet; `/api/holder` returns the balance and the threshold |
 | Oct 20 | **Share cards v2** (`src/app/scan/[id]/opengraph-image.tsx`): the preview behind every `/scan/<address>` link (X, Telegram, Discord) is now a branded card: score ring, ticker, verdict and chain, the worst flags, a mini bubble map of the top holders with linked operators in neon, the Larpcheck second opinion when there is one, and the mascot; Inter Medium/ExtraBold from `public/fonts`; saved scans of EVM tokens are now found whatever the address casing in the link |
 | Oct 19 | **Larpcheck second opinion and "Why they disagree"** (`src/lib/server/larpcheck.ts`, `src/components/larp-line.tsx`): with `LARPCHECK_KEY` set, every scan reads Larpcheck's latest finished check of the coin (free read API, 10-minute cache, 5 s timeout, never starts new checks) and shows it as a card right under our verdict with their score, verdict, headline, coin stamp and a link to their check, as their API terms require; the stamp fact lines come from `/checks/{id}`; when our verdict is safe and theirs flags a LARP or an unfair coin (or the other way round), a "Why they disagree" box lays out what each side found and what it means for a trader; the extension panel shows the same line from 1.0.2 |
@@ -100,6 +101,7 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
 **Latest (Oct 18-20):**
+- 🤖 **CrawlHive is on X: [@crawlhivebot](https://x.com/crawlhivebot).** Reply to any tweet with a contract address and tag the bot: it scans the token and answers in the thread with the score, the main red flag, the Larpcheck second opinion and a link to the full scan, which unfurls into the share card.
 - 🫧 **Bubble map on every chain.** Every scan draws who really holds the token: top holders, first-block snipers and the dev, sized by their share. Wallets of one owner (shared funder, dev money, same-transaction or same-block buys) share a color, wear a dashed ring and are joined by funding lines, so a bundle hiding behind ten wallets is one cluster. Solana, BNB Chain, Base and Robinhood Chain.
 - 🤝 **Larpcheck second opinion.** Every scan shows the verdict of [Larpcheck](https://larpcheck.app) on the project behind the token, right under ours, with a link to their full check. When the two disagree, a **Why they disagree** box lays out what each side found and what it means for a trader.
 - 🧩 **Chrome extension, live on the Chrome Web Store.** The verdict, red flags, snipers, operators, LP lock, dev history and the Larpcheck line right on the token page of your terminal. [Add to Chrome](https://chromewebstore.google.com/detail/crawlhive-memecoin-safety/fockphbbbdmefepkngelchjnhnfdkmnm)
@@ -523,6 +525,7 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 | Chrome extension | ✅ **live** on the Chrome Web Store; 1.0.2 with the Larpcheck line in review |
 | Share cards for scan links | ✅ **real**, generated per scan |
 | Telegram community, topic alerts, automatic burn posts | ✅ **real** |
+| X bot [@crawlhivebot](https://x.com/crawlhivebot): tag it under a CA, it replies with the verdict and the scan link | ✅ **live**, answers mentions only, 2 replies per person per hour, 200 a day |
 | Holder perks (live radar, 3x bot scans, HOLDER badge) | ✅ **real**, holding checked on Solana every 5 minutes (`HOLDER_MIN`, 100,000 by default) |
 | Persistence | ✅ live crawlers, signals and payments are saved to disk with a daily backup; Postgres is on the roadmap |
 
@@ -798,7 +801,7 @@ db/schema.sql                target Postgres schema
 - [x] Holder perks; 1% of the supply burned
 - [ ] Memory: token snapshots between scans, wallets, funders and devs across tokens and chains, "Seen before" on the bubble map
 - [ ] Close the sniper gap on Robinhood Chain (buys a second opinion caught that we missed)
-- [ ] X mentions bot: tag it under a contract, it replies with the verdict and the share card
+- [x] X mentions bot [@crawlhivebot](https://x.com/crawlhivebot): tag it under a contract, it replies with the verdict and the share card
 - [ ] Paper trading: the swarm trades its own signals with fake money and posts a public P&L
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)

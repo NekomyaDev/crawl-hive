@@ -145,7 +145,16 @@ export function NavShell({ path }: { path: string }) {
         >
           <TelegramIcon className="size-4 text-[#5bc4f5]" />
           Community
-          <span className="ml-auto rounded bg-[#229ED9] px-1.5 py-px text-[9px] font-bold tracking-wide">NEW</span>
+        </a>
+        <a
+          href="https://x.com/crawlhivebot"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 flex items-center gap-2.5 rounded-lg border border-white/25 bg-white/[0.06] px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.12]"
+        >
+          <span className="grid size-4 place-items-center text-[13px] leading-none font-black">𝕏</span>
+          X bot
+          <span className="ml-auto rounded bg-white px-1.5 py-px text-[9px] font-bold tracking-wide text-black">NEW</span>
         </a>
         <Link
           href="/#treasury"
