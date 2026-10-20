@@ -58,10 +58,35 @@ interface Tweet {
   author_id?: string;
   conversation_id?: string;
   referenced_tweets?: { type: string; id: string }[];
-  entities?: { urls?: { expanded_url?: string; unwound_url?: string }[] };
+  entities?: { urls?: { expanded_url?: string; unwound_url?: string }[]; cashtags?: { tag: string }[] };
 }
 
 // Адрес контракта из твита: из текста или из ссылок (pump.fun, DexScreener, GMGN), которые X прячет за t.co.
+// Тикер из твита: кэштег X или $ТИКЕР в тексте (без $SOL, $ETH и подобных базовых).
+const BASE_TICKERS = new Set(["SOL", "ETH", "BTC", "BNB", "USDC", "USDT", "WETH", "WSOL", "BASE"]);
+const tickerOf = (t?: Tweet) => {
+  if (!t) return undefined;
+  const tags = [...(t.entities?.cashtags ?? []).map((c) => c.tag), ...[...t.text.matchAll(/\$([A-Za-z][A-Za-z0-9]{1,11})\b/g)].map((m) => m[1])];
+  return tags.map((x) => x.toUpperCase()).find((x) => !BASE_TICKERS.has(x));
+};
+
+// Монета по тикеру: самая ликвидная пара на наших сетях, только если она явно главная (втрое ликвиднее следующей
+// монеты с тем же тикером): иначе честно не угадываем.
+async function byTicker(ticker: string): Promise<{ address: string; chain: string } | null> {
+  const res = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(ticker)}`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+  const j = (res?.ok ? await res.json().catch(() => null) : null) as { pairs?: { chainId: string; baseToken: { address: string; symbol: string }; liquidity?: { usd?: number } }[] } | null;
+  const best = new Map<string, { address: string; chain: string; liq: number }>();
+  for (const p of j?.pairs ?? []) {
+    if (!["solana", "bsc", "base", "robinhood"].includes(p.chainId) || p.baseToken.symbol.toUpperCase() !== ticker) continue;
+    const k = `${p.chainId}:${p.baseToken.address.toLowerCase()}`;
+    const liq = p.liquidity?.usd ?? 0;
+    if (!best.has(k) || best.get(k)!.liq < liq) best.set(k, { address: p.baseToken.address, chain: p.chainId, liq });
+  }
+  const list = [...best.values()].sort((a, b) => b.liq - a.liq);
+  if (!list[0] || list[0].liq < 5_000 || (list[1] && list[0].liq < list[1].liq * 3)) return null;
+  return list[0];
+}
+
 const addrOf = (t?: Tweet) => {
   if (!t) return undefined;
   const urls = (t.entities?.urls ?? []).map((u) => u.unwound_url ?? u.expanded_url ?? "").join(" ");
@@ -92,8 +117,9 @@ const VERDICT_ICON: Record<string, string> = { CLEAN: "🟢", OK: "🟢", RISKY:
 // Значок вердикта Larpcheck: зелёный для REAL, красный для LARP и SCAM, жёлтый для остального.
 const larpIcon = (v: string) => (/SCAM|LARP/.test(v) ? "🔴" : /REAL/.test(v) && !/PARTLY/.test(v) ? "🟢" : "🟡");
 
-function replyText(r: { symbol: string; score: number | null; verdict: string; reason: string; id: string; larp?: { verdict: string; score: number | null; headline?: string | null } }, site: string) {
-  const head = `${VERDICT_ICON[r.verdict] ?? "⚪️"} CrawlHive: $${r.symbol} ${r.score != null ? `${r.score}/100 ` : ""}${r.verdict.replace("_", " ")}`;
+function replyText(r: { symbol: string; score: number | null; verdict: string; reason: string; id: string; larp?: { verdict: string; score: number | null; headline?: string | null } }, site: string, byTick = false) {
+  // Монету нашли по тикеру: пишем, какой контракт проверили, чтобы человек мог сверить.
+  const head = `${VERDICT_ICON[r.verdict] ?? "⚪️"} CrawlHive: $${r.symbol} ${r.score != null ? `${r.score}/100 ` : ""}${r.verdict.replace("_", " ")}${byTick ? `\nMost liquid $${r.symbol}: ${r.id.slice(0, 6)}…${r.id.slice(-4)}` : ""}`;
   const link = `\n\nFull scan, holders map: ${site}/scan/${r.id}`;
   // Причина риска — коротко; Larpcheck — отдельным блоком со своим значком и, если влезает, их выводом.
   const reason = r.reason.length > 70 ? `${r.reason.slice(0, 69)}…` : r.reason;
@@ -130,7 +156,17 @@ async function tick() {
     if (t.author_id === s.me || (s.count ?? 0) >= DAILY) continue;
     const parent = t.referenced_tweets?.find((r) => r.type === "replied_to" || r.type === "quoted");
     // Достаточно тегнуть бота ответом на твит с контрактом: адрес берём из упоминания, а если его нет, то из твита выше.
-    const addr = addrOf(t) ?? (parent ? addrOf(refs.get(parent.id)) : undefined);
+    let addr = addrOf(t) ?? (parent ? addrOf(refs.get(parent.id)) : undefined);
+    // Контракта нет: пробуем тикер из упоминания или из твита выше.
+    let byTick = false;
+    if (!addr) {
+      const tick = tickerOf(t) ?? (parent ? tickerOf(refs.get(parent.id)) : undefined);
+      const hit = tick ? await byTicker(tick).catch(() => null) : null;
+      if (hit) {
+        addr = hit.address;
+        byTick = true;
+      }
+    }
     if (!addr) continue;
     const pair = `${t.conversation_id ?? t.id}:${addr.toLowerCase()}`;
     if (s.done?.includes(pair)) continue;
@@ -139,7 +175,7 @@ async function tick() {
     if (recent.length >= PER_USER_HOUR || !allowHit(`xbot:${t.author_id}`, PER_USER_HOUR, 3600_000)) continue;
     try {
       const r = await runScan(addr, () => {}, undefined, { src: "agent" });
-      await x("POST", "/tweets", { text: replyText(r, site), reply: { in_reply_to_tweet_id: t.id } });
+      await x("POST", "/tweets", { text: replyText(r, site, byTick), reply: { in_reply_to_tweet_id: t.id } });
       s.count = (s.count ?? 0) + 1;
       s.users = { ...s.users, [t.author_id ?? ""]: [...recent, now] };
       s.done = [...(s.done ?? []), pair].slice(-500);
