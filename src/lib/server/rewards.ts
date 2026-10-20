@@ -70,23 +70,34 @@ interface RewardsCache {
 const g = globalThis as unknown as { __crawlhiveRewards?: RewardsCache };
 const cache = (): RewardsCache => (g.__crawlhiveRewards ??= { hold: new Map() });
 
-async function holds(owner: string): Promise<boolean> {
+// Сколько $CRAWLHIVE на кошельке (в целых токенах), кэш 5 минут. null — RPC не ответил и кэша нет.
+const balances = new Map<string, { at: number; ui: number }>();
+export async function tokenBalance(owner: string): Promise<number | null> {
   const { mint } = tokenConfig();
-  if (!mint || !SOL_ADDRESS.test(owner)) return false; // кошелёк EVM не держит токен на Solana
-  const c = cache();
-  const hit = c.hold.get(owner);
-  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.ok;
+  if (!mint || !SOL_ADDRESS.test(owner)) return 0; // кошелёк EVM не держит токен на Solana
+  const hit = balances.get(owner);
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.ui;
   try {
     const res = await rpcConnection().getParsedTokenAccountsByOwner(new PublicKey(owner), { mint: new PublicKey(mint) });
     let ui = 0;
     for (const a of res.value) ui += Number(a.account.data.parsed.info.tokenAmount.uiAmount ?? 0);
-    const ok = ui >= minHold();
-    c.hold.set(owner, { at: Date.now(), ok });
-    if (c.hold.size > 5000) c.hold.clear();
-    return ok;
+    balances.set(owner, { at: Date.now(), ui });
+    if (balances.size > 5000) balances.clear();
+    return ui;
   } catch {
-    return hit?.ok ?? false;
+    return hit?.ui ?? null;
   }
+}
+
+async function holds(owner: string): Promise<boolean> {
+  return ((await tokenBalance(owner)) ?? 0) >= minHold();
+}
+
+// Держатель $CRAWLHIVE для бонусов (live-радар, лимиты бота): порог HOLDER_MIN, по умолчанию 100 000 токенов.
+export const holderMin = () => Math.max(1, Number(process.env.HOLDER_MIN ?? 100_000) || 100_000);
+export async function isHolder(owner: string | null | undefined): Promise<boolean> {
+  if (!owner) return false;
+  return ((await tokenBalance(owner)) ?? 0) >= holderMin();
 }
 
 // Помечаем держание у верхних строк, пока не наберём limit подходящих (не дёргаем RPC на весь список).

@@ -1,4 +1,5 @@
 "use client";
+import { TOKEN } from "@/lib/token";
 // Launch Radar: свежие запуски, которые платформа сканирует сама. Всем — с задержкой; владельцы краулеров
 // получают такие находки сразу, поэтому рядом всегда призыв запустить свой краулер.
 import Link from "next/link";
@@ -29,6 +30,8 @@ interface Feed {
   items: Entry[];
   waiting: number;
   delayMin: number;
+  live?: boolean;
+  holderMin?: number;
   day: { scanned: number; danger: number; clean: number };
 }
 
@@ -195,15 +198,28 @@ export default function RadarPage() {
         <RadarScope blips={blips} active={active} onPick={pick} tone="var(--lime)" />
       </section>
 
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-honey/30 bg-gradient-to-r from-honey/[0.07] to-transparent px-4 py-3 text-sm">
-        <span>
-          <span className="font-semibold">{data?.waiting ?? 0} newer finds</span>
-          <span className="text-muted"> are waiting out the {data?.delayMin ?? 10}-minute delay. Crawler owners get launches like these the second they appear, filtered to their own rules.</span>
-        </span>
-        <Link href="/spawn" className="rounded-xl bg-honey px-3 py-1.5 text-sm font-bold text-black hover:opacity-90">
-          Spawn a crawler
-        </Link>
-      </div>
+      {data?.live ? (
+        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-lime/40 bg-gradient-to-r from-lime/[0.09] to-transparent px-4 py-3 text-sm">
+          <span className="rounded-md bg-lime px-2 py-0.5 text-xs font-black text-black">HOLDER</span>
+          <span>
+            <span className="font-semibold">You see the radar live.</span>
+            <span className="text-muted"> Holder perk: launches show up the second the swarm scans them, no {data.delayMin}-minute delay.</span>
+          </span>
+        </div>
+      ) : (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-honey/30 bg-gradient-to-r from-honey/[0.07] to-transparent px-4 py-3 text-sm">
+          <span>
+            <span className="font-semibold">{data?.waiting ?? 0} newer finds</span>
+            <span className="text-muted">
+              {" "}
+              are waiting out the {data?.delayMin ?? 10}-minute delay. Hold {(data?.holderMin ?? 100_000).toLocaleString("en-US")} ${TOKEN.symbol} and connect your wallet to see them live, or spawn a crawler for launches filtered to your own rules.
+            </span>
+          </span>
+          <Link href="/#treasury" className="rounded-xl bg-honey px-3 py-1.5 text-sm font-bold text-black hover:opacity-90">
+            Get ${TOKEN.symbol}
+          </Link>
+        </div>
+      )}
 
       {data && !items.length ? (
         <div className="rounded-2xl border border-line bg-panel px-4 py-12 text-center text-sm text-muted">{data.items.length ? "Nothing in this filter right now." : `The radar has just started. First launches show up here ${data.delayMin} minutes after the scan.`}</div>

@@ -8,6 +8,7 @@ import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { APP_URL, COMMUNITY_URL, TelegramIcon } from "./telegram-cta";
 import { useWallet } from "./wallet-provider";
+import { useApi } from "@/lib/client/use-api";
 import { Button } from "./ui/button";
 
 const LINKS = [
@@ -26,6 +27,17 @@ const LINKS = [
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-sky" },
   { href: "/governance", label: "Governance", icon: Landmark, color: "text-violet" },
 ];
+
+// Бейдж держателя $CRAWLHIVE: видно, что бонусы (live-радар, лимиты бота) включены.
+function HolderBadge() {
+  const { data } = useApi<{ holder: boolean }>("/api/holder", 300_000);
+  if (!data?.holder) return null;
+  return (
+    <span className="rounded bg-lime px-1 py-px text-[9px] font-black tracking-wide text-black" title={`You hold ${TOKEN.symbol}: holder perks are on`}>
+      HOLDER
+    </span>
+  );
+}
 
 function WalletButton({ compact = false }: { compact?: boolean }) {
   const { address, info, mode, signedIn, connect, signIn, disconnect } = useWallet();
@@ -46,7 +58,10 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
   return (
     <div className={cn("flex items-center gap-2", !compact && "rounded-lg border border-line bg-panel-2 p-2.5")}>
       <div className="min-w-0 flex-1">
-        <div className="num truncate text-xs">{short(address)}</div>
+        <div className="flex items-center gap-1.5">
+          <span className="num truncate text-xs">{short(address)}</span>
+          {signedIn && <HolderBadge />}
+        </div>
         {signedIn ? (
           <div className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} credits</div>
         ) : (

@@ -216,7 +216,9 @@ async function runFor(q: string, chain?: string) {
 }
 
 async function doScan(chat: string, q: string, chain?: string) {
-  if (!allow(`s:${chat}`, SCANS_PER_HOUR)) return send(chat, `Up to ${SCANS_PER_HOUR} scans an hour here. Unlimited on ${siteUrl()}`);
+  // Держателям $CRAWLHIVE втрое больше сканов в час.
+  const limit = (await holderChat(chat)) ? SCANS_PER_HOUR * 3 : SCANS_PER_HOUR;
+  if (!allow(`s:${chat}`, limit)) return send(chat, `Up to ${limit} scans an hour here${limit === SCANS_PER_HOUR ? ` (x3 for $${TOKEN.symbol} holders who link their wallet)` : ""}. Unlimited on ${siteUrl()}`);
   call("sendChatAction", { chat_id: chat, action: "typing" }).catch(() => {});
   try {
     const r = await runFor(q, chain);
@@ -439,6 +441,18 @@ export async function sendFollowups() {
 
 const radarCursor = globalThis as unknown as { __crawlhiveTgRadar?: { delayed: number; live: number } };
 
+// Держатели $CRAWLHIVE среди чатов с привязанным кошельком (/start с сайта): им live-радар и больше сканов.
+async function holderChat(chat: string): Promise<boolean> {
+  const { isHolder } = await import("./rewards");
+  for (const [k, c] of metaEntries("tg:")) if (c === chat && (await isHolder(k.slice(3)))) return true;
+  return false;
+}
+async function holderChats(chats: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const c of chats) if (await holderChat(c)) out.add(c);
+  return out;
+}
+
 function ownerChats(): Set<string> {
   const out = new Set<string>();
   for (const [k, chat] of metaEntries("tg:")) {
@@ -458,6 +472,7 @@ export async function pushRadar() {
   const { radarAll, RADAR_DELAY_MS, withNarrative, narrativeIndex } = await import("./radar");
   const now = Date.now();
   const owners = ownerChats();
+  for (const c of await holderChats(subs.map(([chat]) => chat).filter((c) => !owners.has(c)))) owners.add(c);
   const idx = narrativeIndex();
   const list = radarAll().map((e) => withNarrative(e, idx) as typeof e & { narrative?: { id: string; title: string } });
   const fresh = (from: number, to: number) => list.filter((e) => e.at > from && e.at <= to).reverse();

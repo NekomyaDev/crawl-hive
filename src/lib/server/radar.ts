@@ -139,15 +139,18 @@ export function withNarrative(e: RadarEntry, idx = narrativeIndex()) {
 }
 
 // Публичная лента: только то, что старше задержки. Сколько свежих находок ждёт — показываем числом.
-export function radarFeed() {
+// live — держателю $CRAWLHIVE лента без задержки.
+export function radarFeed(opts: { live?: boolean } = {}) {
   const now = Date.now();
   const list = all();
   const idx = narrativeIndex();
-  const shown = list.filter((e) => now - e.at >= RADAR_DELAY_MS).slice(0, 60).map((e) => withNarrative(e, idx));
+  const delay = opts.live ? 0 : RADAR_DELAY_MS;
+  const shown = list.filter((e) => now - e.at >= delay).slice(0, 60).map((e) => withNarrative(e, idx));
   const day = list.filter((e) => now - e.at < 24 * 3600_000);
   return {
     items: shown,
-    waiting: list.filter((e) => now - e.at < RADAR_DELAY_MS).length,
+    waiting: list.filter((e) => now - e.at < delay).length,
+    live: !!opts.live,
     delayMin: Math.round(RADAR_DELAY_MS / 60_000),
     day: {
       scanned: day.length,
