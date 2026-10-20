@@ -39,10 +39,15 @@ async function fromRugcheck(mint: string): Promise<LpReport | null> {
   const res = await fetch(`https://api.rugcheck.xyz/v1/tokens/${mint}/report`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
   if (!res?.ok) return null;
   const j = (await res.json().catch(() => null)) as {
-    markets?: { marketType?: string; lp?: { lpLockedPct?: number; quoteUSD?: number; lpMint?: string } }[];
+    markets?: { marketType?: string; lp?: { lpLockedPct?: number; quoteUSD?: number; lpMint?: string; lpTotalSupply?: number } }[];
     lockers?: Record<string, { unlockDate?: number; usdcLocked?: number; type?: string; programID?: string }>;
   } | null;
-  const market = (j?.markets ?? []).sort((a, b) => (b.lp?.quoteUSD ?? 0) - (a.lp?.quoteUSD ?? 0))[0];
+  // Пулы с позициями вместо LP-токена (Meteora DLMM, CLMM, Orca): у них lpMint — системная программа и нулевой
+  // выпуск, «0% locked» там ничего не значит. Судим только пулы, где LP-токен есть (PumpSwap, Raydium и подобные).
+  const SYSTEM = "11111111111111111111111111111111";
+  const market = (j?.markets ?? [])
+    .filter((m) => m.lp && m.lp.lpMint && m.lp.lpMint !== SYSTEM && (m.lp.lpTotalSupply ?? 0) > 0)
+    .sort((a, b) => (b.lp?.quoteUSD ?? 0) - (a.lp?.quoteUSD ?? 0))[0];
   if (!market?.lp) return null;
   const pct = Math.round((market.lp.lpLockedPct ?? 0) * 10) / 10;
   const lockers = Object.values(j?.lockers ?? {}).filter((l) => (l.unlockDate ?? 0) > Date.now() / 1000);
