@@ -104,7 +104,7 @@ In one line: *you bring the edge, your crawler does the watching, the scoreboard
 - 🔥 **4 buybacks & burns in 3 days.** 1.02 SOL from the treasury bought back and burned 4.33M $CRAWLHIVE; x402 USDC from AI agents joins the same cycle.
 
 **Oct 13:**
-- 🔥 **$CRAWLHIVE: buyback & burn, Crawler of the day.** The home page shows the token with a live chart. Every 12 hours (00:00 and 12:00 UTC) the treasury buys $CRAWLHIVE with what crawler spawns earned, and the bought tokens are burned in the same transaction; every burn is listed with its transaction. Half of the day's creator fees go to the owner of the best crawler of the day, if they hold $CRAWLHIVE.
+- 🔥 **$CRAWLHIVE: buyback & burn.** The home page shows the token with a live chart. Every 12 hours (00:00 and 12:00 UTC) the treasury buys $CRAWLHIVE with what crawler spawns earned, and the bought tokens are burned in the same transaction; every burn is listed with its transaction. Crawler of the day was retired on Oct 17.
 - 🩻 **Contract X-Ray: we reverse engineer every token.** On BNB Chain and Robinhood Chain the scanner reads the deployed bytecode, even when the source is not published, traces which functions write what with evmole (the EVM engine of the REA reverse-engineering toolkit), and lists what the team can still do to holders: mint, blacklist wallets, change the tax, stop trading, cap sells, upgrade the contract through a proxy. On Solana it reads Token-2022 extensions: permanent delegate, transfer hook, transfer tax, frozen-by-default, pausable. The project website is checked for wallet-drainer code. Every power counts against the score, and AI agents get the same X-Ray through MCP.
 - 🔐 **Security audit.** Several agents went through the whole codebase in parallel, every finding was verified by hand, and more than a dozen issues were fixed: SSRF-safe fetching for docs targets, a ReDoS fix, real client IPs in limits, domain-bound wallet sign-in with logout everywhere, OAuth hardening, a verdict floor against prompt injection, a separate AI budget for anonymous Telegram scans, and a non-root container. Details in [Trust & safety](#trust--safety).
 - 💬 **Bot: welcome banner, inline and support.** `/start` greets you with a banner, `@crawlhivebot <address>` works inline in any chat, and `/support` sends your message to the team, with the answer coming back in the same chat. Group settings can be changed by group admins only.
@@ -743,7 +743,7 @@ db/schema.sql                target Postgres schema
 - [x] Safety scan of every crawler signal, peak-based hit scoring, backoff for failing sources
 - [x] Running costs cut: X check on demand, non-reasoning model, shared caches
 - [x] Contract X-Ray: owner powers from EVM bytecode, risky Token-2022 extensions, drainer code on project sites
-- [x] $CRAWLHIVE launch, buyback & burn from the treasury, Crawler of the day; first burn on Oct 15 (1.55M burned)
+- [x] $CRAWLHIVE launch, buyback & burn from the treasury; first burn on Oct 15 (1.55M burned)
 - [x] Pay per call with x402 (USDC on Solana), Phantom checkout on /agents
 - [x] Onchain proof: Merkle root of every verdict and call written to Solana every 15 minutes
 - [x] A2A agent, official MCP Registry listing, OpenAPI and llms.txt
