@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Rocket } from "lucide-react";
 
 const SHIPPED: { date: string; title: string; text: string }[] = [
+  { date: "Oct 20", title: "The hive remembers", text: "Every scan now remembers the token: scan it again and a \"Since last scan\" card shows what changed. Wallets, funders and devs are remembered across tokens and chains, and the bubble map flags wallets we have seen on other coins, in red when those coins dumped. Robinhood Chain snipers on Pons launches are now caught." },
   { date: "Oct 20", title: "@crawlhivebot on X", text: "Tag @crawlhivebot under any tweet with a contract address and it replies in the thread with the score, the main red flag, the Larpcheck second opinion and a link to the full scan. No site, no Telegram: the check goes where people shill." },
   { date: "Oct 20", title: "Holder perks", text: "Hold 100,000 $CRAWLHIVE and connect your wallet: Launch Radar goes live with no 10-minute delay on the site and in Telegram alerts, the bot gives you 3x more scans an hour, and a HOLDER badge shows next to your wallet. Scans stay free for everyone." },
   { date: "Oct 20", title: "Share cards v2", text: "Every scan link now unfurls as a branded card on X and Telegram: our score and verdict, the worst flags, a mini bubble map of who holds it and the Larpcheck second opinion. Share a scan and everyone sees the full picture." },

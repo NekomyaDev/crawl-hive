@@ -11,6 +11,7 @@ export interface BubbleNode {
   g: number;
   roles: string[];
   hub?: boolean;
+  seen?: { tokens: number; dumped: number; roles: string[] };
 }
 export interface BubbleMapData {
   nodes: BubbleNode[];
@@ -188,6 +189,7 @@ export function BubbleMap({
   const linked = data.nodes
     .filter((x) => x.g >= 0 && !x.hub)
     .reduce((s, x) => s + x.pct, 0);
+  const seenCount = data.nodes.filter((x) => x.seen).length;
   const groupsCount = new Set(
     data.nodes.filter((x) => x.g >= 0).map((x) => x.g),
   ).size;
@@ -227,6 +229,17 @@ export function BubbleMap({
             </div>
             <div className="text-[10px] text-white/40 uppercase">
               held by linked
+            </div>
+          </div>
+          <div>
+            <div
+              className="num text-lg font-bold"
+              style={{ color: seenCount ? "#e879f9" : undefined }}
+            >
+              🧠 {seenCount}
+            </div>
+            <div className="text-[10px] text-white/40 uppercase">
+              seen before
             </div>
           </div>
           <div>
@@ -433,6 +446,30 @@ export function BubbleMap({
                             </text>
                           </g>
                         )}
+                        {node.seen && (
+                          <g>
+                            <rect
+                              x={p.x - p.r * 0.72 - 15}
+                              y={p.y - p.r * 0.72 - 10}
+                              width={30}
+                              height={18}
+                              rx={9}
+                              fill="#05060a"
+                              stroke={node.seen.dumped ? DEV : "#e879f9"}
+                              strokeWidth={1.5}
+                            />
+                            <text
+                              x={p.x - p.r * 0.72}
+                              y={p.y - p.r * 0.72 + 3}
+                              textAnchor="middle"
+                              fontSize={10}
+                              fontWeight={800}
+                              fill={node.seen.dumped ? DEV : "#e879f9"}
+                            >
+                              ↺{node.seen.tokens}
+                            </text>
+                          </g>
+                        )}
                         {node.roles.includes("dev") && (
                           <text
                             x={p.x}
@@ -515,6 +552,16 @@ export function BubbleMap({
                     ? ` · operator ${data.nodes[hover].g + 1}`
                     : ""}
                 </div>
+                {data.nodes[hover].seen && (
+                  <div className="mt-0.5 text-[#f0abfc]">
+                    🧠 seen on {data.nodes[hover].seen!.tokens} other token
+                    {data.nodes[hover].seen!.tokens > 1 ? "s" : ""},{" "}
+                    {data.nodes[hover].seen!.dumped} dumped
+                    {data.nodes[hover].seen!.roles.length
+                      ? ` (as ${data.nodes[hover].seen!.roles.join(", ")})`
+                      : ""}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -555,6 +602,7 @@ export function BubbleMap({
                       <span className="num text-white/80">{short(x.w)}</span>
                       <span className="text-[11px]">
                         {x.roles.map((r) => ROLE_ICON[r]).join("")}
+                        {x.seen ? (x.seen.dumped ? "⚠️" : "🧠") : ""}
                       </span>
                       <span className="num ml-auto font-semibold">
                         {pctText(x.pct)}%
@@ -611,7 +659,7 @@ export function BubbleMap({
         Top holders, first-block snipers and the dev. Every wallet has its own
         color; wallets of one owner (shared funder or dev money) share a color,
         wear a dashed ring and are joined by lines. 🎯 sniper · 🔗 bundle · ◆
-        funder. Pools and curves are left out.
+        funder · ↺N seen on N other tokens (red if they dumped). Pools and curves are left out.
       </p>
     </div>
   );

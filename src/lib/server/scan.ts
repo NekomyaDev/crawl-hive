@@ -15,6 +15,7 @@ import { buildOperators, type OperatorReport } from "./scan-operators";
 import { buildEvmMap, evmMapSupported } from "./scan-evm-map";
 import { lpSupported, traceLp, type LpReport } from "./scan-lp";
 import { larpVerdict, type LarpVerdict } from "./larpcheck";
+import { compareToLast, recordSnapshot, type SinceLast } from "./scan-memory";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
 import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
@@ -68,6 +69,7 @@ export interface ScanResult {
   original?: boolean; // самый крупный из токенов с этим тикером
   telegram: { channel: string; url: string }[];
   x?: XBuzz; // догружается после вердикта, есть только в сохранённом скане
+  since?: SinceLast; // что изменилось с прошлого скана этого токена
   scannedAt: number;
 }
 
@@ -719,6 +721,10 @@ export async function runScan(
     telegram,
     scannedAt: Date.now(),
   };
+  // Память токена: что изменилось с прошлого скана, затем запоминаем текущий снимок.
+  const since = compareToLast(result);
+  if (since?.changes.length) result.since = since;
+  recordSnapshot(result);
   log({
     crawler: "verdict",
     text: `${result.score ?? "-"} ${verdict.replace("_", " ")} · ${reason}`,

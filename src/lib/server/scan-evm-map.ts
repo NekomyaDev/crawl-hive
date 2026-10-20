@@ -5,7 +5,7 @@
 // поэтому склейка по спонсору — только на Solana.
 import "server-only";
 import { createPublicClient, http, parseAbi, parseAbiItem, type Hex, type PublicClient } from "viem";
-import { bubbleMap, type Operator, type OperatorReport, type Role } from "./scan-operators";
+import { bubbleMap, rememberWallets, walletHistory, type Operator, type OperatorReport, type Role } from "./scan-operators";
 import type { SniperReport } from "./scan-snipers";
 import { evmLogsRpc, evmOwnLogs } from "./scan-snipers-evm";
 
@@ -184,6 +184,17 @@ async function read(chain: string, token: Hex, opts: { snipers?: SniperReport; p
   ops.sort((a, b) => b.pct - a.pct);
   const devGroup = creator ? find(creator) : undefined;
   const devSnipers = (opts.snipers?.buyers ?? []).filter((b) => devGroup && find(b.wallet.toLowerCase()) === devGroup && b.wallet.toLowerCase() !== creator).length;
-  const map = bubbleMap({ ops, held, roles, edges, find, creator });
-  return { operators: ops.slice(0, 5).map((o) => ({ wallets: o.wallets, pct: o.pct, roles: o.roles, devLinked: o.devLinked })), devSnipers, ...(map ? { map } : {}) };
+  const map = bubbleMap({ ops, held, roles, edges, find, creator, token });
+  // Память между токенами и сетями: история этих кошельков (до записи текущего токена) и запись нового.
+  const history = walletHistory([...held.keys()], token);
+  const fundCount = new Map<string, number>();
+  for (const [w, f] of edges) if (held.has(w) && f !== creator) fundCount.set(f, (fundCount.get(f) ?? 0) + 1);
+  rememberWallets(token, chain, {
+    holder: ops.flatMap((o) => (groups.get(o.root) ?? []).filter((w) => held.has(w))),
+    bundle: wallets.filter((w) => roles.get(w)?.has("bundle")),
+    sniper: (opts.snipers?.buyers ?? []).map((b) => b.wallet),
+    funder: [...fundCount].filter(([, n]) => n >= 2).map(([f]) => f),
+    dev: creator ? [creator] : [],
+  });
+  return { operators: ops.slice(0, 5).map((o) => ({ wallets: o.wallets, pct: o.pct, roles: o.roles, devLinked: o.devLinked })), devSnipers, ...(history ? { history } : {}), ...(map ? { map } : {}) };
 }

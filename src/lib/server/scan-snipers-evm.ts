@@ -1,7 +1,7 @@
 // Снайперы в EVM-сетях (Robinhood Chain, BNB Chain, Base): кто купил токен в первые секунды после создания и сколько держит сейчас.
-// Блок рождения ищем по времени пары (DexScreener) и первому Transfer с нулевого адреса; покупки — переводы токена
-// от адреса, получившего эмиссию (кривая лаунчпада или пул), за первые 5 секунд; создатель (отправитель транзакции
-// выпуска) не считается. Остатки — balanceOf. Узел Robinhood отдаёт логи за любое время. Для BNB и Base по умолчанию
+// Выпуск ищем назад от времени пары (DexScreener), до 6 часов: у лаунчпадов с кривой пара появляется при переезде в пул.
+// Покупки — переводы токена от кривой лаунчпада или пула за 5 секунд с первой продажи; создатель (отправитель
+// транзакции выпуска) не считается. Остатки — balanceOf. Узел Robinhood отдаёт логи за любое время. Для BNB и Base по умолчанию
 // publicnode: логи он отдаёт только примерно за последние 8 800 блоков (BNB около часа, Base около пяти часов), поэтому
 // без своего RPC (BSC_LOGS_RPC_URL, BASE_LOGS_RPC_URL) снайперы там считаются только у самых свежих токенов.
 import "server-only";
@@ -15,7 +15,11 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 const V4_POOL_MANAGER: Record<string, string> = {
   base: "0x498581ff718922c3f8e6a244956af099b2652b2b",
   bsc: "0x28e2ea090877bf75740558f6bfb36a5ffee9e9df",
+  robinhood: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
 };
+// Сколько блоков узел отдаёт за один запрос логов и как далеко назад от пары ищем выпуск.
+const LOG_CHUNK: Record<string, bigint> = { robinhood: 99_999n };
+const MINT_BACK_SEC = 6 * 3600;
 const WINDOW_SEC = 5;
 const MAX_WALLETS = 20;
 const CACHE_MS = 30 * 60_000;
@@ -45,51 +49,52 @@ export async function traceEvmSnipers(chain: string, token: string, pairCreatedA
   const hit = cache().get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.r;
   const p = pairAddress?.toLowerCase();
-  const r = await read(url, token as Hex, pairCreatedAt, p && !/^0x[0-9a-f]{40}$/.test(p) ? V4_POOL_MANAGER[chain] : p);
+  const r = await read(url, token as Hex, pairCreatedAt, p && !/^0x[0-9a-f]{40}$/.test(p) ? V4_POOL_MANAGER[chain] : p, LOG_CHUNK[chain] ?? 5_000n);
   if (r) cache().set(key, { at: Date.now(), r });
   if (cache().size > 3000) cache().clear();
   return r;
 }
 
-async function read(url: string, token: Hex, pairCreatedAt: number, pair?: string): Promise<SniperReport | null> {
+async function read(url: string, token: Hex, pairCreatedAt: number, pair: string | undefined, chunk: bigint): Promise<SniperReport | null> {
   const c = createPublicClient({ transport: http(url, { timeout: 12_000 }) });
-  // Оценка блока по времени: средняя длина блока по последним 10 000 блокам. Токен часто выпускают за несколько минут
-  // до создания пула, поэтому начинаем за 10 минут до пары и ищем выпуск в окне 15 минут.
   const head = await c.getBlock();
   const past = await c.getBlock({ blockNumber: head.number - 10_000n });
   const blockSec = Number(head.timestamp - past.timestamp) / 10_000;
-  const back = BigInt(Math.ceil((Number(head.timestamp) - pairCreatedAt / 1000 + 600) / blockSec));
-  let from = head.number - back;
   // Узлы BNB и Base (publicnode) отвергают запрос, если окно заходит дальше последнего блока.
   const upTo = (b: bigint) => (b > head.number ? head.number : b);
-  const span = BigInt(Math.ceil(900 / blockSec));
-  const chunk = 5_000n;
+  // Время пары у DexScreener — не всегда запуск: у лаунчпадов с кривой (Pons) это переезд в пул, иногда через десятки
+  // минут торгов. Поэтому выпуск (первый Transfer с нулевого адреса) ищем назад от пары, до MINT_BACK_SEC.
+  const pairBlock = head.number - BigInt(Math.ceil((Number(head.timestamp) - pairCreatedAt / 1000) / blockSec));
+  const stop = pairBlock - BigInt(Math.ceil(MINT_BACK_SEC / blockSec));
   let mint: { block: bigint; to: Hex; tx: Hex } | null = null;
-  for (let b = from; b < from + span && b <= head.number && !mint; b += chunk) {
-    const logs = await c.getLogs({ address: token, event: TRANSFER, args: { from: ZERO }, fromBlock: b, toBlock: upTo(b + chunk - 1n) });
+  for (let b = upTo(pairBlock + BigInt(Math.ceil(120 / blockSec))); b > stop && !mint; b -= chunk) {
+    const logs = await c.getLogs({ address: token, event: TRANSFER, args: { from: ZERO }, fromBlock: b - chunk + 1n, toBlock: b }).catch(() => null);
+    if (!logs) break; // узел не отдаёт логи так глубоко
     const first = logs[0];
     if (first) mint = { block: first.blockNumber, to: first.args.to as Hex, tx: first.transactionHash };
   }
   if (!mint) return null;
   const creator = (await c.getTransaction({ hash: mint.tx })).from.toLowerCase();
   const window = BigInt(Math.ceil(WINDOW_SEC / blockSec));
-  // Торговля начинается не с выпуска, а когда эмиссия приходит в пул: у Pons выпуск идёт на служебный контракт,
-  // и только через десятки секунд токены переводятся в пул Uniswap. Отсчёт — с пополнения пула, покупки — из пула.
-  let start = mint.block;
-  let source = mint.to.toLowerCase();
-  if (pair) {
-    const intoPool = await c.getLogs({ address: token, event: TRANSFER, args: { to: pair as Hex }, fromBlock: mint.block, toBlock: upTo(mint.block + span) });
-    if (intoPool[0]) {
-      start = intoPool[0].blockNumber;
-      source = pair;
-    }
-  }
+  const span = BigInt(Math.ceil(900 / blockSec));
+  // Откуда идут покупки. Выпуск на контракт (кривая лаунчпада) — продаёт он, а после переезда и пул. Выпуск на кошелёк
+  // дева — дев раздаёт и заливает ликвидность сам, покупки идут из пула: тогда считаем только пул.
+  const mintTo = mint.to.toLowerCase();
+  const curve = ((await c.getCode({ address: mint.to }).catch(() => undefined)) ?? "0x") !== "0x";
+  const sources = new Set<string>([...(curve ? [mintTo] : []), ...(pair ? [pair] : [])]);
+  if (!sources.size) sources.add(mintTo);
+  const skip = (t: string) => !t || t === creator || t === ZERO || sources.has(t);
+  // Отсчёт окна — с первой продажи постороннему адресу, а не с выпуска.
+  const early = await c.getLogs({ address: token, event: TRANSFER, fromBlock: mint.block, toBlock: upTo(mint.block + span) }).catch(() => []);
+  const firstSale = early.find((l) => sources.has((l.args.from ?? "").toLowerCase()) && !skip((l.args.to ?? "").toLowerCase()));
+  if (!firstSale) return null;
+  const start = firstSale.blockNumber;
   const logs = await c.getLogs({ address: token, event: TRANSFER, fromBlock: start, toBlock: upTo(start + window) });
   const bought = new Map<string, bigint>();
   for (const l of logs) {
     const f = (l.args.from ?? "").toLowerCase();
     const t = (l.args.to ?? "").toLowerCase();
-    if (f !== source || !t || t === creator || t === ZERO || t === source) continue;
+    if (!sources.has(f) || skip(t)) continue;
     bought.set(t, (bought.get(t) ?? 0n) + (l.args.value ?? 0n));
   }
   const supply = await c.readContract({ address: token, abi: ERC20, functionName: "totalSupply" });
