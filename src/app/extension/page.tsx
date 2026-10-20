@@ -4,7 +4,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 
-export const metadata: Metadata = { title: "Browser extension · CrawlHive", description: "The CrawlHive verdict right on the token page in GMGN, DexScreener, Axiom, Photon and pump.fun." };
+export const metadata: Metadata = { title: "Browser extension · CrawlHive", description: "The CrawlHive verdict right on the token page of your terminal, for Solana, BNB Chain, Robinhood Chain and Base, with a second opinion from Larpcheck." };
 
 const SITES = ["GMGN", "DexScreener", "Axiom", "Photon", "pump.fun", "Birdeye", "Solscan"];
 const STORE_URL = "https://chromewebstore.google.com/detail/crawlhive-memecoin-safety/fockphbbbdmefepkngelchjnhnfdkmnm";
@@ -42,6 +42,7 @@ export default function ExtensionPage() {
               <li>• Snipers, linked operators and dev-funded wallets</li>
               <li>• LP: burned, locked until when, or unlocked</li>
               <li>• The dev&apos;s earlier coins, one tap away</li>
+              <li>• A second opinion from Larpcheck on the project</li>
             </ul>
           </Card>
           <Card className="p-5 text-sm">

@@ -8,7 +8,7 @@ import { connection } from "next/server";
 import { ArrowRight, ExternalLink, Radar } from "lucide-react";
 import { savedScan, type ScanResult } from "@/lib/server/scan";
 import { CHAIN_LABEL, VERDICT_COLOR, VERDICT_LABEL, explorerToken, shareText } from "@/lib/scan-share";
-import { ShareOnX } from "@/components/share-on-x";
+import { ShareScan } from "@/components/share-scan";
 import { XVoices } from "@/components/x-voices";
 import { XRayPanel } from "@/components/xray-panel";
 import { BubbleMap } from "@/components/bubble-map";
@@ -102,6 +102,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
 
         <Factors r={r} />
 
+        <ShareScan id={r.id} text={shareText(r)} className="mt-4" />
+
         {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} className="mt-4" />}
 
         {r.xray && <XRayPanel x={r.xray} className="mt-4" />}
@@ -135,7 +137,6 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
           >
             <Radar className="size-4" /> Run a fresh crawl
           </Link>
-          <ShareOnX id={r.id} text={shareText(r)} />
           {m?.url && (
             <a href={m.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
               DexScreener <ExternalLink className="size-3" />

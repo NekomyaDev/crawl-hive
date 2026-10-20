@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, ExternalLink, Eye, Flame, Radar, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ShareOnX } from "@/components/share-on-x";
+import { ShareScan } from "@/components/share-scan";
 import { buybackFund, buybackUsd, solFmt, usdFmt, useTreasury } from "@/components/treasury-card";
 import { XVoices, type XVoice } from "@/components/x-voices";
 import { shareText } from "@/lib/scan-share";
@@ -452,12 +452,12 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </a>
         ))}
       </div>
+      <ShareScan id={r.id} text={shareText(r)} />
       {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} />}
       {r.xray && <XRayPanel x={r.xray} />}
       {x !== undefined && <XPanel x={x} onCheck={onCheckX} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <WatchButton r={r} />
-        <ShareOnX id={r.id} text={shareText(r)} />
         {m?.url && (
           <a href={m.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
             DexScreener <ExternalLink className="size-3" />

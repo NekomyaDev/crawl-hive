@@ -98,21 +98,41 @@ All crawlers live on one public **swarm map** with a **reputation** score. After
 
 In one line: *you bring the edge, your crawler does the watching, the scoreboard shows who was right.*
 
-**Latest (Oct 17):**
+**Latest (Oct 18-20):**
+- 🫧 **Bubble map on every chain.** Every scan draws who really holds the token: top holders, first-block snipers and the dev, sized by their share. Wallets of one owner (shared funder, dev money, same-transaction or same-block buys) share a color, wear a dashed ring and are joined by funding lines, so a bundle hiding behind ten wallets is one cluster. Solana, BNB Chain, Base and Robinhood Chain.
+- 🤝 **Larpcheck second opinion.** Every scan shows the verdict of [Larpcheck](https://larpcheck.app) on the project behind the token, right under ours, with a link to their full check. When the two disagree, a **Why they disagree** box lays out what each side found and what it means for a trader.
+- 🧩 **Chrome extension, live on the Chrome Web Store.** The verdict, red flags, snipers, operators, LP lock, dev history and the Larpcheck line right on the token page of your terminal. [Add to Chrome](https://chromewebstore.google.com/detail/crawlhive-memecoin-safety/fockphbbbdmefepkngelchjnhnfdkmnm)
+- 🔵 **Base.** Base joins Solana, BNB Chain and Robinhood Chain in every scan, the bot, the Mini App and Launch Radar.
+- 🎯 **Snipers on BNB and Base.** Fresh tokens on BNB Chain and Base get the sniper check too (Uniswap v4 pools included), next to Solana and Robinhood Chain.
+- 🔒 **Honest LP check.** LP lock numbers come only from the token's main v2 pool, so big coins with v3 or Aerodrome liquidity no longer get a false "LP not locked".
+- 🖼 **Share cards v2.** Every scan link unfurls on X and Telegram as a branded card: score, verdict, worst flags, a mini bubble map and the Larpcheck second opinion.
+- 💬 **Telegram community.** [t.me/crawlhive](https://t.me/crawlhive): drop a contract in *Scan here* and the bot replies; Launch Radar, narrative alerts and every $CRAWLHIVE burn land in their own topics on their own.
+- 💎 **Holder perks.** Hold 100,000 $CRAWLHIVE and connect your wallet: Launch Radar goes live with no delay on the site and in Telegram alerts, the bot gives you 3x more scans an hour, and a HOLDER badge shows next to your wallet. Scans stay free for everyone.
+- 🔥 **1% of the supply burned.** 9 buybacks, 2.07 SOL spent, 10.46M $CRAWLHIVE burned (1.09% of supply) by Oct 20.
+
+<p align="center">
+  <img src="docs/images/bubble-map.png" alt="Bubble map: who really holds the token, linked wallets in one color" width="49%">
+  <img src="docs/images/share-card.png" alt="Share card: the branded preview every scan link unfurls into" width="49%">
+</p>
+<p align="center">
+  <img src="docs/images/larpcheck-second-opinion.png" alt="Larpcheck second opinion and the Why they disagree box under our verdict" width="60%">
+</p>
+
+**Oct 17:**
 - 🔮 **Narrative Radar.** The platform runs its own Narrative Hunter, owned by nobody: every 3 hours Grok walks X for what just started spreading, every post is verified with X's oEmbed, and each narrative lands on [/narratives](https://crawlhive.xyz/narratives) for everyone, with its heat, how many coins already use the ticker and a **Launch this narrative** button. In the bot: `/narratives`.
 - 🚀 **Clean Launch + Launch this narrative.** Launch a coin on pump.fun right from CrawlHive (0% platform fee, the mint key is made in your browser, Phantom signs), and every coin is scanned by the swarm at birth by the same rules. Any narrative opens Clean Launch already filled in.
 - 📡 **New radar screens.** Launch Radar and Narrative Radar show a live radar with every find as a blip, plus cards with logos, FDV at scan, score, a copyable contract and filters.
 - 🔥 **4 buybacks & burns in 3 days.** 1.02 SOL from the treasury bought back and burned 4.33M $CRAWLHIVE; x402 USDC from AI agents joins the same cycle.
 
 **Oct 13:**
-- 🔥 **$CRAWLHIVE: buyback & burn.** The home page shows the token with a live chart. Every 12 hours (00:00 and 12:00 UTC) the treasury buys $CRAWLHIVE with what crawler spawns earned, and the bought tokens are burned in the same transaction; every burn is listed with its transaction. Crawler of the day was retired on Oct 17.
+- 🔥 **$CRAWLHIVE: buyback & burn.** The home page shows the token with a live chart. Every 12 hours (00:00 and 12:00 UTC) the treasury buys $CRAWLHIVE with what crawler spawns earned, and the bought tokens are burned in the same transaction; every burn is listed with its transaction. By Oct 20: 9 burns, 2.07 SOL spent, 10.46M $CRAWLHIVE burned (1.09% of supply). Crawler of the day was retired on Oct 17.
 - 🩻 **Contract X-Ray: we reverse engineer every token.** On BNB Chain and Robinhood Chain the scanner reads the deployed bytecode, even when the source is not published, traces which functions write what with evmole (the EVM engine of the REA reverse-engineering toolkit), and lists what the team can still do to holders: mint, blacklist wallets, change the tax, stop trading, cap sells, upgrade the contract through a proxy. On Solana it reads Token-2022 extensions: permanent delegate, transfer hook, transfer tax, frozen-by-default, pausable. The project website is checked for wallet-drainer code. Every power counts against the score, and AI agents get the same X-Ray through MCP.
 - 🔐 **Security audit.** Several agents went through the whole codebase in parallel, every finding was verified by hand, and more than a dozen issues were fixed: SSRF-safe fetching for docs targets, a ReDoS fix, real client IPs in limits, domain-bound wallet sign-in with logout everywhere, OAuth hardening, a verdict floor against prompt injection, a separate AI budget for anonymous Telegram scans, and a non-root container. Details in [Trust & safety](#trust--safety).
 - 💬 **Bot: welcome banner, inline and support.** `/start` greets you with a banner, `@crawlhivebot <address>` works inline in any chat, and `/support` sends your message to the team, with the answer coming back in the same chat. Group settings can be changed by group admins only.
 - 🟡 **BNB Chain and Meteora.** Scans now cover BNB Chain tokens (holders, honeypot, contract owner, four.meme bonding curve) and every Solana launchpad: pump.fun, Meteora, Raydium LaunchLab and others get their curve detected and their creator wallet traced. A `0x` address finds its chain by itself.
 - 📱 **CrawlHive is now an app inside Telegram.** Open [@crawlhivebot](https://t.me/crawlhivebot) and press **Open app**: scan tokens, browse Launch Radar, manage your watchlist and alerts, and see your crawlers and their signals, with no install and no sign-up.
 - 🎯 **Track Record.** Every verdict, from user scans, crawler safety checks, Launch Radar and agents, is checked against the real price for 24 hours. The page shows how many DANGER tokens dumped, and how many CLEAN / OK tokens dumped anyway: hits and misses, nothing hidden. [crawlhive.xyz/track](https://crawlhive.xyz/track)
-- 📡 **Launch Radar.** The swarm scans fresh launches on Solana, Robinhood Chain and BNB Chain on its own and publishes the verdicts with a 10-minute delay; crawler owners get them live. [crawlhive.xyz/radar](https://crawlhive.xyz/radar)
+- 📡 **Launch Radar.** The swarm scans fresh launches on Solana, Robinhood Chain, BNB Chain and Base on its own and publishes the verdicts with a 10-minute delay; crawler owners and $CRAWLHIVE holders get them live. [crawlhive.xyz/radar](https://crawlhive.xyz/radar)
 - 🤖 **Telegram bot for everyone.** Send a token address, link or `$TICKER` and get the scan in the chat. Tap 👁 Watch, and for 7 days the bot pings you if liquidity is pulled, the price falls 50% or the verdict turns DANGER. `/radar` shows fresh launches.
 - 🤝 **Any agent, one click.** OpenAI has Dots, SpaceX has Grok Bot, Meta has Muse: all of them can now run your crawlers. ChatGPT Dots, Meta Muse, Claude and Cursor connect with a **Connect** button (OAuth): no key to copy, you pick the bot and the crawlers on CrawlHive and approve with your wallet.
 
@@ -496,7 +516,13 @@ CrawlHive is an **MVP**. We'd rather you know exactly what is live than find out
 | Sign-in with your wallet (signed message, no transaction): Phantom, or any EVM wallet via `personal_sign` | ✅ **real** |
 | Swarm map and leaderboard on crawlhive.xyz | ✅ **real crawlers only**. A simulated demo network exists for local runs (`DEMO_NETWORK`), never on the live site |
 | Trading crawlers between users, governance | ⏳ **after the token launch**. They run on in-app credits in demo mode; on the live site they are switched off so nobody trades real crawlers for points |
-| Project token | ⏳ **not launched**. No ticker, no contract. Anything claiming otherwise is not us |
+| Project token | ✅ **$CRAWLHIVE is live** on Solana (`D4jNDQa3Cu4v8VMCAc2z7pgGGo7aGqzjXmwGR9wapump`); treasury buyback & burn every 12 hours, 9 burns and 1.09% of supply burned by Oct 20 |
+| Bubble map (holders, snipers, dev, linked operators) on Solana, BNB Chain, Base and Robinhood Chain | ✅ **real data**; on BNB and Base, transfer links and snipers cover fresh tokens (about 1 h on BNB, 4.5 h on Base) unless a log RPC is set |
+| Larpcheck second opinion and "Why they disagree" | ✅ **real data** from the Larpcheck read API, with a link to every check |
+| Chrome extension | ✅ **live** on the Chrome Web Store; 1.0.2 with the Larpcheck line in review |
+| Share cards for scan links | ✅ **real**, generated per scan |
+| Telegram community, topic alerts, automatic burn posts | ✅ **real** |
+| Holder perks (live radar, 3x bot scans, HOLDER badge) | ✅ **real**, holding checked on Solana every 5 minutes (`HOLDER_MIN`, 100,000 by default) |
 | Persistence | ✅ live crawlers, signals and payments are saved to disk with a daily backup; Postgres is on the roadmap |
 
 ## Screens
@@ -695,14 +721,20 @@ src/
       market/ [id]/          list, buy / rent, delist
       leaderboard/ governance/ wallet/ config/ faucet/
       stream/                Server-Sent Events: signals, spawns, trades
+      holder/                $CRAWLHIVE holder status for the signed-in wallet (holder perks)
+      ext/verdict/           compact verdict for the browser extension
     mcp/                     MCP server for Grok Bot, Claude, Cursor (whats_new, scan_token, …)
-  components/                swarm map (react-force-graph-2d), UI kit, wallet provider
+  components/                swarm map (react-force-graph-2d), UI kit, wallet provider,
+                             bubble-map.tsx (holder bubble map), larp-line.tsx (Larpcheck card)
   lib/
     economy.ts reputation.ts types.ts
     server/store.ts          network state, paid terms, live crawler bookkeeping
     server/solana.ts         payment intents (spawn / renew), on-chain verification, devnet faucet
     server/robinhood.ts      Robinhood Chain: ETH payment intents and verification, EVM sign-in, ETH treasury
-    server/scan-evm.ts       Instant Crawl on Robinhood Chain: contract owner, holders, honeypot
+    server/scan-evm.ts       Instant Crawl on EVM chains (Robinhood, BNB, Base): contract owner, holders, honeypot
+    server/scan-evm-map.ts   bubble map and operators on EVM: GoPlus holders, transfer links, same-block bundles
+    server/scan-operators.ts operators, wallet memory and the bubble map graph on Solana
+    server/larpcheck.ts      Larpcheck second opinion (read API, cached, linked to each check)
     server/telegram.ts       bot: wallet linking, signal DMs, renewal reminders
     server/scan.ts           Instant Crawl: parallel checks and the 0-100 score
     server/scan-x.ts         Check X: Grok search, who's talking map, cost limits
@@ -754,9 +786,22 @@ db/schema.sql                target Postgres schema
 - [x] Narrative Hunter: X crawler for rising narratives with verified posts
 - [x] Launch this narrative: one click from a narrative signal to a prefilled Clean Launch
 - [x] Narrative Radar: the platform's own narrative hunter, public for everyone
+- [x] Clean Launch on Robinhood Chain (Pons) and BNB Chain (four.meme)
+- [x] Operators, wallet memory, dev pages, snipers, LP lock and unlock dates
+- [x] Narrative Snipe Alerts and Gem & Rug Replay
+- [x] Browser extension, live on the Chrome Web Store
+- [x] Base, snipers on BNB and Base, honest LP check for v3 pools
+- [x] Bubble map on Solana, BNB Chain, Base and Robinhood Chain
+- [x] Larpcheck second opinion and "Why they disagree"
+- [x] Share cards v2, Telegram community with topic alerts and burn posts
+- [x] Holder perks; 1% of the supply burned
+- [ ] Memory: token snapshots between scans, wallets, funders and devs across tokens and chains, "Seen before" on the bubble map
+- [ ] Close the sniper gap on Robinhood Chain (buys a second opinion caught that we missed)
+- [ ] X mentions bot: tag it under a contract, it replies with the verdict and the share card
+- [ ] Paper trading: the swarm trades its own signals with fake money and posts a public P&L
 - [ ] First paid crawlers on mainnet and their public track record
 - [ ] Postgres persistence (`db/schema.sql`)
-- [ ] Project token launch: spawns switch to a token burn (`PAYMENT_TOKEN=token`), treasury SOL funds buybacks
+- [ ] Spawns paid in $CRAWLHIVE with a token burn (`PAYMENT_TOKEN=token`)
 - [ ] Governance results applied automatically (narrative boosts, reputation weights)
 
 ## Known issues

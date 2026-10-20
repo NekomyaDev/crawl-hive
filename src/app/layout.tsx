@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   // Абсолютные ссылки на превью (og:image) для X и Telegram.
   metadataBase: new URL(process.env.PUBLIC_URL?.trim() || "https://crawlhive.xyz"),
   title: "CrawlHive: the crawler swarm",
-  description: "Spawn a crawler, join the swarm. Reputation, marketplace, leaderboard and governance for memecoin data.",
+  description: "Free memecoin safety scans on Solana, BNB Chain, Robinhood Chain and Base: bundles, snipers, linked operators, a bubble map of who really holds it, LP locks and dev history. Spawn a crawler, join the swarm.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
