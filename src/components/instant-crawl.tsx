@@ -6,6 +6,7 @@ import { TOKEN } from "@/lib/token";
 import { XRayPanel, type XRayView } from "@/components/xray-panel";
 import { BubbleMap, type BubbleMapData } from "@/components/bubble-map";
 import { LarpLine, type LarpLineData } from "@/components/larp-line";
+import { TrustScore, type TrustData } from "@/components/trust-score";
 import { SinceLastScan, type SinceData } from "@/components/since-last-scan";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
@@ -63,6 +64,7 @@ interface Result {
   insiders?: { wallets: number; pct: number };
   lp?: { status: string; lockedPct: number | null; unlockAt?: number; locker?: string };
   larp?: LarpLineData;
+  trust?: TrustData;
   since?: SinceData;
   operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number }; map?: BubbleMapData };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
@@ -391,6 +393,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
         </div>
       </div>
       {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} />}
+      {r.trust && <TrustScore t={r.trust} />}
       <SinceLastScan s={r.since} />
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         {[

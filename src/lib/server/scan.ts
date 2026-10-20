@@ -15,6 +15,7 @@ import { buildOperators, type OperatorReport } from "./scan-operators";
 import { buildEvmMap, evmMapSupported } from "./scan-evm-map";
 import { lpSupported, traceLp, type LpReport } from "./scan-lp";
 import { larpVerdict, type LarpVerdict } from "./larpcheck";
+import { trustEnabled, trustScore, type TrustScore } from "./trust";
 import { compareToLast, recordSnapshot, type SinceLast } from "./scan-memory";
 import { traceDev, type DevReport } from "./scan-dev";
 import { EVM_SCAN, traceEvm, type EvmReport } from "./scan-evm";
@@ -61,6 +62,7 @@ export interface ScanResult {
   insiders?: { wallets: number; pct: number }; // топ-держатели, которых пополнил кошелёк создателя
   operators?: OperatorReport; // связанные кошельки, склеенные в владельцев, и их история на других токенах
   larp?: LarpVerdict; // второе мнение Larpcheck о проекте за токеном (со ссылкой на их проверку)
+  trust?: TrustScore; // третий вердикт: общий балл CrawlHive и Larpcheck (только с TRUST_SCORE=1)
   lp?: LpReport; // кто держит ликвидность: сожжена, залочена (до какого числа) или в кошельке
   evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
   xray?: XRayView; // Contract X-Ray: рычаги владельца из байткода (EVM) или расширений Token-2022 (Solana)
@@ -680,6 +682,7 @@ export async function runScan(
         ? `${core}: a core ${chainName(chain)} asset, not a memecoin`
         : "No red flags found by the crawlers";
 
+  const trust = trustEnabled() ? trustScore({ score: tooEarly ? null : score, verdict }, larp) : null;
   const result: ScanResult = {
     id: address,
     chain,
@@ -711,6 +714,7 @@ export async function runScan(
     insiders,
     operators,
     ...(larp ? { larp } : {}),
+    ...(trust ? { trust } : {}),
     lp,
     dev,
     evm,

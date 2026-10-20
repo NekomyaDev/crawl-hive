@@ -40,6 +40,7 @@ async function loadFonts() {
   return fonts;
 }
 
+const TRUST_COLOR: Record<string, string> = { TRUSTED: "#a3e635", MIXED: "#2dd4bf", CAUTION: HONEY, AVOID: "#f87171" };
 const larpColor = (v: string) => (/SCAM|LARP/.test(v) ? "#f87171" : /REAL/.test(v) && !/PARTLY/.test(v) ? "#a3e635" : HONEY);
 
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
@@ -105,6 +106,12 @@ export default async function Image({ params }: { params: Promise<{ id: string }
                     {larp.verdict}
                     {larp.score != null ? ` ${larp.score}` : ""}
                   </span>
+                  {/* третий вердикт в той же строке, чтобы карточка не росла */}
+                  {r.trust && (
+                    <span style={{ marginLeft: "auto", fontSize: 22, fontWeight: 900, color: TRUST_COLOR[r.trust.verdict] }}>
+                      🤝 Trust {r.trust.score} {r.trust.verdict}
+                    </span>
+                  )}
                 </div>
               )}
             </div>

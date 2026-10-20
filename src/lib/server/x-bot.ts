@@ -101,6 +101,8 @@ interface State {
   count?: number;
   users?: Record<string, number[]>;
   done?: string[];
+  log?: { id: string; symbol: string; verdict: string; score: number | null; at: number }[]; // ответы бота для дневной сводки
+  digestDay?: string;
 }
 const KEY = "xbot";
 const load = (): State => {
@@ -133,6 +135,56 @@ function replyText(r: { symbol: string; score: number | null; verdict: string; r
     if (h && room > 40) larp += `\n"${h.length > room ? `${h.slice(0, room - 1)}…` : h}"`;
   }
   return `${head}\n${reason}${larp}${link}`;
+}
+
+// ---------- дневная сводка ----------
+// Раз в сутки (X_BOT_DIGEST_HOUR UTC, по умолчанию 15) отдельный пост: сколько монет бот проверил за 24 часа,
+// сколько DANGER / RISKY / CLEAN, и лучший улов — монета с DANGER или RISKY за 24-72 часа, которая потом
+// действительно рухнула (по Track Record). Нет такой — строку не пишем, ничего не выдумываем.
+const DIGEST_HOUR = Number(process.env.X_BOT_DIGEST_HOUR ?? 15);
+const DIGEST_MIN = 3;
+
+async function digestText(s: State): Promise<string | null> {
+  const now = Date.now();
+  const day = (s.log ?? []).filter((e) => now - e.at < 24 * 3600_000);
+  if (day.length < DIGEST_MIN) return null;
+  const n = (f: (v: string) => boolean) => day.filter((e) => f(e.verdict)).length;
+  const lines = [
+    `🐙 Last 24h on X: I scanned ${day.length} coins you tagged me under`,
+    "",
+    `🔴 ${n((v) => v === "DANGER")} DANGER`,
+    `🟠 ${n((v) => v === "RISKY")} RISKY`,
+    `🟢 ${n((v) => v === "CLEAN" || v === "OK")} CLEAN`,
+  ];
+  const { trackOutcomes, trackEntry } = await import("./track");
+  const out = trackOutcomes();
+  const catches = (s.log ?? [])
+    .filter((e) => now - e.at < 72 * 3600_000 && (e.verdict === "DANGER" || e.verdict === "RISKY"))
+    .map((e) => ({ e, o: out.get(e.id), t: trackEntry(e.id, e.at) }))
+    .filter((c) => c.o?.dumped || c.o?.rugged)
+    .sort((a, b) => (a.t?.lowPct ?? 0) - (b.t?.lowPct ?? 0));
+  const best = catches[0];
+  if (best) {
+    const drop = best.t?.lowPct != null && best.t.lowPct < 0 ? `${Math.round(best.t.lowPct)}%` : best.o?.rugged ? "rugged" : "dumped";
+    lines.push("", `Best catch: $${best.e.symbol} flagged ${best.e.verdict}, then ${drop}`);
+  }
+  lines.push("", "Tag @crawlhivebot under any coin", "crawlhive.xyz");
+  let text = lines.join("\n");
+  // Ссылка считается за 23 символа; при переборе сначала убираем пустые строки.
+  if (text.length - "crawlhive.xyz".length + 23 > 280) text = lines.filter(Boolean).join("\n");
+  return text;
+}
+
+async function maybeDigest(s: State) {
+  if (process.env.X_BOT_DIGEST_OFF === "1") return;
+  const d = new Date();
+  const today = d.toISOString().slice(0, 10);
+  if (s.digestDay === today || d.getUTCHours() < DIGEST_HOUR) return;
+  s.digestDay = today; // помечаем сразу: даже если постить нечего, повторно в этот день не пробуем
+  const text = await digestText(s);
+  if (!text) return;
+  await x("POST", "/tweets", { text });
+  console.log("[xbot] digest posted");
 }
 
 async function tick() {
@@ -179,6 +231,7 @@ async function tick() {
       s.count = (s.count ?? 0) + 1;
       s.users = { ...s.users, [t.author_id ?? ""]: [...recent, now] };
       s.done = [...(s.done ?? []), pair].slice(-500);
+      s.log = [...(s.log ?? []), { id: r.id, symbol: r.symbol, verdict: r.verdict, score: r.score, at: now }].slice(-300);
       console.log(`[xbot] replied ${t.id} $${r.symbol} ${r.verdict}`);
     } catch (e) {
       console.warn("[xbot]", (e as Error).message);
@@ -195,6 +248,7 @@ async function tick() {
       }
     }
   }
+  await maybeDigest(s).catch((e) => console.warn("[xbot] digest", (e as Error).message));
   save(s);
 }
 

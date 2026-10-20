@@ -13,6 +13,7 @@ import { XVoices } from "@/components/x-voices";
 import { XRayPanel } from "@/components/xray-panel";
 import { BubbleMap } from "@/components/bubble-map";
 import { LarpLine } from "@/components/larp-line";
+import { TrustScore } from "@/components/trust-score";
 import { SinceLastScan } from "@/components/since-last-scan";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -84,6 +85,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
         </div>
 
         {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} className="mt-5" />}
+        {r.trust && <TrustScore t={r.trust} className="mt-3" />}
         <SinceLastScan s={r.since} className="mt-3" />
 
         <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs sm:grid-cols-6">
