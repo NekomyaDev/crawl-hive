@@ -136,6 +136,16 @@ async function tick() {
     } catch (e) {
       console.warn("[xbot]", (e as Error).message);
       if ((e as { status?: number }).status === 429) break;
+      // Адрес не читается или пары нет: не молчим, а объясняем, что не так (один раз на тред).
+      if (!(e as { status?: number }).status) {
+        const cut = /pu$|pum$|p$/.test(addr) && !addr.endsWith("pump");
+        const msg = /No trading pair/i.test((e as Error).message)
+          ? `I couldn't find a trading pair for ${addr.slice(0, 6)}…${addr.slice(-4)} yet. If it just launched, try again in a few minutes 🐙`
+          : `That doesn't look like a valid token contract${cut ? ": it seems cut off (pump.fun addresses end in \"pump\")" : ""}. Copy the full CA and tag me again 🐙`;
+        await x("POST", "/tweets", { text: msg, reply: { in_reply_to_tweet_id: t.id } }).catch(() => {});
+        s.users = { ...s.users, [t.author_id ?? ""]: [...recent, now] };
+        s.done = [...(s.done ?? []), pair].slice(-500);
+      }
     }
   }
   save(s);
