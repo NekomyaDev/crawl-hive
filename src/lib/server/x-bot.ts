@@ -58,7 +58,15 @@ interface Tweet {
   author_id?: string;
   conversation_id?: string;
   referenced_tweets?: { type: string; id: string }[];
+  entities?: { urls?: { expanded_url?: string; unwound_url?: string }[] };
 }
+
+// Адрес контракта из твита: из текста или из ссылок (pump.fun, DexScreener, GMGN), которые X прячет за t.co.
+const addrOf = (t?: Tweet) => {
+  if (!t) return undefined;
+  const urls = (t.entities?.urls ?? []).map((u) => u.unwound_url ?? u.expanded_url ?? "").join(" ");
+  return `${t.text} ${urls}`.replace(/@\w+/g, " ").match(ADDR_RE)?.[1];
+};
 
 // Состояние в meta: последний обработанный id, счётчики, отвеченные пары «тред+монета».
 interface State {
@@ -95,7 +103,7 @@ async function tick() {
   const today = new Date().toISOString().slice(0, 10);
   if (s.day !== today) Object.assign(s, { day: today, count: 0 });
   if (!s.me) s.me = (await x<{ data: { id: string } }>("GET", "/users/me")).data.id;
-  const q = new URLSearchParams({ max_results: "20", expansions: "referenced_tweets.id", "tweet.fields": "author_id,conversation_id,referenced_tweets" });
+  const q = new URLSearchParams({ max_results: "20", expansions: "referenced_tweets.id", "tweet.fields": "author_id,conversation_id,referenced_tweets,entities" });
   if (s.since) q.set("since_id", s.since);
   const res = await x<{ data?: Tweet[]; includes?: { tweets?: Tweet[] }; meta?: { newest_id?: string } }>("GET", `/users/${s.me}/mentions?${q}`);
   const refs = new Map((res.includes?.tweets ?? []).map((t) => [t.id, t]));
@@ -110,7 +118,8 @@ async function tick() {
   for (const t of [...(res.data ?? [])].reverse()) {
     if (t.author_id === s.me || (s.count ?? 0) >= DAILY) continue;
     const parent = t.referenced_tweets?.find((r) => r.type === "replied_to" || r.type === "quoted");
-    const addr = t.text.match(ADDR_RE)?.[1] ?? (parent ? refs.get(parent.id)?.text.match(ADDR_RE)?.[1] : undefined);
+    // Достаточно тегнуть бота ответом на твит с контрактом: адрес берём из упоминания, а если его нет, то из твита выше.
+    const addr = addrOf(t) ?? (parent ? addrOf(refs.get(parent.id)) : undefined);
     if (!addr) continue;
     const pair = `${t.conversation_id ?? t.id}:${addr.toLowerCase()}`;
     if (s.done?.includes(pair)) continue;
