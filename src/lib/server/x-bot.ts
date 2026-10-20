@@ -89,12 +89,23 @@ const save = (s: State) => setMeta(KEY, JSON.stringify(s));
 
 const VERDICT_ICON: Record<string, string> = { CLEAN: "🟢", OK: "🟢", RISKY: "🟠", DANGER: "🔴", TOO_EARLY: "⚪️" };
 
-function replyText(r: { symbol: string; score: number | null; verdict: string; reason: string; id: string; larp?: { verdict: string; score: number | null } }, site: string) {
-  const head = `${VERDICT_ICON[r.verdict] ?? "⚪️"} $${r.symbol}: ${r.score != null ? `${r.score}/100 ` : ""}${r.verdict.replace("_", " ")}`;
-  const larp = r.larp ? `\nLarpcheck: ${r.larp.verdict}${r.larp.score != null ? ` ${r.larp.score}` : ""}` : "";
+// Значок вердикта Larpcheck: зелёный для REAL, красный для LARP и SCAM, жёлтый для остального.
+const larpIcon = (v: string) => (/SCAM|LARP/.test(v) ? "🔴" : /REAL/.test(v) && !/PARTLY/.test(v) ? "🟢" : "🟡");
+
+function replyText(r: { symbol: string; score: number | null; verdict: string; reason: string; id: string; larp?: { verdict: string; score: number | null; headline?: string | null } }, site: string) {
+  const head = `${VERDICT_ICON[r.verdict] ?? "⚪️"} CrawlHive: $${r.symbol} ${r.score != null ? `${r.score}/100 ` : ""}${r.verdict.replace("_", " ")}`;
   const link = `\n\nFull scan, holders map: ${site}/scan/${r.id}`;
-  const room = 280 - head.length - larp.length - link.length - 2;
-  const reason = r.reason.length > room ? `${r.reason.slice(0, Math.max(0, room - 1))}…` : r.reason;
+  // Причина риска — коротко; Larpcheck — отдельным блоком со своим значком и, если влезает, их выводом.
+  const reason = r.reason.length > 70 ? `${r.reason.slice(0, 69)}…` : r.reason;
+  let larp = "";
+  if (r.larp) {
+    larp = `\n\n🔍 Larpcheck: ${larpIcon(r.larp.verdict)} ${r.larp.verdict}${r.larp.score != null ? ` ${r.larp.score}/100` : ""}`;
+    // X считает любую ссылку за 23 символа, поэтому длинный адрес скана места не съедает.
+    const linkLen = link.length - `${site}/scan/${r.id}`.length + 23;
+    const room = 280 - head.length - 1 - reason.length - larp.length - linkLen - 6;
+    const h = r.larp.headline?.trim();
+    if (h && room > 40) larp += `\n"${h.length > room ? `${h.slice(0, room - 1)}…` : h}"`;
+  }
   return `${head}\n${reason}${larp}${link}`;
 }
 
