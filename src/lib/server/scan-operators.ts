@@ -7,7 +7,8 @@ import type { Connection } from "@solana/web3.js";
 import { getMeta, setMeta } from "./store";
 import { cachedFunding, EXCHANGE_SOL, funderSol, type BundleReport } from "./scan-bundles";
 import type { SniperReport } from "./scan-snipers";
-import { trackOutcomes } from "./track";
+import { memDb, migrateLegacy, rowsFor, walletCount, writeScan, type MemRole as DbRole } from "./memory-db";
+import { trackIndex, trackOutcomes } from "./track";
 
 export type Role = "bundle" | "dev" | "sniper";
 export interface Operator {
@@ -108,13 +109,19 @@ export async function buildOperators(conn: Connection, opts: { bundles?: BundleR
   const fundCount = new Map<string, number>();
   for (const [w, f] of edges) if (held.has(w) && !exchanges.has(f) && f !== creator) fundCount.set(f, (fundCount.get(f) ?? 0) + 1);
   const linkedHolders = ops.flatMap((o) => (groups.get(o.root) ?? []).filter((w) => held.has(w)));
-  rememberWallets(opts.mint, "solana", {
-    holder: linkedHolders,
-    bundle: (bundles?.links ?? []).filter((l) => !exchanges.has(l.funder)).map((l) => l.wallet),
-    sniper: buyers.map((b) => b.wallet),
-    funder: [...fundCount].filter(([, n]) => n >= 2).map(([f]) => f),
-    dev: creator ? [creator, ...(bundles?.links ?? []).filter((l) => l.funder === creator).map((l) => l.wallet)] : [],
-  });
+  rememberWallets(
+    opts.mint,
+    "solana",
+    {
+      holder: linkedHolders,
+      bundle: (bundles?.links ?? []).filter((l) => !exchanges.has(l.funder)).map((l) => l.wallet),
+      sniper: buyers.map((b) => b.wallet),
+      funder: [...fundCount].filter(([, n]) => n >= 2).map(([f]) => f),
+      dev: creator ? [creator, ...(bundles?.links ?? []).filter((l) => l.funder === creator).map((l) => l.wallet)] : [],
+    },
+    // Кошельки каждого оператора скана: из них Brain собирает операторов между токенами.
+    ops.map((o) => groups.get(o.root) ?? []),
+  );
   return { operators: ops.slice(0, 5).map((o) => ({ wallets: o.wallets, pct: o.pct, roles: o.roles, devLinked: o.devLinked })), devSnipers, ...(history ? { history } : {}), ...(map ? { map } : {}) };
 }
 
@@ -164,9 +171,11 @@ export function bubbleMap(x: {
 }
 
 // ---------- память кошельков ----------
-// meta walletMem: { кошелёк: [записи] } — на каких токенах и в какой сети кошелёк был снайпером, бандлом, девом,
-// спонсором связанных кошельков или держателем внутри оператора. Старые записи (просто id токена, Solana) читаются как есть.
-export type MemRole = "sniper" | "bundle" | "dev" | "funder" | "holder" | "linked";
+// SQLite (memory-db.ts): на каких токенах и в какой сети кошелёк был снайпером, бандлом, девом, спонсором связанных
+// кошельков или держателем внутри оператора, плюс группы связанных кошельков для операторов между токенами.
+// Без базы — запасной путь: meta walletMem (старый формат, 8000 кошельков × 20 токенов). Старые записи (просто id
+// токена, Solana) читаются как есть; при первом открытии базы они переносятся в неё.
+export type MemRole = DbRole;
 interface MemEntry {
   t: string;
   c: string;
@@ -190,12 +199,51 @@ const loadMem = (): Mem => {
 const norm = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
 const entries = (list: (string | MemEntry)[] | undefined): MemEntry[] => (list ?? []).map((e) => (typeof e === "string" ? { t: e, c: "solana", r: "linked" as const } : e));
 
-export function rememberWallets(token: string, chain: string, w: Partial<Record<Exclude<MemRole, "linked">, string[]>>) {
+// База с перенесённой старой памятью (перенос один раз, при первом обращении).
+let migrated = false;
+function db() {
+  const d = memDb();
+  if (d && !migrated) {
+    migrated = true;
+    try {
+      const idx = trackIndex();
+      migrateLegacy(d, loadMem(), (t) => idx.get(norm(t))?.at ?? 0);
+    } catch (e) {
+      console.warn("[memory] migration:", (e as Error).message);
+    }
+  }
+  return d;
+}
+
+// Записи по кошелькам: из базы, а без неё из meta.
+function memFor(wallets: string[]): Map<string, MemEntry[]> {
+  const ws = [...new Set(wallets.map(norm))];
+  const res = new Map<string, MemEntry[]>();
+  const d = db();
+  if (d) {
+    for (const r of rowsFor(d, ws)) res.set(r.wallet, [...(res.get(r.wallet) ?? []), { t: r.token, c: r.chain, r: r.role }]);
+    return res;
+  }
   const m = loadMem();
+  for (const w of ws) if (m[w]) res.set(w, entries(m[w]));
+  return res;
+}
+
+// groups — кошельки каждого оператора скана (2+), из них строятся операторы между токенами.
+export function rememberWallets(token: string, chain: string, w: Partial<Record<Exclude<MemRole, "linked">, string[]>>, groups: string[][] = []) {
   const t = norm(token);
   const byWallet = new Map<string, MemRole>();
   // Одна роль на кошелёк в токене, по важности: дев, спонсор, снайпер, бандл, держатель.
   for (const r of ["holder", "bundle", "sniper", "funder", "dev"] as const) for (const x of w[r] ?? []) byWallet.set(norm(x), r);
+  const d = db();
+  if (d) {
+    try {
+      return writeScan(d, t, chain, byWallet, groups.map((g) => g.map(norm)));
+    } catch (e) {
+      console.warn("[memory] write:", (e as Error).message);
+    }
+  }
+  const m = loadMem();
   for (const [x, r] of byWallet) {
     const list = entries(m[x]).filter((e) => e.t !== t);
     list.push({ t, c: chain, r });
@@ -223,12 +271,12 @@ export interface Seen {
   roles: string[];
 }
 export function seenBefore(wallets: string[], token: string): Map<string, Seen> {
-  const m = loadMem();
+  const m = memFor(wallets);
   const out = outcomes();
   const t = norm(token);
   const res = new Map<string, Seen>();
   for (const w of wallets) {
-    const list = entries(m[norm(w)]).filter((e) => e.t !== t);
+    const list = (m.get(norm(w)) ?? []).filter((e) => e.t !== t);
     if (!list.length) continue;
     const toks = new Set(list.map((e) => e.t));
     res.set(w, { tokens: toks.size, dumped: [...toks].filter((x) => out.get(x)?.dumped).length, roles: [...new Set(list.map((e) => e.r).filter((r) => r !== "linked"))] });
@@ -238,19 +286,24 @@ export function seenBefore(wallets: string[], token: string): Map<string, Seen> 
 
 // Вся память по одному кошельку (для Brain API): токены, сеть и роль, новые в конце.
 export function walletEntries(wallet: string): { token: string; chain: string; role: MemRole }[] {
-  return entries(loadMem()[norm(wallet)]).map((e) => ({ token: e.t, chain: e.c, role: e.r }));
+  return (memFor([wallet]).get(norm(wallet)) ?? []).map((e) => ({ token: e.t, chain: e.c, role: e.r }));
 }
-export const walletMemSize = () => Object.keys(loadMem()).length;
+export function walletMemSize() {
+  const d = db();
+  return d ? walletCount(d) : Object.keys(loadMem()).length;
+}
+// Хранится ли память в базе (без потолка) или в meta с потолком MEM_WALLETS.
+export const walletMemCap = () => (db() ? null : MEM_WALLETS);
 
 // Эти кошельки на ДРУГИХ токенах: сколько токенов и сколько из них рухнули (только закрытые исходы).
 export function walletHistory(wallets: string[], token: string) {
-  const m = loadMem();
+  const m = memFor(wallets);
   const out = outcomes();
   const t = norm(token);
   const tokens = new Set<string>();
   let seen = 0;
   for (const w of wallets) {
-    const list = entries(m[norm(w)]).filter((e) => e.t !== t);
+    const list = (m.get(norm(w)) ?? []).filter((e) => e.t !== t);
     if (list.length) seen++;
     for (const e of list) tokens.add(e.t);
   }

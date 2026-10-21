@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
+import { BrainNeurons } from "@/components/brain-neurons";
 
 export const metadata: Metadata = {
   title: "CrawlHive Brain · memecoin memory API",
@@ -56,6 +57,8 @@ export default function BrainPage() {
         }
         sub="Every scan teaches the swarm which wallets snipe, bundle and rug, which devs launch again and again, and how each verdict played out. Brain is that memory as an API for your bot, terminal or AI agent. It answers from memory instantly and never runs a new scan."
       />
+
+      <BrainNeurons nodes={90} className="mb-5 h-[300px] rounded-2xl border border-cyan-400/20 bg-[#03050a] shadow-[0_0_50px_rgba(34,211,238,0.12)] sm:h-[420px]" />
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-4">

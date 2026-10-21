@@ -189,12 +189,18 @@ async function read(chain: string, token: Hex, opts: { snipers?: SniperReport; p
   const history = walletHistory([...held.keys()], token);
   const fundCount = new Map<string, number>();
   for (const [w, f] of edges) if (held.has(w) && f !== creator) fundCount.set(f, (fundCount.get(f) ?? 0) + 1);
-  rememberWallets(token, chain, {
-    holder: ops.flatMap((o) => (groups.get(o.root) ?? []).filter((w) => held.has(w))),
-    bundle: wallets.filter((w) => roles.get(w)?.has("bundle")),
-    sniper: (opts.snipers?.buyers ?? []).map((b) => b.wallet),
-    funder: [...fundCount].filter(([, n]) => n >= 2).map(([f]) => f),
-    dev: creator ? [creator] : [],
-  });
+  rememberWallets(
+    token,
+    chain,
+    {
+      holder: ops.flatMap((o) => (groups.get(o.root) ?? []).filter((w) => held.has(w))),
+      bundle: wallets.filter((w) => roles.get(w)?.has("bundle")),
+      sniper: (opts.snipers?.buyers ?? []).map((b) => b.wallet),
+      funder: [...fundCount].filter(([, n]) => n >= 2).map(([f]) => f),
+      dev: creator ? [creator] : [],
+    },
+    // Кошельки каждого оператора скана: из них Brain собирает операторов между токенами.
+    ops.map((o) => groups.get(o.root) ?? []),
+  );
   return { operators: ops.slice(0, 5).map((o) => ({ wallets: o.wallets, pct: o.pct, roles: o.roles, devLinked: o.devLinked })), devSnipers, ...(history ? { history } : {}), ...(map ? { map } : {}) };
 }

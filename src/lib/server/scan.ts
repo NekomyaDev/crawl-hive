@@ -2,7 +2,7 @@
 // адресу — рынок (DexScreener), права минта и держатели (Solana RPC; на Robinhood Chain — GeckoTerminal и
 // владелец контракта), клоны тикера, упоминания в Telegram — и сводят всё в оценку 0–100 с одной строкой вывода.
 import "server-only";
-import { trackVerdict, type TrackEntry } from "./track";
+import { trackStats, trackVerdict, type TrackEntry } from "./track";
 import { PublicKey } from "@solana/web3.js";
 import { bestPairs, searchPairs, type PairInfo } from "./crawl/dexscreener";
 import { fetchChannel } from "./crawl/sources/telegram";
@@ -109,6 +109,15 @@ const CORE: Record<string, string> = {
 export const SCAN_CHAINS: Record<string, string> = { solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain", base: "Base" };
 const chainName = (c: string) => SCAN_CHAINS[c] ?? c;
 const RECENT_KEY = "recentScans";
+// Сколько монет моложе 30 минут (TOO_EARLY) слились за сутки, по Track Record; кэш на 10 минут.
+let earlyCache: { at: number; pct: number | null } | undefined;
+function earlyDumpPct() {
+  if (earlyCache && Date.now() - earlyCache.at < 600_000) return earlyCache.pct;
+  const v = trackStats().by.find((x) => x.verdict === "TOO_EARLY");
+  earlyCache = { at: Date.now(), pct: v && v.settled >= 50 ? Math.round((v.dumped / v.settled) * 100) : null };
+  return earlyCache.pct;
+}
+
 const SAVED_KEY = "scanResults";
 const SAVED_MAX = 200;
 const CACHE_MS = 2 * 60_000;
@@ -674,21 +683,23 @@ export async function runScan(
     !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !xray?.findings.some((f) => f.severity === "high") && !factors.some((f) => SERIOUS.includes(f.label));
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";
   const worst = [...factors].sort((a, b) => a.impact - b.impact)[0];
+  const early = tooEarly ? earlyDumpPct() : null;
   const reason = tooEarly
-    ? "Pair is under 30 minutes old: too early to judge"
+    ? `Under 30 minutes old, early read only${early ? `: ${early}% of coins this young dumped within 24h` : ""}. Scan again after 30 min`
     : worst && worst.impact < 0
       ? `${worst.label}: ${worst.note}`
       : core
         ? `${core}: a core ${chainName(chain)} asset, not a memecoin`
         : "No red flags found by the crawlers";
 
-  const trust = trustEnabled() ? trustScore({ score: tooEarly ? null : score, verdict }, larp) : null;
+  const trust = trustEnabled() ? trustScore({ score, verdict }, larp) : null;
   const result: ScanResult = {
     id: address,
     chain,
     symbol: symbol || address.slice(0, 4),
     name: p?.baseToken.name ?? "",
-    score: tooEarly ? null : score,
+    // Свежей монете тоже показываем предварительную оценку: прочерк прятал самый частый исход (слив).
+    score,
     verdict,
     reason,
     factors,

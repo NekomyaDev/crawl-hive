@@ -1,5 +1,6 @@
 // CrawlHive Brain — память роя по API: что мы знаем о кошельке, деве и токене по прошлым сканам, и насколько
-// честны наши вердикты. Новых сканов не запускает: только walletMem, снимки токенов, сохранённые сканы и Track Record.
+// честны наши вердикты. Новых сканов не запускает: только память кошельков и операторы (SQLite, memory-db.ts),
+// снимки токенов, сохранённые сканы и Track Record.
 // Доступ: бесплатно с лимитом по IP; держателям $CRAWLHIVE (Bearer: сессия сайта или ключ бота chb_/cht_) лимит в
 // BRAIN_HOLDER_X раз выше; сверх лимита — оплата за вызов по x402 (USDC на Solana), выручка идёт в байбек как у сканов.
 import "server-only";
@@ -12,7 +13,8 @@ import { clientIp } from "./http";
 import { isHolder } from "./rewards";
 import { allowHit, savedScan } from "./scan";
 import { tokenSnapshots } from "./scan-memory";
-import { walletEntries, walletMemSize, type MemRole } from "./scan-operators";
+import { memDb, operators, operatorTokens, rowsFor } from "./memory-db";
+import { walletEntries, walletMemCap, walletMemSize, type MemRole } from "./scan-operators";
 import { ApiError } from "./store";
 import { trackIndex, trackStats } from "./track";
 import { paidCall, x402Config, type X402Route } from "./x402";
@@ -109,11 +111,106 @@ function baselineDumpRate() {
   return v;
 }
 
-const memory = () => ({ wallets: walletMemSize(), cap: 8000, tokensPerWallet: 20 });
+const memory = () => {
+  const cap = walletMemCap();
+  return { wallets: walletMemSize(), cap, tokensPerWallet: cap ? 20 : null, store: cap ? "meta" : "sqlite" };
+};
+
+// ---------- операторы и риск ----------
+
+// Оператор: кошельки, которые рой видел в одной группе связанных кошельков на 2+ разных токенах (memory-db.ts).
+function operatorStats(id: string) {
+  const op = operators().byId.get(id);
+  const d = memDb();
+  if (!op || !d) return null;
+  const toks = operatorTokens(d, op.wallets);
+  const rows = rowsFor(d, op.wallets);
+  const roles: Partial<Record<MemRole, number>> = {};
+  for (const r of rows) roles[r.role] = (roles[r.role] ?? 0) + 1;
+  const counts = { settled: 0, dumped: 0, rugged: 0, survived: 0, open: 0, untracked: 0 };
+  const chains = new Set<string>();
+  for (const r of rows) chains.add(r.chain);
+  const tokens = toks.map((t) => {
+    const { e, outcome } = outcomeOf(t.token);
+    counts[outcome === "rugged" || outcome === "dumped" ? "dumped" : outcome]++;
+    if (outcome === "rugged") counts.rugged++;
+    if (outcome === "rugged" || outcome === "dumped" || outcome === "survived") counts.settled++;
+    return { token: t.token, symbol: e?.symbol ?? null, verdict: e?.verdict ?? null, outcome, at: t.at || null };
+  });
+  const times = toks.map((t) => t.at).filter(Boolean);
+  return {
+    op,
+    roles,
+    chains: [...chains],
+    tokens,
+    outcomes: counts,
+    dumpRate: counts.settled ? Math.round((counts.dumped / counts.settled) * 1000) / 1000 : null,
+    firstSeen: times.length ? new Date(Math.min(...times)).toISOString() : null,
+    lastSeen: times.length ? new Date(Math.max(...times)).toISOString() : null,
+  };
+}
+
+function operatorBrief(wallet: string) {
+  const id = operators().byWallet.get(normAddr(wallet));
+  const st = id ? operatorStats(id) : null;
+  return st ? { id: st.op.id, wallets: st.op.wallets.length, tokens: st.tokens.length, dumpRate: st.dumpRate, settled: st.outcomes.settled } : null;
+}
+
+// Риск кошелька 0-100. Доля рухнувших токенов стягивается к базе (как будто у кошелька есть ещё PRIOR токенов
+// с обычным для мемкоинов исходом): 1 из 1 рухнувших почти ничего не значит, 9 из 10 — значит. Дальше вес роли
+// (дев и спонсор весят больше снайпера, связанный держатель меньше всех) и история его оператора.
+const PRIOR = 4;
+const ROLE_W: Record<MemRole, number> = { dev: 1, funder: 0.9, bundle: 0.85, sniper: 0.6, holder: 0.4, linked: 0.3 };
+const shrink = (dumped: number, settled: number, base: number) => (dumped + PRIOR * base) / (settled + PRIOR);
+// 0.5 = как у всех мемкоинов, 1 = рухнуло всё, 0 = заметно лучше базы.
+const rel = (p: number, base: number) => Math.min(1, Math.max(0, 0.5 + ((p - base) / (1 - base)) * 0.5));
+
+function walletRisk(roles: Partial<Record<MemRole, number>>, c: { settled: number; dumped: number }, op: ReturnType<typeof operatorBrief>) {
+  const base = baselineDumpRate();
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  if (base == null || (!c.settled && !op?.settled)) return { score: null, level: "unknown" as const, reasons: ["Not enough graded coins for this wallet yet"] };
+  const p = shrink(c.dumped, c.settled, base);
+  const top = (Object.keys(roles) as MemRole[]).sort((a, b) => ROLE_W[b] - ROLE_W[a])[0];
+  const w = top ? ROLE_W[top] : 0.3;
+  const o = op?.settled ? rel(shrink(op.settled * (op.dumpRate ?? 0), op.settled, base), base) : 0.5;
+  const score = Math.round(100 * (0.6 * rel(p, base) + 0.25 * w + 0.15 * o));
+  const reasons: string[] = [];
+  if (c.settled) reasons.push(`${c.dumped} of ${c.settled} graded coins dumped (baseline ${pct(base)})`);
+  if (c.settled < 3) reasons.push("Few graded coins, score pulled toward the baseline");
+  if (roles.dev) reasons.push(`Dev on ${roles.dev} coin${roles.dev > 1 ? "s" : ""}`);
+  if (roles.funder) reasons.push(`Funded linked wallets on ${roles.funder} coin${roles.funder > 1 ? "s" : ""}`);
+  if (roles.bundle) reasons.push(`Bundled on ${roles.bundle} coin${roles.bundle > 1 ? "s" : ""}`);
+  if (roles.sniper) reasons.push(`Sniped ${roles.sniper} coin${roles.sniper > 1 ? "s" : ""}`);
+  if (op) reasons.push(`Part of operator ${op.id}: ${op.wallets} wallets across ${op.tokens} coins${op.dumpRate != null ? `, ${pct(op.dumpRate)} dumped` : ""}`);
+  return { score, level: score >= 65 ? ("high" as const) : score >= 50 ? ("medium" as const) : ("low" as const), reasons };
+}
+
+export function operatorReport(raw: string) {
+  const id = (raw ?? "").trim();
+  if (!/^op_[a-f0-9]{12}$/.test(id)) throw new ApiError("Pass an operator id like op_1a2b3c4d5e6f");
+  const st = operatorStats(id);
+  if (!st) throw new ApiError("No such operator. Operators are rebuilt every 10 minutes; ids can change when two operators merge.", 404);
+  return {
+    id,
+    wallets: st.op.wallets.length,
+    members: st.op.wallets.slice(0, 200),
+    tokens: st.tokens.length,
+    chains: st.chains,
+    roles: st.roles,
+    outcomes: st.outcomes,
+    dumpRate: st.dumpRate,
+    baselineDumpRate: baselineDumpRate(),
+    firstSeen: st.firstSeen,
+    lastSeen: st.lastSeen,
+    coins: st.tokens.slice(0, 100),
+    notes: "An operator is a set of wallets the swarm saw linked together (same funder, bundle or dev group) on 2 or more different coins. Ids are stable until two operators merge.",
+  };
+}
 
 export function walletReport(raw: string) {
   const wallet = brainAddress(raw);
   const list = walletEntries(wallet).reverse();
+  const operator = operatorBrief(wallet);
   const roles: Partial<Record<MemRole, number>> = {};
   const counts = { settled: 0, dumped: 0, rugged: 0, survived: 0, open: 0, untracked: 0 };
   const history = list.map((x) => {
@@ -142,6 +239,8 @@ export function walletReport(raw: string) {
     outcomes: counts,
     dumpRate: counts.settled ? Math.round((counts.dumped / counts.settled) * 1000) / 1000 : null,
     baselineDumpRate: baselineDumpRate(),
+    risk: walletRisk(roles, counts, operator),
+    operator,
     history,
     memory: memory(),
     notes: "Seen means the swarm met this wallet as a sniper, bundle, dev, funder or linked holder while scanning other tokens. Dumped means the token fell 50%+ within 24h of the scan (rugged included). Compare dumpRate with baselineDumpRate: most memecoins fall.",
@@ -159,9 +258,9 @@ export function parseWallets(input: unknown) {
 export function walletsReport(wallets: string[]) {
   const results = wallets.map((w) => {
     const r = walletReport(w);
-    return { wallet: w, seen: r.seen, tokens: r.tokens, roles: r.roles, outcomes: r.outcomes, dumpRate: r.dumpRate };
+    return { wallet: w, seen: r.seen, tokens: r.tokens, roles: r.roles, outcomes: r.outcomes, dumpRate: r.dumpRate, risk: r.risk, operator: r.operator };
   });
-  return { checked: results.length, seen: results.filter((r) => r.seen).length, baselineDumpRate: baselineDumpRate(), results, memory: memory() };
+  return { checked: results.length, seen: results.filter((r) => r.seen).length, highRisk: results.filter((r) => r.risk.level === "high").length, operators: [...new Set(results.map((r) => r.operator?.id).filter(Boolean))], baselineDumpRate: baselineDumpRate(), results, memory: memory() };
 }
 
 export async function devReport(raw: string) {

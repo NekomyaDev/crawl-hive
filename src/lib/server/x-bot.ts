@@ -223,13 +223,16 @@ async function handle(t: Tweet, refs: Map<string, Tweet>, s: State, site: string
   const asMain = main && !!mainTokens();
   const parent = t.referenced_tweets?.find((r) => r.type === "replied_to" || r.type === "quoted");
   // Достаточно тегнуть бота ответом на твит с контрактом: адрес берём из упоминания, а если его нет, то из твита выше.
-  // Упоминание основного: ответы под нашими постами X тоже считает упоминаниями, поэтому берём только адрес
-  // из самого твита, без твита выше и тикера, и не сканируем свой же токен.
-  let addr = main ? addrOf(t) : (addrOf(t) ?? (parent ? addrOf(refs.get(parent.id)) : undefined));
+  // Упоминание основного: ответы под нашими постами X тоже считает упоминаниями. Твит выше берём, только если
+  // в упоминании одни теги (человек явно позвал нас под монетой) и этот твит не наш; свой токен не сканируем.
+  const up = parent ? refs.get(parent.id) : undefined;
+  const onlyTags = !t.text.replace(/@\w+/g, "").replace(/[\s.,!?·]+/g, "");
+  const useUp = !main || (onlyTags && !!up && up.author_id !== s.mainId && up.author_id !== s.me);
+  let addr = addrOf(t) ?? (useUp ? addrOf(up) : undefined);
   if (main && addr === OWN_MINT) return;
   // Контракта нет: пробуем тикер из упоминания или из твита выше.
   let byTick = false;
-  if (!addr && !main) {
+  if (!addr && (!main || useUp)) {
     const tick = tickerOf(t) ?? (parent ? tickerOf(refs.get(parent.id)) : undefined);
     const hit = tick ? await byTicker(tick).catch(() => null) : null;
     if (hit) {
