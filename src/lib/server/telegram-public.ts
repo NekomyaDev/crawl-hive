@@ -781,6 +781,34 @@ async function walletWatchText(chat: string) {
   return [`👛 <b>Wallets</b> · ${st.list.length}/${st.max ?? "∞"} (${st.tier})`, ...(rows.length ? rows : ["Empty. Add one: /watch &lt;wallet&gt; [label]"])].join("\n");
 }
 
+// Watch оператора (Whale): /watchop <кошелёк-участник или op_…> [подпись]. Кошелёк сводится к его оператору.
+async function watchOperator(chat: string, arg: string) {
+  const [target, ...label] = arg.trim().split(/\s+/);
+  if (!target) return send(chat, "Send /watchop followed by a member wallet or an operator id, e.g. <code>/watchop op_1a2b3c4d5e6f</code>. I DM you when any wallet of that operator shows up on a new coin (Whale).");
+  const owner = await watchOwner(chat);
+  if (!owner) return send(chat, LINK_FIRST());
+  const { addWatchOp } = await import("./operator-watch");
+  try {
+    const r = await addWatchOp(owner, target, label.join(" "));
+    return send(chat, `🕸 Watching operator <code>${esc(r.op)}</code> (${r.members} wallets). ${r.count}/${r.max} on your Whale plan.\nOne DM per coin when any of its wallets shows up. /watchlist · /unwatch ${esc(r.op)}`);
+  } catch (e) {
+    return send(chat, esc((e as Error).message));
+  }
+}
+
+async function operatorWatchText(chat: string) {
+  const owner = await watchOwner(chat);
+  if (!owner) return null;
+  const { watchOpsState } = await import("./operator-watch");
+  const st = await watchOpsState(owner).catch(() => null);
+  if (!st) return null;
+  if (!st.max) return `🕸 <b>Operators</b>\nOperator watch is a Whale perk: ${siteUrl()}/pricing`;
+  const rows = st.list.map(
+    (o) => `<code>${esc(o.op ?? o.anchor.slice(0, 4) + "…" + o.anchor.slice(-4))}</code>${o.label ? ` ${esc(o.label)}` : ""} · ${o.op ? `${o.members} wallets · ${o.coins} coin${o.coins === 1 ? "" : "s"}${o.dumpRate != null ? ` · ${Math.round(o.dumpRate * 100)}% dumped` : ""}` : "not linked right now"}`,
+  );
+  return [`🕸 <b>Operators</b> · ${st.list.length}/${st.max}`, ...(rows.length ? rows : ["Empty. Add one: /watchop &lt;wallet or op id&gt;"])].join("\n");
+}
+
 function welcome(chat: string) {
   const bot = telegramBotName();
   sendPhoto(
@@ -793,6 +821,7 @@ function welcome(chat: string) {
       "Solana · Robinhood Chain · BNB Chain · pump.fun · Meteora · four.meme",
       "",
       "👛 <b>/watch</b> &lt;wallet&gt;: I DM you when a wallet you follow shows up on a new coin ($CRAWLHIVE holders and Pro).",
+      "🕸 <b>/watchop</b> &lt;wallet or op id&gt;: watch a whole operator, every linked wallet (Whale).",
       "",
       `🔥 <b>$${TOKEN.symbol}</b> is live: the treasury buys back and burns it every 12 hours.`,
       `<code>${TOKEN.mint}</code>`,
@@ -926,12 +955,14 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   if (cmd === "/narrativealerts") return narrMenu(chat);
   if (cmd === "/burns") return burnsMenu(chat);
   if (cmd === "/watch") return watchWallet(chat, arg);
+  if (cmd === "/watchop") return watchOperator(chat, arg);
   if (cmd === "/watchlist") {
     const mine = (watches()[chat] ?? []).filter((w) => Date.now() - w.at < WATCH_MS);
     const tokens = mine.length
       ? ["👁 <b>Tokens</b>", ...mine.map((w) => `<a href="${siteUrl()}/scan/${w.id}">$${esc(w.symbol)}</a> · ${w.verdict.replace("_", " ")} · ${Math.ceil((w.at + WATCH_MS - Date.now()) / 86400_000)}d left\n<code>${esc(w.id)}</code>`)].join("\n")
       : "No tokens watched. Scan a token and tap 👁 Watch.";
-    return send(chat, `${await walletWatchText(chat)}\n\n${tokens}`);
+    const opsText = await operatorWatchText(chat);
+    return send(chat, `${await walletWatchText(chat)}${opsText ? `\n\n${opsText}` : ""}\n\n${tokens}`);
   }
   if (cmd === "/unwatch") {
     const target = arg.trim();
@@ -940,12 +971,15 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
     if (owner && target) {
       const { removeWatch } = await import("./watchlist");
       if (await Promise.resolve().then(() => removeWatch(owner, target)).catch(() => false)) return send(chat, "Removed from your wallet watchlist.");
+      // Потом операторы (Whale): по id или кошельку-участнику.
+      const { removeWatchOp } = await import("./operator-watch");
+      if (await Promise.resolve().then(() => removeWatchOp(owner, target)).catch(() => false)) return send(chat, "Stopped watching that operator.");
     }
     const all = watches();
     const before = all[chat]?.length ?? 0;
     all[chat] = (all[chat] ?? []).filter((w) => w.id !== target);
     saveWatches(all);
-    return send(chat, (all[chat]?.length ?? 0) < before ? "Removed." : "Send /unwatch followed by a wallet or token address from /watchlist.");
+    return send(chat, (all[chat]?.length ?? 0) < before ? "Removed." : "Send /unwatch followed by a wallet, operator id or token address from /watchlist.");
   }
   if (cmd === "/settings") {
     const p = prefs(chat);

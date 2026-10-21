@@ -33,7 +33,7 @@ const ROWS: [string, string, string, string, string][] = [
   ["Extension", "Compact panel", "+ More: bubble map, seen wallets", "+ watchlist alerts in the panel (soon)", "Everything"],
   ["Launch Radar", "Live feed delayed 5 min", "Live feed", "Live feed + filters and TG alerts (soon)", "Live feed, early access (soon)"],
   ["Narrative Radar", "Top narratives", "+ new narrative alerts", "+ coins inside each narrative", "Everything"],
-  ["Wallet watchlist", "None", "3 wallets", "50 wallets, alert when a known rugger enters a new coin", "500 wallets"],
+  ["Wallet watchlist", "None", "3 wallets", "50 wallets, alert when a known rugger enters a new coin", "500 wallets + watch whole operators (25)"],
   ["Auto-scan your positions", "None", "None", "20 positions (soon)", "100 positions (soon)"],
   ["Crawlers", "1 free crawler", "Spawn discount (soon)", "3 crawlers included (soon)", "Private crawlers (soon)"],
   ["Brain API", "30 lookups / 10 min", "10x", "20x + personal key", "50x"],

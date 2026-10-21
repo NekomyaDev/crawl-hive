@@ -265,6 +265,8 @@ export function rememberWallets(token: string, chain: string, w: Partial<Record<
   const seenNow = new Map<string, MemRole>(byWallet);
   for (const g of groups) for (const x of g) if (!seenNow.has(norm(x))) seenNow.set(norm(x), "linked");
   import("./watchlist").then((m) => m.notifyWatchers(t, chain, seenNow)).catch(() => {});
+  // Watch операторов (Whale): те же кошельки скана сверяются с операторами, за которыми следят целиком.
+  import("./operator-watch").then((m) => m.notifyOperatorWatchers(t, chain, seenNow)).catch(() => {});
   const d = db();
   if (d) {
     try {

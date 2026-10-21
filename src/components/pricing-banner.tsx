@@ -15,7 +15,7 @@ export function PricingBanner({ className }: { className?: string }) {
   const tiers = [
     { name: "Holder", icon: "🟢", how: `Hold ${tok(need?.holder, "$10 of $" + TOKEN.symbol)}`, perks: "Live radar · 60 bot scans a day · 3 watched wallets", ring: "border-lime/50", text: "text-lime" },
     { name: "Pro", icon: "🔥", how: `Burn ${tok(need?.pro, "about $10")} a month`, perks: "Unlimited bot · 50 watched wallets · personal Brain key", ring: "border-pink/60", text: "text-pink" },
-    { name: "Whale", icon: "🐋", how: `Hold ${tok(need?.whale, "$100 of $" + TOKEN.symbol)}`, perks: "Everything · 500 watched wallets · max Brain limits", ring: "border-sky/50", text: "text-sky" },
+    { name: "Whale", icon: "🐋", how: `Hold ${tok(need?.whale, "$100 of $" + TOKEN.symbol)}`, perks: "Everything · 500 watched wallets · watch whole operators (25) · max Brain limits", ring: "border-sky/50", text: "text-sky" },
   ];
   return (
     <div className={cn("relative overflow-hidden rounded-2xl border-2 border-honey/40 bg-[#07080b] p-5 shadow-[0_0_50px_rgba(255,176,32,0.14)] lg:p-7", className)}>

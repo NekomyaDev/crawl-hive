@@ -18,11 +18,12 @@ export const TIER_USD = {
 export const PRO_DAYS = num(process.env.TIER_PRO_DAYS, 30);
 
 // Лимиты по тарифам. Infinity — без лимита. Части продукта берут отсюда, а не держат свои числа.
-export const TIER_LIMITS: Record<Tier, { watchlist: number; botScansDay: number; brainMult: number; radarDelayMin: number; positions: number }> = {
-  free: { watchlist: 0, botScansDay: 20, brainMult: 1, radarDelayMin: 5, positions: 0 },
-  holder: { watchlist: 3, botScansDay: 60, brainMult: 10, radarDelayMin: 0, positions: 0 },
-  pro: { watchlist: 50, botScansDay: Infinity, brainMult: 20, radarDelayMin: 0, positions: 20 },
-  whale: { watchlist: 500, botScansDay: Infinity, brainMult: 50, radarDelayMin: 0, positions: 100 },
+export const TIER_LIMITS: Record<Tier, { watchlist: number; botScansDay: number; brainMult: number; radarDelayMin: number; positions: number; operators: number }> = {
+  free: { watchlist: 0, botScansDay: 20, brainMult: 1, radarDelayMin: 5, positions: 0, operators: 0 },
+  holder: { watchlist: 3, botScansDay: 60, brainMult: 10, radarDelayMin: 0, positions: 0, operators: 0 },
+  pro: { watchlist: 50, botScansDay: Infinity, brainMult: 20, radarDelayMin: 0, positions: 20, operators: 0 },
+  // operators — watch операторов целиком (группы связанных кошельков), только Whale.
+  whale: { watchlist: 500, botScansDay: Infinity, brainMult: 50, radarDelayMin: 0, positions: 100, operators: 25 },
 };
 
 // Цена токена: из рынка (DexScreener через buyback.tokenInfo), кэш 5 минут.

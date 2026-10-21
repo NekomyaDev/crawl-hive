@@ -58,6 +58,9 @@ export function memDb(): Db | null {
       CREATE INDEX IF NOT EXISTS watch_target ON watch (target);
       CREATE TABLE IF NOT EXISTS watch_alerts (owner TEXT NOT NULL, target TEXT NOT NULL, token TEXT NOT NULL, chain TEXT NOT NULL, role TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (owner, target, token)) WITHOUT ROWID;
       CREATE INDEX IF NOT EXISTS watch_alerts_owner ON watch_alerts (owner, at);
+      CREATE TABLE IF NOT EXISTS watch_ops (owner TEXT NOT NULL, anchor TEXT NOT NULL, op TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL, PRIMARY KEY (owner, anchor)) WITHOUT ROWID;
+      CREATE TABLE IF NOT EXISTS watch_op_alerts (owner TEXT NOT NULL, anchor TEXT NOT NULL, op TEXT NOT NULL, token TEXT NOT NULL, chain TEXT NOT NULL, members TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (owner, anchor, token)) WITHOUT ROWID;
+      CREATE INDEX IF NOT EXISTS watch_op_alerts_owner ON watch_op_alerts (owner, at);
       CREATE TABLE IF NOT EXISTS launches (token TEXT PRIMARY KEY, chain TEXT NOT NULL, deployer TEXT, factory TEXT, pool_creator TEXT, tx TEXT, launched_at INTEGER, seen_at INTEGER NOT NULL) WITHOUT ROWID;
       CREATE INDEX IF NOT EXISTS launches_deployer ON launches (deployer);
       CREATE INDEX IF NOT EXISTS launches_factory ON launches (factory);
@@ -277,3 +280,27 @@ export function alertOnce(d: Db, a: Omit<WatchAlert, "at">) {
 }
 export const recentAlerts = (d: Db, owner: string, limit = 30) =>
   d.db.prepare("SELECT owner, target, token, chain, role, at FROM watch_alerts WHERE owner = ? ORDER BY at DESC LIMIT ?").all(owner, limit) as unknown as WatchAlert[];
+
+// ---------- watch операторов (Whale): следят за группой целиком, а не за кошельком ----------
+// id оператора меняется, когда две группы сливаются, поэтому храним якорь — кошелёк-участник (наименьший в группе
+// на момент добавления). Текущий оператор всегда находится по якорю, и новые участники группы попадают под watch сами.
+
+export interface WatchOpRow { owner: string; anchor: string; op: string; label: string; at: number }
+export interface WatchOpAlert { owner: string; anchor: string; op: string; token: string; chain: string; members: string; at: number }
+
+export function watchOpAdd(d: Db, owner: string, anchor: string, op: string, label: string) {
+  d.db.prepare("INSERT INTO watch_ops (owner, anchor, op, label, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (owner, anchor) DO UPDATE SET op = excluded.op, label = excluded.label").run(owner, anchor, op, label, Date.now());
+}
+export const watchOpRemove = (d: Db, owner: string, anchor: string) => Number(d.db.prepare("DELETE FROM watch_ops WHERE owner = ? AND anchor = ?").run(owner, anchor).changes) > 0;
+export const watchOpList = (d: Db, owner: string) => d.db.prepare("SELECT owner, anchor, op, label, at FROM watch_ops WHERE owner = ? ORDER BY at").all(owner) as unknown as WatchOpRow[];
+// Все watch операторов разом: таблица маленькая (до 25 на Whale), сверяется целиком после каждого скана.
+export const watchOpAll = (d: Db) => d.db.prepare("SELECT owner, anchor, op, label, at FROM watch_ops").all() as unknown as WatchOpRow[];
+export const watchOpAny = (d: Db) => !!d.db.prepare("SELECT 1 FROM watch_ops LIMIT 1").get();
+// Запомнить последний известный id оператора (после слияния групп он другой).
+export const watchOpTouch = (d: Db, owner: string, anchor: string, op: string) => d.db.prepare("UPDATE watch_ops SET op = ? WHERE owner = ? AND anchor = ?").run(op, owner, anchor);
+// true — алерт по этому оператору и токену новый.
+export function opAlertOnce(d: Db, a: Omit<WatchOpAlert, "at">) {
+  return Number(d.db.prepare("INSERT OR IGNORE INTO watch_op_alerts (owner, anchor, op, token, chain, members, at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(a.owner, a.anchor, a.op, a.token, a.chain, a.members, Date.now()).changes) > 0;
+}
+export const recentOpAlerts = (d: Db, owner: string, limit = 20) =>
+  d.db.prepare("SELECT owner, anchor, op, token, chain, members, at FROM watch_op_alerts WHERE owner = ? ORDER BY at DESC LIMIT ?").all(owner, limit) as unknown as WatchOpAlert[];

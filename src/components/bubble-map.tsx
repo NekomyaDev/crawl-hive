@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { WatchButton } from "./watch-button";
+import { WatchOperatorButton } from "./watch-operator-button";
 
 export interface BubbleNode {
   w: string;
@@ -655,30 +656,33 @@ export function BubbleMap({
       {!!ops?.length && (
         <div className="flex flex-wrap gap-2 border-t border-white/5 px-5 py-3">
           {ops.map((o, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setFocus(focus === i ? null : i)}
-              className={cn(
-                "flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] transition-colors",
-                focus === i ? "bg-white/10" : "hover:bg-white/5",
-              )}
-              style={{ borderColor: `${NEON[i % NEON.length]}66` }}
-            >
-              <span
-                className="size-2 rounded-full"
-                style={{
-                  background: NEON[i % NEON.length],
-                  boxShadow: `0 0 8px ${NEON[i % NEON.length]}`,
-                }}
-              />
-              <span className="font-semibold">{o.basis?.length === 1 && o.basis[0] === "funder" ? `Connection ${i + 1}` : `Operator ${i + 1}`}</span>
-              <span className="text-white/50">
-                {o.wallets} wallets · {o.pct.toFixed(1)}%
-                {o.roles.length ? ` · ${o.roles.join("+")}` : ""}
-                {o.basis?.length ? ` · ${o.basis.length === 1 && o.basis[0] === "funder" ? "shared funder only" : (BASIS_TEXT[o.basis[0]] ?? o.basis[0])}` : ""}
-              </span>
-            </button>
+            <span key={i} className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setFocus(focus === i ? null : i)}
+                className={cn(
+                  "flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] transition-colors",
+                  focus === i ? "bg-white/10" : "hover:bg-white/5",
+                )}
+                style={{ borderColor: `${NEON[i % NEON.length]}66` }}
+              >
+                <span
+                  className="size-2 rounded-full"
+                  style={{
+                    background: NEON[i % NEON.length],
+                    boxShadow: `0 0 8px ${NEON[i % NEON.length]}`,
+                  }}
+                />
+                <span className="font-semibold">{o.basis?.length === 1 && o.basis[0] === "funder" ? `Connection ${i + 1}` : `Operator ${i + 1}`}</span>
+                <span className="text-white/50">
+                  {o.wallets} wallets · {o.pct.toFixed(1)}%
+                  {o.roles.length ? ` · ${o.roles.join("+")}` : ""}
+                  {o.basis?.length ? ` · ${o.basis.length === 1 && o.basis[0] === "funder" ? "shared funder only" : (BASIS_TEXT[o.basis[0]] ?? o.basis[0])}` : ""}
+                </span>
+              </button>
+              {/* Кошельки этой группы на карте: по ним сервер находит оператора между токенами. */}
+              <WatchOperatorButton wallets={data.nodes.filter((x) => x.g === i).map((x) => x.w)} />
+            </span>
           ))}
         </div>
       )}
