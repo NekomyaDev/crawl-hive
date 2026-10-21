@@ -11,8 +11,8 @@ export const TIER_ORDER: Tier[] = ["free", "holder", "pro", "whale"];
 
 const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 export const TIER_USD = {
-  holder: num(process.env.TIER_HOLDER_USD, 25),
-  whale: num(process.env.TIER_WHALE_USD, 250),
+  holder: num(process.env.TIER_HOLDER_USD, 10),
+  whale: num(process.env.TIER_WHALE_USD, 100),
   pro: num(process.env.TIER_PRO_USD, 10), // цена Pro за PRO_DAYS, сжиганием
 };
 export const PRO_DAYS = num(process.env.TIER_PRO_DAYS, 30);
@@ -35,16 +35,15 @@ export async function tokenPriceUsd(): Promise<number | null> {
   return price.usd;
 }
 
-// Сколько токенов нужно держать для тарифа сейчас: меньшее из порога в монетах (HOLDER_MIN, Whale = ×10) и порога
-// в долларах. Пока токен дешёвый, действует старый порог и нынешние холдеры ничего не теряют; когда он подорожает,
-// порог опускается до долларового, чтобы новым людям тариф оставался доступен.
+// Сколько токенов нужно держать для тарифа сейчас: порог в долларах (Holder $10, Whale $100) по текущей цене,
+// так что количество монет само следует за ценой. Без цены — запасной порог в монетах (HOLDER_MIN, Whale ×10).
 export async function tierTokens() {
   const p = await tokenPriceUsd();
   const coins = { holder: holderMin(), whale: holderMin() * 10 };
   if (!p) return { ...coins, pro: null as number | null, priceUsd: null as number | null };
   return {
-    holder: Math.min(coins.holder, Math.ceil(TIER_USD.holder / p)),
-    whale: Math.min(coins.whale, Math.ceil(TIER_USD.whale / p)),
+    holder: Math.ceil(TIER_USD.holder / p),
+    whale: Math.ceil(TIER_USD.whale / p),
     pro: Math.ceil(TIER_USD.pro / p),
     priceUsd: p,
   };

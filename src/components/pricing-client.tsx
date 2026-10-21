@@ -135,7 +135,7 @@ export function PricingClient() {
       <Card className="p-5 text-sm text-fg/85">
         <div className="text-lg font-bold text-fg">How it works</div>
         <ul className="mt-2 space-y-1.5">
-          <li>• Holder and Whale: keep the tokens in the wallet you sign in with. The amount is capped at $25 for Holder and $250 for Whale, so it gets smaller if the price goes up.</li>
+          <li>• Holder and Whale: keep the tokens in the wallet you sign in with. The amount follows the price: Holder is about $10 of tokens and Whale about $100, recalculated every few minutes.</li>
           <li>• Pro: you burn the tokens yourself from your wallet, signed in Phantom. Nobody receives them, they leave the supply for good, and the burn shows publicly below.</li>
           <li>• Brain API calls can be bought the same way on the <Link href="/brain" className="text-honey hover:underline">Brain page</Link>.</li>
           <li>• Tiers give access to features. They are not an investment and we make no promises about the token price.</li>

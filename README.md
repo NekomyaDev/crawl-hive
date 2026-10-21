@@ -101,9 +101,9 @@ Scanning stays free for everyone. $CRAWLHIVE unlocks more, see [crawlhive.xyz/pr
 | Tier | How | Highlights |
 | --- | --- | --- |
 | Free | nothing | full scans on the site, 20 Telegram bot scans a day, X bot, Launch Radar 5 minutes behind, Brain 30 lookups per 10 min |
-| Holder | hold 100,000 $CRAWLHIVE or $25 worth, whichever is less | live Launch Radar, 60 bot scans a day, 3 watched wallets, Brain 10x |
+| Holder | hold about $10 of $CRAWLHIVE (amount follows the price) | live Launch Radar, 60 bot scans a day, 3 watched wallets, Brain 10x |
 | Pro | burn about $10 of $CRAWLHIVE per 30 days | unlimited bot scans, 50 watched wallets with alerts, Brain 20x and a personal key |
-| Whale | hold 1,000,000 $CRAWLHIVE or $250 worth, whichever is less | 500 watched wallets, priority queue, Brain 50x |
+| Whale | hold about $100 of $CRAWLHIVE (amount follows the price) | 500 watched wallets, priority queue, Brain 50x |
 
 - Holder and Whale need the coin amount or the dollar amount at the live price, whichever is less.
 - Pro is paid by a burn the buyer signs in Phantom (Token-2022 `burnChecked`). The server builds the unsigned transaction, then verifies the burn onchain: mint, signer, amount and that the signature was not used before. It never holds keys or tokens. Every burn is listed publicly.
@@ -487,7 +487,7 @@ Every scan writes to memory: which wallets sniped, bundled, launched or funded a
 | `GET /api/brain/v1/operator/{id}` | an operator: wallets the swarm saw linked together on 2+ coins, its coins, roles and outcomes |
 | `GET /api/brain/v1/track` | dump rate per verdict, misses included |
 
-Free with a per-IP limit (30 lookups, 5 batches, 60 track calls per 10 minutes). Holders of 100,000 $CRAWLHIVE get 10x: send a bot key or site session as `Authorization: Bearer`. Beyond the limit the endpoint answers 402 and any x402 client pays per call in USDC on Solana ($0.002 lookup, $0.02 batch); that revenue counts toward buybacks like paid scans. Every answer includes `baselineDumpRate`, the share of all graded tokens that dumped, because most memecoins fall and a wallet's record only means something next to it. Wallet and batch answers also carry a `risk` score (0 to 100, with level and reasons) and the wallet's `operator` when it has one. Wallet memory lives in SQLite (`DATA_DIR/brain.db`, `src/lib/server/memory-db.ts`) with no wallet cap; the old capped memory is migrated on first start. Token snapshots keep 5,000 tokens (10 snapshots each).
+Free with a per-IP limit (30 lookups, 5 batches, 60 track calls per 10 minutes). Holders (about $10 of $CRAWLHIVE) get 10x: send a bot key or site session as `Authorization: Bearer`. Beyond the limit the endpoint answers 402 and any x402 client pays per call in USDC on Solana ($0.002 lookup, $0.02 batch); that revenue counts toward buybacks like paid scans. Every answer includes `baselineDumpRate`, the share of all graded tokens that dumped, because most memecoins fall and a wallet's record only means something next to it. Wallet and batch answers also carry a `risk` score (0 to 100, with level and reasons) and the wallet's `operator` when it has one. Wallet memory lives in SQLite (`DATA_DIR/brain.db`, `src/lib/server/memory-db.ts`) with no wallet cap; the old capped memory is migrated on first start. Token snapshots keep 5,000 tokens (10 snapshots each).
 
 Docs and OpenAPI: [h100envy/crawlhive-brain](https://github.com/h100envy/crawlhive-brain). Code: `src/lib/server/brain.ts`, `src/app/api/brain/v1/`.
 
