@@ -110,13 +110,17 @@ export function NavShell({ path }: { path: string }) {
   return (
     <>
       {/* десктоп: боковая панель */}
-      <aside data-chrome className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-line bg-panel/60 p-3 lg:flex">
-        <Link href="/" className="mb-6 flex items-center gap-2 px-2 pt-1">
+      <aside data-chrome className="sticky top-0 hidden no-scrollbar h-screen w-56 shrink-0 flex-col overflow-y-auto border-r border-line bg-panel/60 p-3 lg:flex">
+        <Link href="/" className="mb-4 flex items-center gap-2 px-2 pt-1">
           <Logo size={34} />
           <span className="text-lg font-bold tracking-tight">
             Crawl<span className="text-honey">Hive</span>
           </span>
         </Link>
+        {/* Кошелёк сверху, под логотипом: внизу длинной панели его не видно. */}
+        <div className="mb-4">
+          <WalletButton />
+        </div>
         <nav className="flex flex-col gap-0.5">
           {LINKS.map(({ href, label, icon: Icon, color }) => (
             <Link
@@ -168,9 +172,6 @@ export function NavShell({ path }: { path: string }) {
           <span className="text-base leading-none">🔥</span>${TOKEN.symbol}
           <span className="ml-auto rounded bg-honey px-1.5 py-px text-[9px] font-bold tracking-wide text-black">LIVE</span>
         </Link>
-        <div className="mt-auto">
-          <WalletButton />
-        </div>
       </aside>
 
       {/* мобильный: верхняя полоса + горизонтальные вкладки */}
