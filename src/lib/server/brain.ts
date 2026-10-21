@@ -1,8 +1,9 @@
 // CrawlHive Brain — память роя по API: что мы знаем о кошельке, деве и токене по прошлым сканам, и насколько
 // честны наши вердикты. Новых сканов не запускает: только память кошельков и операторы (SQLite, memory-db.ts),
 // снимки токенов, сохранённые сканы и Track Record.
-// Доступ: бесплатно с лимитом по IP; держателям $CRAWLHIVE (Bearer: сессия сайта или ключ бота chb_/cht_) лимит в
-// BRAIN_HOLDER_X раз выше; сверх лимита — оплата за вызов по x402 (USDC на Solana), выручка идёт в байбек как у сканов.
+// Доступ: бесплатно с лимитом по IP; с ключом (личный chk_, ключ бота chb_/cht_ или сессия сайта) лимит по тарифу
+// кошелька: BRAIN_LIMITS × TIER_LIMITS[tier].brainMult (tiers.ts). Сверх лимита — сначала купленные сжиганием
+// кредиты (user-burns.ts), потом оплата за вызов по x402 (USDC на Solana), выручка идёт в байбек как у сканов.
 import "server-only";
 import type { NextRequest } from "next/server";
 import { connection } from "next/server";
@@ -10,7 +11,9 @@ import { sessionWallet } from "./auth";
 import { botByKey } from "./bots";
 import { devProfile } from "./dev-profile";
 import { clientIp } from "./http";
-import { isHolder } from "./rewards";
+import { walletByBrainKey } from "./brain-keys";
+import { TIER_LIMITS, tierOf, type Tier } from "./tiers";
+import { brainCredits, spendBrainCredit } from "./user-burns";
 import { allowHit, savedScan } from "./scan";
 import { tokenSnapshots } from "./scan-memory";
 import { memDb, operators, operatorTokens, rowsFor } from "./memory-db";
@@ -24,7 +27,6 @@ const EVM_RE = /^0x[a-fA-F0-9]{40}$/;
 const DAY = 24 * 3600_000;
 const WINDOW = 10 * 60_000;
 export const BRAIN_BATCH_MAX = 100;
-const HOLDER_X = Math.max(1, Number(process.env.BRAIN_HOLDER_X ?? 10) || 10);
 
 // Сколько бесплатных вызовов за 10 минут с одного IP. track без оплаты: это наша же открытая статистика.
 export const BRAIN_LIMITS = { lookup: 30, batch: 5, track: 60 } as const;
@@ -35,7 +37,7 @@ export const BRAIN_CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, PAYMENT-SIGNATURE, X-PAYMENT",
-  "Access-Control-Expose-Headers": "X-Brain-Tier, X-Brain-Limit, PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-PAYMENT-RESPONSE",
+  "Access-Control-Expose-Headers": "X-Brain-Tier, X-Brain-Limit, X-Brain-Credits, PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-PAYMENT-RESPONSE",
 };
 
 export const normAddr = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
@@ -47,13 +49,14 @@ export function brainAddress(raw: string | undefined) {
 
 // ---------- доступ ----------
 
-// Кошелёк держателя из Bearer: ключ бота (chb_/cht_) — кошелёк владельца бота, иначе подписанная сессия сайта.
-async function holderOf(req: Request): Promise<string | null> {
+// Кошелёк из Bearer: личный ключ chk_, ключ бота chb_/cht_ (кошелёк владельца бота) или подписанная сессия сайта.
+async function accessOf(req: Request): Promise<{ wallet: string | null; tier: Tier }> {
   const h = req.headers.get("authorization") ?? "";
-  if (!h.startsWith("Bearer ")) return null;
+  if (!h.startsWith("Bearer ")) return { wallet: null, tier: "free" };
   const key = h.slice(7).trim();
-  const wallet = key.startsWith("chb_") || key.startsWith("cht_") ? (botByKey(key)?.wallet ?? null) : sessionWallet(req);
-  return wallet && (await isHolder(wallet).catch(() => false)) ? wallet : null;
+  const wallet = key.startsWith("chk_") ? walletByBrainKey(key) : key.startsWith("chb_") || key.startsWith("cht_") ? (botByKey(key)?.wallet ?? null) : sessionWallet(req);
+  if (!wallet) return { wallet: null, tier: "free" };
+  return { wallet, tier: (await tierOf(wallet).catch(() => null))?.tier ?? "free" };
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -76,15 +79,19 @@ export async function brainRoute(req: NextRequest, kind: BrainKind, work: () => 
   const payHeader = req.headers.get("payment-signature") ?? req.headers.get("x-payment");
   if (paid && payHeader && x402Config()) return paidCall(req, paid, { ready: true, work: async () => work() });
 
-  const holder = await holderOf(req);
-  const max = BRAIN_LIMITS[kind] * (holder ? HOLDER_X : 1);
-  const tier = holder ? "holder" : "free";
-  if (allowHit(holder ? `brain:${kind}:w:${holder}` : `brain:${kind}:ip:${clientIp(req)}`, max, WINDOW)) {
+  const { wallet, tier } = await accessOf(req);
+  const max = BRAIN_LIMITS[kind] * TIER_LIMITS[tier].brainMult;
+  if (allowHit(wallet ? `brain:${kind}:w:${wallet}` : `brain:${kind}:ip:${clientIp(req)}`, max, WINDOW)) {
     const res = await run();
-    return res.ok ? json(res.v, 200, { "X-Brain-Tier": tier, "X-Brain-Limit": `${max}/10min` }) : res.r;
+    return res.ok ? json(res.v, 200, { "X-Brain-Tier": tier, "X-Brain-Limit": `${max}/10min`, ...(wallet ? { "X-Brain-Credits": String(brainCredits(wallet)) } : {}) }) : res.r;
   }
-  const need = `Free limit reached (${max} calls per 10 minutes${holder ? " for holders" : ""}).`;
-  if (paid && x402Config()) return paidCall(req, paid, { ready: true, need: `${need} Pay per call over x402 to keep going${holder ? "" : ", or hold 100k $CRAWLHIVE for a 10x limit"}.`, work: async () => work() });
+  // Лимит тарифа кончился: тратим купленные сжиганием кредиты (track бесплатный, его не списываем).
+  if (wallet && kind !== "track" && spendBrainCredit(wallet)) {
+    const res = await run();
+    return res.ok ? json(res.v, 200, { "X-Brain-Tier": tier, "X-Brain-Limit": `${max}/10min`, "X-Brain-Credits": String(brainCredits(wallet)) }) : res.r;
+  }
+  const need = `Limit reached (${max} calls per 10 minutes on the ${tier} tier).`;
+  if (paid && x402Config()) return paidCall(req, paid, { ready: true, need: `${need} Pay per call over x402, or get a key and burn $CRAWLHIVE for calls at crawlhive.xyz/brain.`, work: async () => work() });
   return json({ error: `${need} Try again in a few minutes.` }, 429, { "Retry-After": "120" });
 }
 

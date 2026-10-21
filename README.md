@@ -94,6 +94,22 @@
 | Oct 14 | **Contract X-Ray** in every scan |
 | Oct 13 | **$CRAWLHIVE** launched on Solana |
 
+## Pricing
+
+Scanning stays free for everyone. $CRAWLHIVE unlocks more, see [crawlhive.xyz/pricing](https://crawlhive.xyz/pricing).
+
+| Tier | How | Highlights |
+| --- | --- | --- |
+| Free | nothing | full scans on the site, 20 Telegram bot scans a day, X bot, Launch Radar 5 minutes behind, Brain 30 lookups per 10 min |
+| Holder | hold 100,000 $CRAWLHIVE or $25 worth, whichever is less | live Launch Radar, 60 bot scans a day, 3 watched wallets, Brain 10x |
+| Pro | burn about $10 of $CRAWLHIVE per 30 days | unlimited bot scans, 50 watched wallets with alerts, Brain 20x and a personal key |
+| Whale | hold 1,000,000 $CRAWLHIVE or $250 worth, whichever is less | 500 watched wallets, priority queue, Brain 50x |
+
+- Holder and Whale need the coin amount or the dollar amount at the live price, whichever is less.
+- Pro is paid by a burn the buyer signs in Phantom (Token-2022 `burnChecked`). The server builds the unsigned transaction, then verifies the burn onchain: mint, signer, amount and that the signature was not used before. It never holds keys or tokens. Every burn is listed publicly.
+- Brain API: personal keys `chk_...` (one per wallet, stored hashed, shown once). Limits follow the key's tier. Extra calls can be bought by burning about $1 of $CRAWLHIVE per 1,000 calls; credits never expire and are used after the tier limit, before x402.
+- Tiers give access to features. They are not an investment and there are no promises about the token price.
+
 ## What is CrawlHive
 
 Memecoin alpha is scattered: a KOL post on X, a coordinated call in a Telegram group, a whale wallet buying a fresh pool. Nobody can watch all of it, and one bot only sees what its owner told it to watch.

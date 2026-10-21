@@ -52,6 +52,10 @@ export function memDb(): Db | null {
       CREATE TABLE IF NOT EXISTS op_members (token TEXT NOT NULL, grp TEXT NOT NULL, wallet TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (token, grp, wallet)) WITHOUT ROWID;
       CREATE INDEX IF NOT EXISTS op_members_wallet ON op_members (wallet);
       CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS watch (owner TEXT NOT NULL, target TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL, PRIMARY KEY (owner, target)) WITHOUT ROWID;
+      CREATE INDEX IF NOT EXISTS watch_target ON watch (target);
+      CREATE TABLE IF NOT EXISTS watch_alerts (owner TEXT NOT NULL, target TEXT NOT NULL, token TEXT NOT NULL, chain TEXT NOT NULL, role TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (owner, target, token)) WITHOUT ROWID;
+      CREATE INDEX IF NOT EXISTS watch_alerts_owner ON watch_alerts (owner, at);
     `);
     host.__crawlhiveMemDb = {
       db,
@@ -199,3 +203,26 @@ export function operatorTokens(d: Db, wallets: string[]): { token: string; at: n
     .prepare("SELECT token, MIN(at) AS at FROM op_members WHERE wallet IN (SELECT value FROM json_each(?)) GROUP BY token")
     .all(JSON.stringify(wallets)) as { token: string; at: number }[];
 }
+
+// ---------- watchlist кошельков (Pro): кто за кем следит и о чём уже предупредили ----------
+
+export interface WatchRow { owner: string; target: string; label: string; at: number }
+export interface WatchAlert { owner: string; target: string; token: string; chain: string; role: string; at: number }
+
+export function watchAdd(d: Db, owner: string, target: string, label: string) {
+  d.db.prepare("INSERT INTO watch (owner, target, label, at) VALUES (?, ?, ?, ?) ON CONFLICT (owner, target) DO UPDATE SET label = excluded.label").run(owner, target, label, Date.now());
+}
+export const watchRemove = (d: Db, owner: string, target: string) => Number(d.db.prepare("DELETE FROM watch WHERE owner = ? AND target = ?").run(owner, target).changes) > 0;
+export const watchList = (d: Db, owner: string) => d.db.prepare("SELECT owner, target, label, at FROM watch WHERE owner = ? ORDER BY at").all(owner) as unknown as WatchRow[];
+export const watchCount = (d: Db, owner: string) => Number((d.db.prepare("SELECT COUNT(*) AS n FROM watch WHERE owner = ?").get(owner) as { n: number }).n);
+// Кто следит за этими кошельками: один индексный запрос на весь скан.
+export function watchersOf(d: Db, targets: string[]): WatchRow[] {
+  if (!targets.length) return [];
+  return d.db.prepare("SELECT owner, target, label, at FROM watch WHERE target IN (SELECT value FROM json_each(?))").all(JSON.stringify(targets)) as unknown as WatchRow[];
+}
+// true — алерт новый (пары владелец+кошелёк+токен ещё не было), false — уже предупреждали.
+export function alertOnce(d: Db, a: Omit<WatchAlert, "at">) {
+  return Number(d.db.prepare("INSERT OR IGNORE INTO watch_alerts (owner, target, token, chain, role, at) VALUES (?, ?, ?, ?, ?, ?)").run(a.owner, a.target, a.token, a.chain, a.role, Date.now()).changes) > 0;
+}
+export const recentAlerts = (d: Db, owner: string, limit = 30) =>
+  d.db.prepare("SELECT owner, target, token, chain, role, at FROM watch_alerts WHERE owner = ? ORDER BY at DESC LIMIT ?").all(owner, limit) as unknown as WatchAlert[];

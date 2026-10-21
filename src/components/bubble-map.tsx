@@ -4,6 +4,7 @@
 // справа рейтинг держателей, наведение синхронизировано. Раскладка — простая детерминированная физика без зависимостей.
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { WatchButton } from "./watch-button";
 
 export interface BubbleNode {
   w: string;
@@ -580,7 +581,7 @@ export function BubbleMap({
                   onMouseEnter={() => setHover(x.i)}
                   onMouseLeave={() => setHover(null)}
                   className={cn(
-                    "cursor-pointer rounded-md px-1.5 py-1 transition-colors",
+                    "group cursor-pointer rounded-md px-1.5 py-1 transition-colors",
                     hover === x.i ? "bg-white/8" : "hover:bg-white/5",
                   )}
                 >
@@ -607,6 +608,7 @@ export function BubbleMap({
                       <span className="num ml-auto font-semibold">
                         {pctText(x.pct)}%
                       </span>
+                      <WatchButton wallet={x.w} className="md:opacity-0 md:group-hover:opacity-100" />
                     </div>
                     <div className="mt-1 ml-6 h-1 rounded-full bg-white/5">
                       <div

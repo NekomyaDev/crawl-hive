@@ -4,6 +4,8 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { BrainNeurons } from "@/components/brain-neurons";
+import { BrainKeys } from "@/components/brain-keys";
+import { BurnLog } from "@/components/burn-log";
 
 export const metadata: Metadata = {
   title: "CrawlHive Brain · memecoin memory API",
@@ -75,13 +77,14 @@ export default function BrainPage() {
         </div>
 
         <div className="space-y-5">
+          <BrainKeys />
           <Card className="p-5 text-sm">
             <div className="text-lg font-bold">Limits and pricing</div>
             <ul className="mt-2 space-y-1.5 text-fg/85">
               <li>• Free: 30 lookups and 5 batches per 10 minutes per IP, /track 60 per 10 minutes</li>
-              <li>• Holders of 100,000 $CRAWLHIVE: 10x the free limits. Send your CrawlHive bot key (chb_…) or site session as Authorization: Bearer</li>
-              <li>• Beyond the limit: pay per call over x402 in USDC on Solana, $0.002 per lookup and $0.02 per batch. No account, no API key</li>
-              <li>• Brain revenue goes to $CRAWLHIVE buyback and burn, like paid scans</li>
+              <li>• With a key (personal chk_…, bot key chb_… or site session as Authorization: Bearer) limits follow your <Link href="/pricing" className="text-honey hover:underline">tier</Link>: Holder 10x, Pro 20x, Whale 50x</li>
+              <li>• Over your limit: burn credits you bought with $CRAWLHIVE (about $1 per 1,000 calls, burned by you in Phantom, never expire)</li>
+              <li>• Or pay per call over x402 in USDC on Solana, $0.002 per lookup and $0.02 per batch. No account, no key. That revenue goes to $CRAWLHIVE buyback and burn</li>
             </ul>
           </Card>
           <Card className="p-5 text-sm">
@@ -98,10 +101,10 @@ export default function BrainPage() {
           <Card className="p-5 text-sm">
             <div className="text-lg font-bold">Read it honestly</div>
             <p className="mt-2 text-fg/85">
-              &quot;Dumped&quot; means the token fell 50% or more within 24 hours of the scan, rugs included. Most memecoins fall, so every answer carries baselineDumpRate: compare a wallet&apos;s record with it, not with zero. Memory covers wallets the swarm met while scanning and keeps the
-              most recent 8,000 wallets.
+              &quot;Dumped&quot; means the token fell 50% or more within 24 hours of the scan, rugs included. Most memecoins fall, so every answer carries baselineDumpRate: compare a wallet&apos;s record with it, not with zero. Memory covers wallets the swarm met while scanning.
             </p>
           </Card>
+          <BurnLog limit={5} compact />
           <Card className="p-5 text-sm">
             <div className="text-lg font-bold">Docs</div>
             <p className="mt-2 text-fg/85">

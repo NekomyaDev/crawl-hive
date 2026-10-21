@@ -3,7 +3,7 @@ import { TOKEN } from "@/lib/token";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket, Sparkles, History, Puzzle, Brain } from "lucide-react";
+import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket, Sparkles, History, Puzzle, Brain, Gem, Eye } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { APP_URL, COMMUNITY_URL, TelegramIcon } from "./telegram-cta";
@@ -23,20 +23,24 @@ const LINKS = [
   { href: "/replay", label: "Gem & Rug Replay", icon: History, color: "text-pink" },
   { href: "/extension", label: "Extension", icon: Puzzle, color: "text-lime" },
   { href: "/brain", label: "Brain API", icon: Brain, color: "text-pink" },
+  { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-lime" },
+  { href: "/pricing", label: "Pricing", icon: Gem, color: "text-sky" },
   { href: "/agents", label: "For Agents", icon: Bot, color: "text-teal" },
   { href: "/market", label: "Marketplace", icon: Store, color: "text-pink" },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-sky" },
   { href: "/governance", label: "Governance", icon: Landmark, color: "text-violet" },
 ];
 
-// Бейдж держателя $CRAWLHIVE: видно, что бонусы (live-радар, лимиты бота) включены.
+// Бейдж тарифа (Holder, Pro, Whale): видно, что бонусы включены. Ведёт на страницу тарифов.
+const BADGE: Record<string, string> = { holder: "bg-lime", pro: "bg-pink", whale: "bg-sky" };
 function HolderBadge() {
-  const { data } = useApi<{ holder: boolean }>("/api/holder", 300_000);
-  if (!data?.holder) return null;
+  const { data } = useApi<{ tier?: string }>("/api/holder", 300_000);
+  const t = data?.tier;
+  if (!t || t === "free") return null;
   return (
-    <span className="rounded bg-lime px-1 py-px text-[9px] font-black tracking-wide text-black" title={`You hold ${TOKEN.symbol}: holder perks are on`}>
-      HOLDER
-    </span>
+    <Link href="/pricing" className={cn("rounded px-1 py-px text-[9px] font-black tracking-wide text-black", BADGE[t])} title={`${TOKEN.symbol} tier: ${t} perks are on`}>
+      {t.toUpperCase()}
+    </Link>
   );
 }
 

@@ -235,6 +235,10 @@ export function rememberWallets(token: string, chain: string, w: Partial<Record<
   const byWallet = new Map<string, MemRole>();
   // Одна роль на кошелёк в токене, по важности: дев, спонсор, снайпер, бандл, держатель.
   for (const r of ["holder", "bundle", "sniper", "funder", "dev"] as const) for (const x of w[r] ?? []) byWallet.set(norm(x), r);
+  // Watchlist: кошельки скана, включая связанных из групп, сверяем с теми, за кем следят люди. Асинхронно, скан не ждёт.
+  const seenNow = new Map<string, MemRole>(byWallet);
+  for (const g of groups) for (const x of g) if (!seenNow.has(norm(x))) seenNow.set(norm(x), "linked");
+  import("./watchlist").then((m) => m.notifyWatchers(t, chain, seenNow)).catch(() => {});
   const d = db();
   if (d) {
     try {
