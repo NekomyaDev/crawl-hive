@@ -16,7 +16,7 @@ import { TIER_LIMITS, tierOf, type Tier } from "./tiers";
 import { brainCredits, spendBrainCredit } from "./user-burns";
 import { allowHit, savedScan } from "./scan";
 import { tokenSnapshots } from "./scan-memory";
-import { memDb, operators, operatorTokens, rowsFor } from "./memory-db";
+import { launchesBy, launchOf, memDb, operators, operatorTokens, rowsFor, type Launch } from "./memory-db";
 import { walletEntries, walletMemCap, walletMemSize, type MemRole } from "./scan-operators";
 import { ApiError } from "./store";
 import { trackIndex, trackStats } from "./track";
@@ -157,17 +157,31 @@ function operatorStats(id: string) {
   };
 }
 
+// strong — в операторе есть бандлы (одна транзакция или блок) или деньги дева; иначе кошельки связаны в основном
+// общими спонсорами, а это связь, не доказательство общего владельца.
 function operatorBrief(wallet: string) {
   const id = operators().byWallet.get(normAddr(wallet));
   const st = id ? operatorStats(id) : null;
-  return st ? { id: st.op.id, wallets: st.op.wallets.length, tokens: st.tokens.length, dumpRate: st.dumpRate, settled: st.outcomes.settled } : null;
+  return st ? { id: st.op.id, wallets: st.op.wallets.length, tokens: st.tokens.length, dumpRate: st.dumpRate, settled: st.outcomes.settled, strong: !!(st.roles.bundle || st.roles.dev) } : null;
+}
+
+// Ссылка на транзакцию выпуска в обозревателе сети.
+const TX_URL: Record<string, string> = { solana: "https://solscan.io/tx/", bsc: "https://bscscan.com/tx/", base: "https://basescan.org/tx/", robinhood: "https://robin.etherscan.io/tx/" };
+const iso = (t: number | null | undefined) => (t ? new Date(t).toISOString() : null);
+// Доказательства запуска токена: транзакция выпуска, когда выпущен и когда рой его впервые увидел. Чего нет — null.
+function evidence(token: string): { tx: string | null; txUrl: string | null; launchedAt: string | null; seenBySwarmAt: string | null; deployer: string | null; factory: string | null; poolCreator: string | null } | null {
+  const d = memDb();
+  const l: Launch | null = d ? launchOf(d, token) : null;
+  if (!l) return null;
+  return { tx: l.tx, txUrl: l.tx && TX_URL[l.chain] ? TX_URL[l.chain] + l.tx : null, launchedAt: iso(l.launchedAt), seenBySwarmAt: iso(l.seenAt), deployer: l.deployer, factory: l.factory, poolCreator: l.poolCreator };
 }
 
 // Риск кошелька 0-100. Доля рухнувших токенов стягивается к базе (как будто у кошелька есть ещё PRIOR токенов
 // с обычным для мемкоинов исходом): 1 из 1 рухнувших почти ничего не значит, 9 из 10 — значит. Дальше вес роли
 // (дев и спонсор весят больше снайпера, связанный держатель меньше всех) и история его оператора.
 const PRIOR = 4;
-const ROLE_W: Record<MemRole, number> = { dev: 1, funder: 0.9, bundle: 0.85, sniper: 0.6, holder: 0.4, linked: 0.3 };
+// factory — контракт лаунчпада: выпускает токены за всех, о человеке ничего не говорит, поэтому почти без веса.
+const ROLE_W: Record<MemRole, number> = { dev: 1, funder: 0.9, bundle: 0.85, sniper: 0.6, pool: 0.5, holder: 0.4, linked: 0.3, factory: 0.05 };
 const shrink = (dumped: number, settled: number, base: number) => (dumped + PRIOR * base) / (settled + PRIOR);
 // 0.5 = как у всех мемкоинов, 1 = рухнуло всё, 0 = заметно лучше базы.
 const rel = (p: number, base: number) => Math.min(1, Math.max(0, 0.5 + ((p - base) / (1 - base)) * 0.5));
@@ -175,11 +189,16 @@ const rel = (p: number, base: number) => Math.min(1, Math.max(0, 0.5 + ((p - bas
 function walletRisk(roles: Partial<Record<MemRole, number>>, c: { settled: number; dumped: number }, op: ReturnType<typeof operatorBrief>) {
   const base = baselineDumpRate();
   const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const keys = Object.keys(roles);
+  if (keys.length && keys.every((k) => k === "factory"))
+    return { score: null, level: "unknown" as const, reasons: [`Launchpad or factory contract on ${roles.factory} coin${(roles.factory ?? 0) > 1 ? "s" : ""}: it creates tokens for many deployers, so its record says nothing about one person`] };
   if (base == null || (!c.settled && !op?.settled)) return { score: null, level: "unknown" as const, reasons: ["Not enough graded coins for this wallet yet"] };
   const p = shrink(c.dumped, c.settled, base);
   const top = (Object.keys(roles) as MemRole[]).sort((a, b) => ROLE_W[b] - ROLE_W[a])[0];
   const w = top ? ROLE_W[top] : 0.3;
-  const o = op?.settled ? rel(shrink(op.settled * (op.dumpRate ?? 0), op.settled, base), base) : 0.5;
+  // Оператор, связанный только общими спонсорами, весит втрое меньше бандла или денег дева: связь, а не доказательство.
+  const raw = op?.settled ? rel(shrink(op.settled * (op.dumpRate ?? 0), op.settled, base), base) : 0.5;
+  const o = op && !op.strong ? 0.5 + (raw - 0.5) / 3 : raw;
   const score = Math.round(100 * (0.6 * rel(p, base) + 0.25 * w + 0.15 * o));
   const reasons: string[] = [];
   if (c.settled) reasons.push(`${c.dumped} of ${c.settled} graded coins dumped (baseline ${pct(base)})`);
@@ -188,7 +207,14 @@ function walletRisk(roles: Partial<Record<MemRole, number>>, c: { settled: numbe
   if (roles.funder) reasons.push(`Funded linked wallets on ${roles.funder} coin${roles.funder > 1 ? "s" : ""}`);
   if (roles.bundle) reasons.push(`Bundled on ${roles.bundle} coin${roles.bundle > 1 ? "s" : ""}`);
   if (roles.sniper) reasons.push(`Sniped ${roles.sniper} coin${roles.sniper > 1 ? "s" : ""}`);
-  if (op) reasons.push(`Part of operator ${op.id}: ${op.wallets} wallets across ${op.tokens} coins${op.dumpRate != null ? `, ${pct(op.dumpRate)} dumped` : ""}`);
+  if (op)
+    reasons.push(
+      op.strong
+        ? `Part of operator ${op.id}: ${op.wallets} wallets across ${op.tokens} coins (bundles or dev money)${op.dumpRate != null ? `, ${pct(op.dumpRate)} dumped` : ""}`
+        : `Connected to group ${op.id} by shared funders: ${op.wallets} wallets across ${op.tokens} coins${op.dumpRate != null ? `, ${pct(op.dumpRate)} dumped` : ""}. A connection, not proof of common control`,
+    );
+  if (roles.factory) reasons.push(`Also a launchpad or factory contract on ${roles.factory} coin${roles.factory > 1 ? "s" : ""}`);
+  if (roles.pool) reasons.push(`Created the pool on ${roles.pool} coin${roles.pool > 1 ? "s" : ""}`);
   return { score, level: score >= 65 ? ("high" as const) : score >= 50 ? ("medium" as const) : ("low" as const), reasons };
 }
 
@@ -210,7 +236,8 @@ export function operatorReport(raw: string) {
     firstSeen: st.firstSeen,
     lastSeen: st.lastSeen,
     coins: st.tokens.slice(0, 100),
-    notes: "An operator is a set of wallets the swarm saw linked together (same funder, bundle or dev group) on 2 or more different coins. Ids are stable until two operators merge.",
+    linkedBy: st.roles.bundle || st.roles.dev ? "bundles or dev money (strong)" : "mostly shared funders (a connection, not proof of common control)",
+    notes: "An operator is a set of wallets the swarm saw linked together on 2 or more different coins. Links come from the same transaction or block (bundle), direct transfers, dev money, or a shared funder. A shared funder is a connection, not proof of common control. Ids are stable until two operators merge.",
   };
 }
 
@@ -235,6 +262,7 @@ export function walletReport(raw: string) {
       score: e?.score ?? null,
       scannedAt: e ? new Date(e.at).toISOString() : null,
       outcome,
+      ...(x.role === "dev" || x.role === "factory" || x.role === "pool" ? { evidence: evidence(x.token) } : {}),
     };
   });
   return {
@@ -250,7 +278,7 @@ export function walletReport(raw: string) {
     operator,
     history,
     memory: memory(),
-    notes: "Seen means the swarm met this wallet as a sniper, bundle, dev, funder or linked holder while scanning other tokens. Dumped means the token fell 50%+ within 24h of the scan (rugged included). Compare dumpRate with baselineDumpRate: most memecoins fall.",
+    notes: "Seen means the swarm met this wallet as a sniper, bundle, dev (the wallet that signed the launch), factory (a launchpad contract that creates tokens for many people), pool creator, funder or linked holder while scanning other tokens. Linked by a shared funder is a connection, not proof of common control. Dumped means the token fell 50%+ within 24h of the scan (rugged included). Compare dumpRate with baselineDumpRate: most memecoins fall.",
   };
 }
 
@@ -273,12 +301,23 @@ export function walletsReport(wallets: string[]) {
 export async function devReport(raw: string) {
   const dev = brainAddress(raw);
   const mem = walletEntries(dev).reverse();
-  const launches = mem
-    .filter((x) => x.role === "dev")
-    .map((x) => {
-      const { e, outcome } = outcomeOf(x.token);
-      return { token: x.token, chain: x.chain, symbol: e?.symbol ?? null, verdict: e?.verdict ?? null, outcome };
-    });
+  const d = memDb();
+  // Запуски этого кошелька как настоящего создателя: из памяти ролей и из записанных доказательств запуска.
+  const devTokens = new Map(mem.filter((x) => x.role === "dev").map((x) => [x.token, x.chain]));
+  for (const l of d ? launchesBy(d, dev, "deployer") : []) if (!devTokens.has(l.token)) devTokens.set(l.token, l.chain);
+  const launches = [...devTokens].map(([token, chain]) => {
+    const { e, outcome } = outcomeOf(token);
+    return { token, chain, symbol: e?.symbol ?? null, verdict: e?.verdict ?? null, outcome, evidence: evidence(token) };
+  });
+  // Контракт лаунчпада: выпускал токены за других. Его «запуски» не про одного человека — показываем, кто их подписал.
+  const asFactory = [...new Set([...mem.filter((x) => x.role === "factory").map((x) => x.token), ...(d ? launchesBy(d, dev, "factory").map((l) => l.token) : [])])];
+  const factory = asFactory.length
+    ? {
+        coins: asFactory.length,
+        deployers: [...new Set(asFactory.map((t) => evidence(t)?.deployer).filter((x): x is string => !!x))].slice(0, 100),
+        note: "This address is a launchpad or factory contract. It creates tokens for many different deployers, so these coins are not one person's launches.",
+      }
+    : null;
   // История запусков на pump.fun (Helius + кривые) — только для Solana и только если она достаётся; кэш 6 ч.
   let pumpfun: Awaited<ReturnType<typeof devProfile>> | null = null;
   let pumpfunError: string | null = null;
@@ -289,11 +328,12 @@ export async function devReport(raw: string) {
       pumpfunError = (e as Error).message;
     }
   }
-  if (!launches.length && !mem.length && !pumpfun?.coins.length) throw new ApiError("The hive has no memory of this wallet as a dev yet", 404);
+  if (!launches.length && !mem.length && !pumpfun?.coins.length && !factory) throw new ApiError("The hive has no memory of this wallet as a dev yet", 404);
   return {
     dev,
     seenAsDev: launches.length,
     launches,
+    factory,
     otherRoles: [...new Set(mem.filter((x) => x.role !== "dev").map((x) => x.role))],
     pumpfun: pumpfun && { launched: pumpfun.launched, graduated: pumpfun.graduated, verdict: pumpfun.verdict, summary: pumpfun.summary, coins: pumpfun.coins.slice(0, 50) },
     pumpfunError,

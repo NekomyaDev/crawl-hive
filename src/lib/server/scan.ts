@@ -11,7 +11,8 @@ import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceSnipers, type SniperReport } from "./scan-snipers";
 import { evmSnipersMaxAgeH, evmSnipersSupported, traceEvmSnipers } from "./scan-snipers-evm";
-import { buildOperators, type OperatorReport } from "./scan-operators";
+import { buildOperators, type LaunchEvidence, type OperatorReport } from "./scan-operators";
+import { launchOf, memDb, putLaunch } from "./memory-db";
 import { buildEvmMap, evmMapSupported } from "./scan-evm-map";
 import { lpSupported, traceLp, type LpReport } from "./scan-lp";
 import { larpVerdict, type LarpVerdict } from "./larpcheck";
@@ -58,6 +59,7 @@ export interface ScanResult {
   holders?: { top1: number; top10: number; mintAuthority: boolean; freezeAuthority: boolean };
   bundles?: BundleReport;
   dev?: DevReport;
+  launch?: LaunchEvidence; // кто выпустил токен, фабрика лаунчпада, создатель пула, транзакция выпуска и время
   snipers?: SniperReport; // кто купил в первых блоках и сколько держит сейчас
   insiders?: { wallets: number; pct: number }; // топ-держатели, которых пополнил кошелёк создателя
   operators?: OperatorReport; // связанные кошельки, склеенные в владельцев, и их история на других токенах
@@ -601,6 +603,37 @@ export async function runScan(
   if (xray) log({ crawler: "crawler_xray", text: `${xray.summary}${xray.findings.length ? ` · ${xray.findings.filter((f) => f.severity !== "low").map((f) => f.label.toLowerCase()).join(", ") || "only launch mechanics"}` : " · nothing the owner can pull"}`, tone: xray.findings.some((f) => f.severity === "high") ? "bad" : xray.findings.some((f) => f.severity === "medium") ? "warn" : "ok" });
   const clones = cloneInfo.n;
 
+  // Доказательства запуска: создатель (кошелёк, подписавший выпуск), фабрика лаунчпада, создатель пула, транзакция
+  // и время выпуска, когда рой увидел токен. EVM — из buildEvmMap, Solana — из трейса создателя.
+  const launch: LaunchEvidence | undefined = core
+    ? undefined
+    : chain === "solana"
+      ? dev
+        ? { deployer: dev.creator, factory: dev.factory, factoryLabel: dev.factory ? "pump.fun" : undefined, tx: dev.tx, launchedAt: dev.launchedAt ?? market?.pair.pairCreatedAt, seenAt: Date.now() }
+        : undefined
+      : operators?.launch
+        ? { ...operators.launch } // время выпуска только из транзакции выпуска: пул на EVM часто создаётся намного позже
+        : undefined;
+  if (launch) {
+    const d = memDb();
+    const key = chain === "solana" ? address : address.toLowerCase();
+    if (d)
+      try {
+        putLaunch(d, { token: key, chain, deployer: launch.deployer ?? null, factory: chain === "solana" ? null : (launch.factory ?? null), poolCreator: launch.poolCreator ?? null, tx: launch.tx ?? null, launchedAt: launch.launchedAt ?? null });
+        // Из базы: когда рой увидел токен впервые и что уже нашёл фоновый поиск (настоящего создателя, транзакцию).
+        const k = launchOf(d, key);
+        if (k) {
+          launch.seenAt = k.seenAt;
+          launch.deployer ??= k.deployer ?? undefined;
+          launch.tx ??= k.tx ?? undefined;
+          launch.launchedAt = k.launchedAt ?? launch.launchedAt;
+          launch.poolCreator ??= k.poolCreator ?? undefined;
+        }
+      } catch (e) {
+        console.warn("[scan] launch:", (e as Error).message);
+      }
+  }
+
   // ---------- оценка ----------
   let score = 100;
   const p = market?.pair;
@@ -631,7 +664,16 @@ export async function runScan(
   if (operators?.devSnipers) hit("Dev-funded snipers", -20, `${operators.devSnipers} wallet${operators.devSnipers > 1 ? "s" : ""} that bought in the first blocks ${chain === "solana" ? "were funded by" : "got tokens from or sent tokens to"} the creator`);
   const bigOp = operators?.operators[0];
   // Один кошелёк дева — это «Dev holds a lot», а не оператор: штрафуем только группы из 2+ кошельков.
-  if (bigOp && bigOp.wallets >= 2 && ((bigOp.roles.length > 1 && bigOp.pct >= 15) || bigOp.pct >= 30)) hit("One operator", -15, `${bigOp.wallets} linked wallets (${bigOp.roles.join(" + ")}) hold ${pct(bigOp.pct)}`);
+  // Связь только через общего спонсора — это связь, а не доказательство одного владельца: штраф мягче и так и пишем.
+  const funderOnly = bigOp?.basis?.length === 1 && bigOp.basis[0] === "funder";
+  if (bigOp && bigOp.wallets >= 2 && ((bigOp.roles.length > 1 && bigOp.pct >= 15) || bigOp.pct >= 30))
+    hit(
+      "One operator",
+      funderOnly ? -10 : -15,
+      funderOnly
+        ? `${bigOp.wallets} wallets connected by a shared funder hold ${pct(bigOp.pct)} (a connection, not proof of common control)`
+        : `${bigOp.wallets} linked wallets (${bigOp.roles.join(" + ")}) hold ${pct(bigOp.pct)}`,
+    );
   const hist = operators?.history;
   if (hist && hist.dumped >= 3 && hist.dumped / hist.tokens >= 0.5) hit("Known dump wallets", -10, `${hist.wallets} of these wallets were on ${hist.tokens} other tokens, ${hist.dumped} of them dumped`);
   if (snipers && snipers.holdPct >= 15) hit("Snipers hold a lot", -15, `${snipers.wallets} first-block buyers still hold ${pct(snipers.holdPct)}`);
@@ -728,6 +770,7 @@ export async function runScan(
     ...(trust ? { trust } : {}),
     lp,
     dev,
+    ...(launch ? { launch } : {}),
     evm,
     xray,
     core,

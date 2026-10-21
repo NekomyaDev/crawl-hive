@@ -9,7 +9,9 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 
-export type MemRole = "sniper" | "bundle" | "dev" | "funder" | "holder" | "linked";
+// dev — настоящий создатель (кошелёк, подписавший выпуск), factory — контракт лаунчпада/фабрики, который выпускает
+// токены за многих людей, pool — кто создал пул ликвидности. Раньше фабрику записывали как dev.
+export type MemRole = "sniper" | "bundle" | "dev" | "funder" | "holder" | "linked" | "factory" | "pool";
 export interface MemRow {
   wallet: string;
   token: string;
@@ -56,6 +58,9 @@ export function memDb(): Db | null {
       CREATE INDEX IF NOT EXISTS watch_target ON watch (target);
       CREATE TABLE IF NOT EXISTS watch_alerts (owner TEXT NOT NULL, target TEXT NOT NULL, token TEXT NOT NULL, chain TEXT NOT NULL, role TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (owner, target, token)) WITHOUT ROWID;
       CREATE INDEX IF NOT EXISTS watch_alerts_owner ON watch_alerts (owner, at);
+      CREATE TABLE IF NOT EXISTS launches (token TEXT PRIMARY KEY, chain TEXT NOT NULL, deployer TEXT, factory TEXT, pool_creator TEXT, tx TEXT, launched_at INTEGER, seen_at INTEGER NOT NULL) WITHOUT ROWID;
+      CREATE INDEX IF NOT EXISTS launches_deployer ON launches (deployer);
+      CREATE INDEX IF NOT EXISTS launches_factory ON launches (factory);
     `);
     host.__crawlhiveMemDb = {
       db,
@@ -128,6 +133,52 @@ export function migrateLegacy(d: Db, legacy: Record<string, (string | { t: strin
   console.log(`[memory] migrated ${n} wallets from meta walletMem`);
   return n;
 }
+
+// ---------- доказательства запуска ----------
+// Кто выпустил токен (deployer), через какую фабрику, кто создал пул, транзакция выпуска, когда выпущен и когда
+// рой его впервые увидел. Пишется при скане; известное поле не затирается пустым при пересканировании.
+export interface Launch {
+  token: string;
+  chain: string;
+  deployer: string | null;
+  factory: string | null;
+  poolCreator: string | null;
+  tx: string | null;
+  launchedAt: number | null;
+  seenAt: number;
+}
+type LaunchRow = { token: string; chain: string; deployer: string | null; factory: string | null; pool_creator: string | null; tx: string | null; launched_at: number | null; seen_at: number };
+const toLaunch = (r: LaunchRow): Launch => ({ token: r.token, chain: r.chain, deployer: r.deployer, factory: r.factory, poolCreator: r.pool_creator, tx: r.tx, launchedAt: r.launched_at, seenAt: r.seen_at });
+
+export function putLaunch(d: Db, l: Omit<Launch, "seenAt"> & { seenAt?: number }) {
+  d.db
+    .prepare(
+      `INSERT INTO launches (token, chain, deployer, factory, pool_creator, tx, launched_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (token) DO UPDATE SET deployer = COALESCE(excluded.deployer, deployer), factory = COALESCE(excluded.factory, factory),
+       pool_creator = COALESCE(excluded.pool_creator, pool_creator), tx = COALESCE(excluded.tx, tx),
+       launched_at = CASE WHEN excluded.tx IS NOT NULL AND excluded.launched_at IS NOT NULL THEN excluded.launched_at ELSE COALESCE(launched_at, excluded.launched_at) END`,
+    )
+    .run(l.token, l.chain, l.deployer, l.factory, l.poolCreator, l.tx, l.launchedAt, l.seenAt || Date.now());
+}
+export function launchOf(d: Db, token: string): Launch | null {
+  const r = d.db.prepare("SELECT * FROM launches WHERE token = ?").get(token) as LaunchRow | undefined;
+  return r ? toLaunch(r) : null;
+}
+export function launchesBy(d: Db, wallet: string, as: "deployer" | "factory"): Launch[] {
+  return (d.db.prepare(`SELECT * FROM launches WHERE ${as} = ? ORDER BY seen_at DESC LIMIT 500`).all(wallet) as unknown as LaunchRow[]).map(toLaunch);
+}
+// Кошельки, записанные девом на многих токенах: кандидаты в фабрики (проверяются по коду контракта).
+export function heavyDevs(d: Db, minTokens: number): { wallet: string; chain: string; n: number }[] {
+  return d.db
+    .prepare("SELECT wallet, MIN(chain) AS chain, COUNT(*) AS n FROM wallet_roles WHERE role = 'dev' GROUP BY wallet HAVING n >= ? ORDER BY n DESC LIMIT 200")
+    .all(minTokens) as unknown as { wallet: string; chain: string; n: number }[];
+}
+// Переписать роль dev на factory у адреса-контракта; история (токены, время) сохраняется.
+export function devToFactory(d: Db, wallet: string) {
+  return Number(d.db.prepare("UPDATE wallet_roles SET role = 'factory' WHERE wallet = ? AND role = 'dev'").run(wallet).changes);
+}
+export const kvGet = (d: Db, k: string) => (d.db.prepare("SELECT v FROM kv WHERE k = ?").get(k) as { v: string } | undefined)?.v;
+export const kvSet = (d: Db, k: string, v: string) => d.db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)").run(k, v);
 
 // ---------- операторы между токенами ----------
 

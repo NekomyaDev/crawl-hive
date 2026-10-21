@@ -11,11 +11,17 @@ import { memDb, migrateLegacy, rowsFor, walletCount, writeScan, type MemRole as 
 import { trackIndex, trackOutcomes } from "./track";
 
 export type Role = "bundle" | "dev" | "sniper";
+// На чём держится связь двух кошельков. funder — общий спонсор (кто-то пополнил оба): это связь, а не доказательство
+// общего владельца. transfer — сами переводили токен друг другу, same_tx / same_block — получили первые токены одной
+// транзакцией или в одном блоке почти равными суммами (бандл), dev — деньги или токены от создателя.
+export type LinkBasis = "funder" | "transfer" | "same_tx" | "same_block" | "dev";
+export type Edge = [string, string, LinkBasis];
 export interface Operator {
   wallets: number;
   pct: number; // сколько держит сейчас: топ-держатели плюс остаток снайперов
   roles: Role[];
   devLinked: boolean; // связан с создателем
+  basis?: LinkBasis[]; // на чём держатся связи внутри группы
 }
 // Бабл-карта: кошельки (держатели, снайперы, дев и их общие спонсоры) с долями, группой-владельцем и связями.
 // g — номер оператора (как в operators, по убыванию доли), -1 — одиночный кошелёк; hub — спонсор без своей доли.
@@ -29,13 +35,24 @@ export interface BubbleNode {
 }
 export interface BubbleMap {
   nodes: BubbleNode[];
-  links: [number, number][];
+  links: [number, number, LinkBasis?][];
 }
 export interface OperatorReport {
   operators: Operator[]; // только группы из 2+ кошельков или связанные с девом
   map?: BubbleMap;
   devSnipers: number; // снайперы, которых профинансировал создатель
   history?: { wallets: number; tokens: number; dumped: number }; // память: эти кошельки на других токенах
+  launch?: LaunchEvidence; // EVM: кто выпустил токен, через какую фабрику, кто создал пул (из scan-evm-map)
+}
+// Доказательства запуска для страницы скана и Brain.
+export interface LaunchEvidence {
+  deployer?: string;
+  factory?: string;
+  factoryLabel?: string;
+  poolCreator?: string;
+  tx?: string;
+  launchedAt?: number;
+  seenAt: number;
 }
 
 const SNIPER_TRACE = 8;
@@ -56,13 +73,13 @@ export async function buildOperators(conn: Connection, opts: { bundles?: BundleR
   const held = new Map<string, number>();
   const roles = new Map<string, Set<Role>>();
   const role = (w: string, r: Role) => roles.set(w, (roles.get(w) ?? new Set()).add(r));
-  const edges: [string, string][] = [];
+  const edges: Edge[] = [];
 
   for (const w of bundles?.wallets ?? []) held.set(w.wallet, (held.get(w.wallet) ?? 0) + w.pct);
   for (const l of bundles?.links ?? []) {
     if (exchanges.has(l.funder)) continue;
     join(l.wallet, l.funder);
-    edges.push([l.wallet, l.funder]);
+    edges.push([l.wallet, l.funder, creator && l.funder === creator ? "dev" : "funder"]);
     if (creator && l.funder === creator) role(l.wallet, "dev");
   }
   for (const c of bundles?.clusters ?? []) role(c.funder, "bundle");
@@ -80,7 +97,7 @@ export async function buildOperators(conn: Connection, opts: { bundles?: BundleR
     const big = exchanges.has(f) || (await funderSol(conn, f).catch(() => 0)) > EXCHANGE_SOL;
     if (!big) {
       join(b.wallet, f);
-      edges.push([b.wallet, f]);
+      edges.push([b.wallet, f, f === creator ? "dev" : "funder"]);
     }
   }
   if (creator) role(creator, "dev");
@@ -100,7 +117,7 @@ export async function buildOperators(conn: Connection, opts: { bundles?: BundleR
     const devLinked = !!creator && ws.includes(creator);
     if (devLinked) rs.add("dev");
     const pct = Math.round(members.reduce((a, w) => a + (held.get(w) ?? 0), 0) * 100) / 100;
-    if ((members.length >= 2 || devLinked) && pct > 0) ops.push({ wallets: members.length, pct, roles: [...rs], devLinked, root });
+    if ((members.length >= 2 || devLinked) && pct > 0) ops.push({ wallets: members.length, pct, roles: [...rs], devLinked, root, basis: basisOf(edges, find, root) });
   }
   ops.sort((a, b) => b.pct - a.pct);
   const map = bubbleMap({ ops, held, roles, edges, find, creator, token: opts.mint });
@@ -122,7 +139,14 @@ export async function buildOperators(conn: Connection, opts: { bundles?: BundleR
     // Кошельки каждого оператора скана: из них Brain собирает операторов между токенами.
     ops.map((o) => groups.get(o.root) ?? []),
   );
-  return { operators: ops.slice(0, 5).map((o) => ({ wallets: o.wallets, pct: o.pct, roles: o.roles, devLinked: o.devLinked })), devSnipers, ...(history ? { history } : {}), ...(map ? { map } : {}) };
+  return { operators: ops.slice(0, 5).map((o) => ({ wallets: o.wallets, pct: o.pct, roles: o.roles, devLinked: o.devLinked, basis: o.basis })), devSnipers, ...(history ? { history } : {}), ...(map ? { map } : {}) };
+}
+
+// Основания связей внутри группы root, по силе: бандл одной транзакцией сильнее общего спонсора.
+const BASIS_ORDER: LinkBasis[] = ["same_tx", "same_block", "dev", "transfer", "funder"];
+export function basisOf(edges: Edge[], find: (w: string) => string, root: string): LinkBasis[] {
+  const set = new Set(edges.filter(([a]) => find(a) === root).map(([, , b]) => b));
+  return BASIS_ORDER.filter((b) => set.has(b));
 }
 
 const MAP_NODES = 40;
@@ -132,7 +156,7 @@ export function bubbleMap(x: {
   ops: { root: string }[];
   held: Map<string, number>;
   roles: Map<string, Set<Role>>;
-  edges: [string, string][];
+  edges: Edge[];
   find: (w: string) => string;
   creator?: string;
   token?: string;
@@ -150,13 +174,13 @@ export function bubbleMap(x: {
   };
   for (const [w] of [...x.held].sort((a, b) => b[1] - a[1])) add(w);
   if (x.creator) add(x.creator, !x.held.has(x.creator));
-  const links: [number, number][] = [];
-  for (const [a, b] of x.edges) {
+  const links: [number, number, LinkBasis?][] = [];
+  for (const [a, b, basis] of x.edges) {
     // Спонсора рисуем, только если он связывает кошельки одного оператора: одиночные пополнения не шумят.
     if (!ids.has(b) && g(b) < 0) continue;
     const i = ids.get(a) ?? add(a, true);
     const j = ids.get(b) ?? add(b, true);
-    if (i !== undefined && j !== undefined && i !== j) links.push([i, j]);
+    if (i !== undefined && j !== undefined && i !== j) links.push([i, j, basis]);
   }
   if (nodes.length < 2) return undefined;
   // «Seen before»: кошельки, которые память уже видела на других токенах.
@@ -211,6 +235,8 @@ function db() {
     } catch (e) {
       console.warn("[memory] migration:", (e as Error).message);
     }
+    // Старые записи «dev» у контрактов лаунчпадов → factory, плюс поиск настоящих создателей. В фоне, один раз.
+    import("./factory-reclass").then((m) => m.reclassFactories()).catch(() => {});
   }
   return d;
 }
@@ -233,8 +259,8 @@ function memFor(wallets: string[]): Map<string, MemEntry[]> {
 export function rememberWallets(token: string, chain: string, w: Partial<Record<Exclude<MemRole, "linked">, string[]>>, groups: string[][] = []) {
   const t = norm(token);
   const byWallet = new Map<string, MemRole>();
-  // Одна роль на кошелёк в токене, по важности: дев, спонсор, снайпер, бандл, держатель.
-  for (const r of ["holder", "bundle", "sniper", "funder", "dev"] as const) for (const x of w[r] ?? []) byWallet.set(norm(x), r);
+  // Одна роль на кошелёк в токене, по важности: дев, фабрика, спонсор, снайпер, бандл, держатель, создатель пула.
+  for (const r of ["pool", "holder", "bundle", "sniper", "funder", "factory", "dev"] as const) for (const x of w[r] ?? []) byWallet.set(norm(x), r);
   // Watchlist: кошельки скана, включая связанных из групп, сверяем с теми, за кем следят люди. Асинхронно, скан не ждёт.
   const seenNow = new Map<string, MemRole>(byWallet);
   for (const g of groups) for (const x of g) if (!seenNow.has(norm(x))) seenNow.set(norm(x), "linked");

@@ -16,14 +16,25 @@ export interface BubbleNode {
 }
 export interface BubbleMapData {
   nodes: BubbleNode[];
-  links: [number, number][];
+  links: [number, number, string?][]; // третье: основание связи (funder, transfer, same_tx, same_block, dev)
 }
 interface Op {
   wallets: number;
   pct: number;
   roles: string[];
   devLinked: boolean;
+  basis?: string[];
 }
+
+// Основание связи словами. Общий спонсор — связь, а не доказательство общего владельца: так и пишем.
+const BASIS_TEXT: Record<string, string> = {
+  same_tx: "bought in the same transaction",
+  same_block: "bought in the same block, near-equal amounts",
+  dev: "money or tokens from the dev",
+  transfer: "sent the token to each other",
+  funder: "connection: shared funder",
+};
+const BASIS_RANK = ["same_tx", "same_block", "dev", "transfer", "funder"];
 
 // Неон в цветах маскотов: оранжевый, розовый, лайм, голубой, фиолетовый, бирюзовый.
 const NEON = ["#ff9f1c", "#ff4fa3", "#a3e635", "#38bdf8", "#a78bfa", "#2dd4bf"];
@@ -491,7 +502,7 @@ export function BubbleMap({
               })}
 
               {/* связи поверх стекла: видны сквозь полупрозрачные шары */}
-              {data.links.map(([a, b], i) => {
+              {data.links.map(([a, b, basis], i) => {
                 const c =
                   data.nodes[a].g >= 0
                     ? colorOf(data.nodes[a])
@@ -513,7 +524,8 @@ export function BubbleMap({
                       fill="none"
                       stroke={c}
                       strokeWidth={1.6}
-                      strokeOpacity={0.95}
+                      strokeOpacity={basis === "funder" ? 0.6 : 0.95}
+                      strokeDasharray={basis === "funder" ? "6 6" : undefined}
                     />
                     <path
                       d={d}
@@ -553,6 +565,18 @@ export function BubbleMap({
                     ? ` · operator ${data.nodes[hover].g + 1}`
                     : ""}
                 </div>
+                {(() => {
+                  // На чём держатся связи этого кошелька: сильнейшее основание первым.
+                  const set = new Set(data.links.filter(([a, b]) => a === hover || b === hover).map(([, , x]) => x).filter(Boolean) as string[]);
+                  const list = BASIS_RANK.filter((x) => set.has(x));
+                  if (!list.length) return null;
+                  return (
+                    <div className="mt-0.5 text-white/70">
+                      {list.map((x) => BASIS_TEXT[x]).join(" · ")}
+                      {list.length === 1 && list[0] === "funder" && <div className="text-white/45">a connection, not proof of common control</div>}
+                    </div>
+                  );
+                })()}
                 {data.nodes[hover].seen && (
                   <div className="mt-0.5 text-[#f0abfc]">
                     🧠 seen on {data.nodes[hover].seen!.tokens} other token
@@ -648,10 +672,11 @@ export function BubbleMap({
                   boxShadow: `0 0 8px ${NEON[i % NEON.length]}`,
                 }}
               />
-              <span className="font-semibold">Operator {i + 1}</span>
+              <span className="font-semibold">{o.basis?.length === 1 && o.basis[0] === "funder" ? `Connection ${i + 1}` : `Operator ${i + 1}`}</span>
               <span className="text-white/50">
                 {o.wallets} wallets · {o.pct.toFixed(1)}%
                 {o.roles.length ? ` · ${o.roles.join("+")}` : ""}
+                {o.basis?.length ? ` · ${o.basis.length === 1 && o.basis[0] === "funder" ? "shared funder only" : (BASIS_TEXT[o.basis[0]] ?? o.basis[0])}` : ""}
               </span>
             </button>
           ))}
@@ -659,8 +684,9 @@ export function BubbleMap({
       )}
       <p className="border-t border-white/5 px-5 py-2.5 text-[10px] text-white/35">
         Top holders, first-block snipers and the dev. Every wallet has its own
-        color; wallets of one owner (shared funder or dev money) share a color,
-        wear a dashed ring and are joined by lines. 🎯 sniper · 🔗 bundle · ◆
+        color; linked wallets share a color, wear a dashed ring and are joined by lines. Solid lines: same
+        transaction or block, direct transfers or dev money. Dashed lines: a shared funder, which is a
+        connection, not proof of common control. 🎯 sniper · 🔗 bundle · ◆
         funder · ↺N seen on N other tokens (red if they dumped). Pools and curves are left out.
       </p>
     </div>
