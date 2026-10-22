@@ -91,6 +91,11 @@ export function adminChats(): string[] {
     return [];
   }
 }
+// Куда слать оповещения о поломках: чаты админов и пользователи бота с админским id или username (личка = id).
+export function adminRecipients(): string[] {
+  const fromUsers = Object.entries(users()).filter(([id, u]) => isAdmin({ id, username: u.u })).map(([id]) => id);
+  return [...new Set([...adminChats(), ...ids(), ...fromUsers])];
+}
 
 // ---------- сводка ----------
 

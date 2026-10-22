@@ -95,6 +95,7 @@ export const limitedFetch: typeof fetch = async (input, init) => {
       if (/daily request limit|credits|quota|max usage/i.test(text)) {
         g2.__crawlhiveRpcFbDown = nextUtcMidnight();
         console.warn("[rpc] fallback RPC is out of its limit too, using the public Solana RPC until 00:00 UTC");
+        void import("./ops-alert").then((m) => m.opsAlert("rpc", "Solana RPC: primary is unreachable and the fallback is out of its limit. Running on the public RPC (slow, rate limited) until 00:00 UTC. Renew QuickNode or top up Helius and update the key in .env."));
         continue;
       }
     }

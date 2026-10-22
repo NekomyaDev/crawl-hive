@@ -20,7 +20,10 @@ function takeBudget() {
   const limit = Number(process.env.XAI_DAILY_CALLS ?? 60);
   const b = (g.__crawlhiveGrok ??= { day, calls: 0 });
   if (b.day !== day) Object.assign(b, { day, calls: 0 });
-  if (b.calls >= limit) throw new Error(`Daily Grok budget reached (${limit} calls), crawler will retry tomorrow`);
+  if (b.calls >= limit) {
+    void import("../ops-alert").then((m) => m.opsAlert("grok-budget", `Daily Grok budget reached (${limit} calls, XAI_DAILY_CALLS). X crawlers, Narrative Radar and the X bot pause until 00:00 UTC.`, 20 * 3600_000));
+    throw new Error(`Daily Grok budget reached (${limit} calls), crawler will retry tomorrow`);
+  }
   b.calls++;
 }
 
@@ -90,6 +93,8 @@ export async function grok(opts: { system: string; user: string; xSearch?: XSear
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    if (res.status === 401 || res.status === 402 || res.status === 403 || (res.status === 429 && /credit|limit|spend/i.test(body)))
+      void import("../ops-alert").then((m) => m.opsAlert("grok", `xAI Grok API ${res.status}: ${body.slice(0, 160)}\nNarrative Radar, X crawlers, AI analysis and the X bot are down until the xAI account is topped up.`));
     throw new Error(`Grok API ${res.status}: ${body.slice(0, 200)}`);
   }
   const json = (await res.json()) as Record<string, unknown>;
