@@ -5,6 +5,9 @@ export function setApiSession(token: string) {
   session = token;
 }
 
+// Заголовок сессии для запросов в обход api(), например потоковых (Ask CrawlHive).
+export const sessionHeaders = (): Record<string, string> => (session ? { Authorization: `Bearer ${session}` } : {});
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     ...init,

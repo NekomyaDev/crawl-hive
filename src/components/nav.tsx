@@ -3,7 +3,7 @@ import { TOKEN } from "@/lib/token";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket, Sparkles, History, Puzzle, Brain, Gem, Eye } from "lucide-react";
+import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket, Sparkles, History, Puzzle, Brain, Gem, Eye, MessageSquare } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { APP_URL, COMMUNITY_URL, TelegramIcon } from "./telegram-cta";
@@ -25,6 +25,7 @@ const LINKS = [
   { href: "/replay", label: "Gem & Rug Replay", icon: History, color: "text-pink" },
   { href: "/extension", label: "Extension", icon: Puzzle, color: "text-lime" },
   { href: "/brain", label: "Brain API", icon: Brain, color: "text-pink" },
+  { href: "/ask", label: "Ask CrawlHive", icon: MessageSquare, color: "text-pink", badge: "AI" },
   { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-lime" },
   { href: "/pricing", label: "Pricing", icon: Gem, color: "text-sky" },
   { href: "/agents", label: "For Agents", icon: Bot, color: "text-teal" },

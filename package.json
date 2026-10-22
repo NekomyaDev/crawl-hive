@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.1.0",
     "@babel/parser": "7.29.9",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",

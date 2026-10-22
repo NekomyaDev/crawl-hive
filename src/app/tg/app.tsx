@@ -1,12 +1,13 @@
 "use client";
-// CrawlHive внутри Telegram: скан, Launch Radar, список наблюдения, свои краулеры, Track Record.
+// CrawlHive внутри Telegram: скан, Launch Radar, список наблюдения, свои краулеры, Track Record, Ask CrawlHive.
 // Пользователя узнаём по initData от Telegram (подпись проверяет сервер), список наблюдения общий с ботом.
 import { TOKEN } from "@/lib/token";
 import { XRayPanel, type XRayView } from "@/components/xray-panel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Bell, Bug, ClipboardPaste, Eye, Radar, ScanSearch, Share2, Target, Trash2, X as XIcon } from "lucide-react";
+import { Bell, Bug, ClipboardPaste, Eye, MessageSquare, Radar, ScanSearch, Share2, Target, Trash2, X as XIcon } from "lucide-react";
 import { VerdictPill, pct } from "@/components/verdict";
+import { AskChat } from "@/components/ask-view";
 import { cn, fmt, short, timeAgo } from "@/lib/utils";
 
 // ---------- Telegram WebApp ----------
@@ -36,6 +37,8 @@ const haptic = (t: "success" | "warning" | "error" | "tap") => {
 };
 const SITE = typeof window !== "undefined" ? window.location.origin : "https://crawlhive.xyz";
 const openExternal = (url: string) => (tgApp()?.initData ? tgApp()!.openLink(url) : window.open(url, "_blank"));
+// Ask CrawlHive в мини-аппе: тот же api/ask, пользователь и его кошельки из initData.
+const tgHeaders = () => ({ "x-tg-init": tgApp()?.initData ?? "" });
 
 async function tgApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
@@ -75,7 +78,7 @@ interface Me {
   crawlers: { id: string; name: string; source: string; status: string; tier: string; reputation: number; signals: number; hits: number; scored: number; expiresAt: number | null }[];
   signals: { id: string; crawlerName: string; kind: string; ticker: string; text: string; ts: number; token?: { address: string }; outcome?: { status: string; peakPct?: number; changePct?: number }; jev?: { p: number }; bot?: { take: string } }[];
 }
-type Tab = "scan" | "radar" | "watch" | "crawlers" | "track";
+type Tab = "scan" | "radar" | "watch" | "crawlers" | "track" | "ask";
 
 const CHAIN: Record<string, string> = { solana: "SOL", robinhood: "RH", bsc: "BNB", base: "BASE" };
 const RING: Record<string, string> = { CLEAN: "#b6f23a", OK: "#b6f23a", RISKY: "#ffb020", DANGER: "#ef4444", TOO_EARLY: "#8a9099" };
@@ -590,6 +593,7 @@ const TABS: { id: Tab; label: string; icon: typeof Eye }[] = [
   { id: "watch", label: "Watch", icon: Eye },
   { id: "crawlers", label: "Crawlers", icon: Bug },
   { id: "track", label: "Track", icon: Target },
+  { id: "ask", label: "Ask", icon: MessageSquare },
 ];
 
 export function TgApp() {
@@ -677,10 +681,11 @@ export function TgApp() {
         {tab === "watch" && <WatchView me={me} inTg={inTg} reload={loadMe} />}
         {tab === "crawlers" && <CrawlersView me={me} inTg={inTg} />}
         {tab === "track" && <TrackView />}
+        {tab === "ask" && <AskChat compact headers={tgHeaders} openLink={openExternal} refreshKey={me?.wallets.join(",")} />}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        <div className="mx-auto grid max-w-lg grid-cols-5">
+        <div className="mx-auto grid max-w-lg grid-cols-6">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
