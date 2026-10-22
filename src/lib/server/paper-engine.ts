@@ -1,6 +1,6 @@
 // Paper Engine: настоящая бумажная торговля вперёд по сигналам Launch Radar. В отличие от paper.ts (задним числом
 // из Track Record, выход ровно через сутки) здесь каждая стратегия открывает виртуальную позицию в момент вердикта,
-// раз в минуту получает цену и закрывается по своим правилам: стоп, тейк, трейлинг, лимит времени, руг.
+// раз в минуту (быстрые стратегии раз в 10 с) получает цену и закрывается по своим правилам: стоп, тейк, трейлинг, лимит времени, руг.
 // Комиссии и проскальзывание учитываются. Стратегии — просто данные в STRATEGIES: новый вариант = новая строка.
 // Хранение в SQLite (brain.db из memory-db.ts): после рестарта открытые позиции продолжают вестись.
 // PAPER_ENGINE=0 выключает и вход, и замеры.
@@ -68,6 +68,10 @@ export interface StrategyConfig {
   exits: ExitRule;
   sizeUsd: number;
   enabled: boolean;
+  // Быстрое исполнение, как в живой торговле с высоким допуском проскальзывания и приоритетной комиссией:
+  // позиции замеряются каждые FAST_MS вместо минуты (стоп срабатывает ближе к уровню), но каждая сторона
+  // сделки дороже на extraSlipPct процентов.
+  fast?: { extraSlipPct: number };
 }
 
 const H = 60;
@@ -108,11 +112,17 @@ export const STRATEGIES: StrategyConfig[] = [
   // 14:40: s18 (любая монета через 10 мин) 35 сделок, -18.5% против -5.4% у контроля s6, выключен. Ожидание 30 мин (s20) пока лучше 10 мин: пробуем его на v2.
   { id: "s26", label: "V2 CLEAN confirmed 30m", note: "Score v2 says CLEAN, buy 30 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s27", label: "V2 CLEAN deep no pump", note: "Score v2 says CLEAN, not pump.fun, liquidity $50k+, TP100 SL40, 24h", entry: { verdictsV2: ["CLEAN"], noPumpFun: true, minLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // 22.10: стопы SL30 на минутных замерах исполняются около -45%. Быстрые близнецы s6/s14/s15: замер каждые 10 с,
+  // зато +3% проскальзывания на каждую сторону (как высокий допуск и приоритетная комиссия в живой торговле).
+  { id: "s28", label: "Every coin fast", note: "Control for fast fills: like S6, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  { id: "s29", label: "Clean 20k+ TP100 fast", note: "Like S14, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  { id: "s30", label: "V2 CLEAN TP100 fast", note: "Like S15, prices every 10s, +3% slippage per side", entry: { verdictsV2: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
 
 const SAMPLE_MS = 60_000;
+const FAST_MS = 10_000; // замер позиций стратегий с fast
 const FEE = 0.01; // 1% на каждую сторону
 const SLIP_CAP = 0.15; // проскальзывание: размер / ликвидность, но не больше 15%
 const RUG_LIQ = 500; // ликвидность ниже — пары как будто нет
@@ -336,6 +346,7 @@ function db() {
 }
 
 const slip = (size: number, liq: number) => Math.min(SLIP_CAP, liq > 0 ? size / liq : SLIP_CAP);
+const extraSlip = (strategy: string) => (STRATEGIES.find((x) => x.id === strategy)?.fast?.extraSlipPct ?? 0) / 100;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const startedAt = () => {
   const d = memDb();
@@ -381,7 +392,7 @@ export function paperOnSignal(r: ScanResult) {
 // Покупка: 1% комиссии, остаток идёт по цене хуже на проскальзывание.
 function openPosition(s: StrategyConfig, c: { token: string; chain: string; symbol: string; verdict: string; score: number | null }, price: number, liq: number, features: string, now: number) {
   const d = db()!;
-  const units = (s.sizeUsd * (1 - FEE)) / (price * (1 + slip(s.sizeUsd, liq)));
+  const units = (s.sizeUsd * (1 - FEE)) / (price * (1 + slip(s.sizeUsd, liq) + extraSlip(s.id)));
   d.prepare(
     `INSERT INTO paper_positions (strategy, token, chain, symbol, verdict, score, entry_at, entry_price, size, units, liq0, peak_price, peak_at, last_price, last_liq, last_at, missing, features)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
@@ -462,7 +473,7 @@ function resolvePending(q: PendingRow, s: StrategyConfig | undefined, pair: Pair
 
 function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: number) {
   const d = db()!;
-  const proceeds = reason === "rug" ? 0 : p.units * price * (1 - slip(p.size, liq)) * (1 - FEE);
+  const proceeds = reason === "rug" ? 0 : p.units * price * Math.max(0, 1 - slip(p.size, liq) - extraSlip(p.strategy)) * (1 - FEE);
   const pnl = proceeds - p.size;
   const t = {
     gross: reason === "rug" ? -100 : ((price - p.entry_price) / p.entry_price) * 100,
@@ -503,18 +514,19 @@ function exitFor(p: PosRow, s: StrategyConfig | undefined, price: number, now: n
   return null;
 }
 
-export async function paperTick() {
+// fastOnly: частый тик только по позициям стратегий с fast, без ожидающих входов (они живут на минутном).
+export async function paperTick(fastOnly = false) {
   const s = st();
   if (s.busy || !paperEnabled()) return 0;
   const d = db();
   if (!d) return 0;
   s.busy = true;
   try {
-    const open = d.prepare("SELECT * FROM paper_positions").all() as unknown as PosRow[];
     const now = Date.now();
     const byId = new Map(STRATEGIES.map((x) => [x.id, x]));
+    const open = (d.prepare("SELECT * FROM paper_positions").all() as unknown as PosRow[]).filter((p) => !fastOnly || byId.get(p.strategy)?.fast);
     // Ожидающие входы, чьё время пришло (или стратегию убрали): цены для них берём тем же запросом, что и для позиций.
-    const pending = (d.prepare("SELECT * FROM paper_pending").all() as unknown as PendingRow[]).filter((q) => {
+    const pending = (fastOnly ? [] : (d.prepare("SELECT * FROM paper_pending").all() as unknown as PendingRow[])).filter((q) => {
       const s = byId.get(q.strategy);
       return !s?.enabled || !s.entry.delayMin || now >= q.signal_at + s.entry.delayMin * 60_000;
     });
@@ -571,7 +583,7 @@ export async function paperTick() {
         console.warn("[paper] pending", q.id, (e as Error).message);
       }
     }
-    s.lastTick = now;
+    if (!fastOnly) s.lastTick = now;
     cache = null;
     return open.length;
   } finally {
@@ -593,6 +605,7 @@ export function startPaperEngine() {
   const n = (d.prepare("SELECT COUNT(*) AS n FROM paper_positions").get() as { n: number }).n;
   const w = (d.prepare("SELECT COUNT(*) AS n FROM paper_pending").get() as { n: number }).n;
   setInterval(() => paperTick().catch((e) => console.warn("[paper]", (e as Error).message)), SAMPLE_MS);
+  if (STRATEGIES.some((x) => x.enabled && x.fast)) setInterval(() => paperTick(true).catch((e) => console.warn("[paper] fast", (e as Error).message)), FAST_MS);
   console.log(`[paper] engine started, ${STRATEGIES.filter((x) => x.enabled).length} strategies, ${n} open positions and ${w} pending entries resumed`);
 }
 
@@ -607,7 +620,7 @@ const median = (xs: number[]) => {
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
 // Нереализованный итог открытой позиции: как если бы продали по последнему замеру прямо сейчас.
-const markPnl = (p: PosRow) => p.units * p.last_price * (1 - slip(p.size, p.last_liq)) * (1 - FEE) - p.size;
+const markPnl = (p: PosRow) => p.units * p.last_price * Math.max(0, 1 - slip(p.size, p.last_liq) - extraSlip(p.strategy)) * (1 - FEE) - p.size;
 
 function compute() {
   const d = db();
