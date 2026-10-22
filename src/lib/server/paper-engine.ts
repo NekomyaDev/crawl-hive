@@ -38,6 +38,16 @@ export interface EntryRule {
   minVolume1h?: number;
   minSocials?: number;
   excludeFlags?: string[]; // метки факторов скана, при которых не входим ("Bundled", "Snipers hold a lot"...)
+  // Подтверждённый вход: не покупаем на скане, а ждём delayMin минут и входим по цене того момента,
+  // если пул не вытащили и цена не ушла слишком далеко. Без delayMin вход мгновенный, как раньше.
+  delayMin?: number;
+  confirm?: EntryConfirm;
+}
+
+export interface EntryConfirm {
+  minLiqKeepPct?: number; // ликвидность сейчас не ниже этой доли (%) от ликвидности на скане
+  maxDropPct?: number; // цена не ниже цены скана больше чем на столько %
+  maxRisePct?: number; // не догоняем: выросла больше чем на столько %, пропуск
 }
 
 export interface ExitRule {
@@ -59,6 +69,7 @@ export interface StrategyConfig {
 }
 
 const H = 60;
+const CONFIRM: EntryConfirm = { minLiqKeepPct: 80, maxDropPct: 15, maxRisePct: 60 };
 export const STRATEGIES: StrategyConfig[] = [
   { id: "s1", label: "CLEAN hold 24h", note: "Baseline like the old page: CLEAN, no stops, sold after 24h", entry: { verdicts: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s2", label: "CLEAN TP50 SL30", note: "CLEAN, take +50%, stop -30%, max 6h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
@@ -78,6 +89,12 @@ export const STRATEGIES: StrategyConfig[] = [
   // Теневая оценка v2 (score-v2.ts): вход по вердикту v2 при любом публичном. Пара к s1 и s14 для сравнения вперёд.
   { id: "s15", label: "V2 CLEAN TP100", note: "Shadow score v2 says CLEAN (any public verdict), TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s16", label: "V2 CLEAN hold 24h", note: "Baseline for v2: shadow score v2 says CLEAN, no stops, sold after 24h", entry: { verdictsV2: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // Подтверждённый вход (22.10): CLEAN на Robinhood (PB, SPOUR) теряли ликвидность за 1-4 минуты после скана,
+  // мгновенный вход съедал каждый такой вытащенный пул. Ждём и входим, только если пул жив и цена не убежала.
+  { id: "s17", label: "CLEAN confirmed 10m", note: "CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s18", label: "Every coin confirmed 10m", note: "Control for S17: every verdict, same 10 min confirmation, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s19", label: "V2 CLEAN confirmed 10m", note: "Shadow score v2 says CLEAN, same 10 min confirmation, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s20", label: "CLEAN confirmed 30m", note: "Like S17 but waits 30 min after the scan, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
@@ -92,6 +109,7 @@ const MAX_JUMP = 100; // цена ×100 за минуту — сбой данн�
 const REENTRY_MS = 24 * 3600_000; // тот же токен той же стратегией не раньше чем через сутки
 const BUNDLE_PCT = 5;
 const CACHE_MS = 30_000;
+const PENDING_GRACE_MS = 10 * 60_000; // ожидание старше delayMin + 10 мин (не было цены) выкидываем
 
 export const paperEnabled = () => process.env.PAPER_ENGINE !== "0";
 
@@ -121,6 +139,8 @@ export interface Features {
   change1h: number | null;
   socials: number | null;
   flags: string[];
+  // Только у подтверждённого входа: что было на скане и сколько прошло до покупки.
+  signal?: { at: number; price: number; liqUsd: number; waitMin: number; liqKeepPct: number; movePct: number };
 }
 
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : null);
@@ -227,6 +247,25 @@ interface TradeRow {
   features: string;
 }
 
+// Отложенный вход: сигнал запомнен, покупка после delayMin минут, если подтвердится.
+interface PendingRow {
+  id: number;
+  strategy: string;
+  token: string;
+  chain: string;
+  symbol: string;
+  verdict: string;
+  score: number | null;
+  signal_at: number;
+  signal_price: number;
+  signal_liq: number;
+  features: string;
+}
+// liq: пул вытащили, drop: цена упала, ran: уже убежала вверх, expired: так и не дождались цены,
+// full: к моменту входа у стратегии MAX_OPEN позиций, removed: стратегию убрали или выключили.
+export type SkipReason = "liq" | "drop" | "ran" | "expired" | "full" | "removed";
+const SKIP_LOG: Record<SkipReason, string> = { liq: "liq pulled", drop: "dropped", ran: "ran", expired: "expired", full: "full", removed: "removed" };
+
 const host = globalThis as unknown as { __crawlhivePaperDb?: boolean; __crawlhivePaper?: { started: boolean; busy: boolean; lastTick: number; lastErr?: string } };
 const st = () => (host.__crawlhivePaper ??= { started: false, busy: false, lastTick: 0 });
 
@@ -246,6 +285,15 @@ function db() {
         peak_pct REAL NOT NULL, reason TEXT NOT NULL, features TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS paper_trades_st ON paper_trades (strategy, exit_at);
       CREATE INDEX IF NOT EXISTS paper_trades_token ON paper_trades (strategy, token, entry_at);
+      CREATE TABLE IF NOT EXISTS paper_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, strategy TEXT NOT NULL, token TEXT NOT NULL, chain TEXT NOT NULL,
+        symbol TEXT NOT NULL, verdict TEXT NOT NULL, score INTEGER, signal_at INTEGER NOT NULL, signal_price REAL NOT NULL, signal_liq REAL NOT NULL,
+        features TEXT NOT NULL);
+      CREATE UNIQUE INDEX IF NOT EXISTS paper_pending_st ON paper_pending (strategy, token);
+      -- Пропуски храним поштучно с ценами: потом можно проверить, были ли пропущенные монеты ругами на самом деле.
+      CREATE TABLE IF NOT EXISTS paper_skips (id INTEGER PRIMARY KEY AUTOINCREMENT, strategy TEXT NOT NULL, token TEXT NOT NULL, chain TEXT NOT NULL,
+        symbol TEXT NOT NULL, verdict TEXT NOT NULL, score INTEGER, reason TEXT NOT NULL, signal_at INTEGER NOT NULL, at INTEGER NOT NULL,
+        signal_price REAL NOT NULL, price REAL, signal_liq REAL NOT NULL, liq REAL);
+      CREATE INDEX IF NOT EXISTS paper_skips_st ON paper_skips (strategy, token, signal_at);
     `);
     // Минимум цены и время пика/минимума: по истории (замер раз в 10 мин) не видно, что было раньше, тейк или стоп.
     for (const sql of [
@@ -284,19 +332,106 @@ export function paperOnSignal(r: ScanResult) {
   if (!d) return;
   const f = featuresOf(r);
   const now = Date.now();
+  const fj = JSON.stringify(f);
   for (const s of STRATEGIES) {
     if (!s.enabled || !matches(s.entry, f, r.chain, r.id)) continue;
-    const open = d.prepare("SELECT COUNT(*) AS n FROM paper_positions WHERE strategy = ?").get(s.id) as { n: number };
-    if (open.n >= MAX_OPEN) continue;
+    // Лимит считаем вместе с ожидающими: иначе к моменту входа у стратегии окажется больше MAX_OPEN.
+    const busy = d.prepare("SELECT (SELECT COUNT(*) FROM paper_positions WHERE strategy = ?) + (SELECT COUNT(*) FROM paper_pending WHERE strategy = ?) AS n").get(s.id, s.id) as { n: number };
+    if (busy.n >= MAX_OPEN) continue;
     if (d.prepare("SELECT 1 FROM paper_positions WHERE strategy = ? AND token = ?").get(s.id, r.id)) continue;
+    if (d.prepare("SELECT 1 FROM paper_pending WHERE strategy = ? AND token = ?").get(s.id, r.id)) continue;
     if (d.prepare("SELECT 1 FROM paper_trades WHERE strategy = ? AND token = ? AND entry_at > ?").get(s.id, r.id, now - REENTRY_MS)) continue;
-    // Покупка: 1% комиссии, остаток идёт по цене хуже на проскальзывание.
-    const units = (s.sizeUsd * (1 - FEE)) / (price * (1 + slip(s.sizeUsd, liq)));
+    if (s.entry.delayMin) {
+      // Пропущенную монету тоже не берём повторно в окне перевхода: иначе пересканы раздувают счётчик пропусков.
+      if (d.prepare("SELECT 1 FROM paper_skips WHERE strategy = ? AND token = ? AND signal_at > ?").get(s.id, r.id, now - REENTRY_MS)) continue;
+      d.prepare(
+        `INSERT INTO paper_pending (strategy, token, chain, symbol, verdict, score, signal_at, signal_price, signal_liq, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(s.id, r.id, r.chain, r.symbol, r.verdict, r.score, now, price, liq, fj);
+      console.log(`[paper] wait ${s.id} $${r.symbol} ${r.chain} ${r.verdict} ${s.entry.delayMin}m, scan $${price} liq $${Math.round(liq)}`);
+      cache = null;
+      continue;
+    }
+    openPosition(s, { token: r.id, chain: r.chain, symbol: r.symbol, verdict: r.verdict, score: r.score }, price, liq, fj, now);
+  }
+}
+
+// Покупка: 1% комиссии, остаток идёт по цене хуже на проскальзывание.
+function openPosition(s: StrategyConfig, c: { token: string; chain: string; symbol: string; verdict: string; score: number | null }, price: number, liq: number, features: string, now: number) {
+  const d = db()!;
+  const units = (s.sizeUsd * (1 - FEE)) / (price * (1 + slip(s.sizeUsd, liq)));
+  d.prepare(
+    `INSERT INTO paper_positions (strategy, token, chain, symbol, verdict, score, entry_at, entry_price, size, units, liq0, peak_price, peak_at, last_price, last_liq, last_at, missing, features)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+  ).run(s.id, c.token, c.chain, c.symbol, c.verdict, c.score, now, price, s.sizeUsd, units, liq, price, now, price, liq, now, features);
+  cache = null;
+  console.log(`[paper] open ${s.id} $${c.symbol} ${c.chain} ${c.verdict}${c.score != null ? ` ${c.score}` : ""} at $${price} liq $${Math.round(liq)}`);
+}
+
+// ---------- подтверждение отложенного входа ----------
+
+function skipPending(q: PendingRow, reason: SkipReason, now: number, price: number | null, liq: number | null) {
+  const d = db()!;
+  d.exec("BEGIN");
+  try {
     d.prepare(
-      `INSERT INTO paper_positions (strategy, token, chain, symbol, verdict, score, entry_at, entry_price, size, units, liq0, peak_price, peak_at, last_price, last_liq, last_at, missing, features)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-    ).run(s.id, r.id, r.chain, r.symbol, r.verdict, r.score, now, price, s.sizeUsd, units, liq, price, now, price, liq, now, JSON.stringify(f));
-    console.log(`[paper] open ${s.id} $${r.symbol} ${r.chain} ${r.verdict}${r.score != null ? ` ${r.score}` : ""} at $${price} liq $${Math.round(liq)}`);
+      `INSERT INTO paper_skips (strategy, token, chain, symbol, verdict, score, reason, signal_at, at, signal_price, price, signal_liq, liq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(q.strategy, q.token, q.chain, q.symbol, q.verdict, q.score, reason, q.signal_at, now, q.signal_price, price, q.signal_liq, liq);
+    d.prepare("DELETE FROM paper_pending WHERE id = ?").run(q.id);
+    d.exec("COMMIT");
+  } catch (e) {
+    d.exec("ROLLBACK");
+    throw e;
+  }
+  const detail =
+    price != null && liq != null ? ` (price ${pct1(((price - q.signal_price) / q.signal_price) * 100)}, liq $${Math.round(q.signal_liq)} -> $${Math.round(liq)})` : "";
+  console.log(`[paper] skip ${q.strategy} $${q.symbol} ${SKIP_LOG[reason]}${detail}`);
+}
+const pct1 = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+
+// Ожидающий вход в этот тик: либо ждём дальше, либо решение (позиция открыта или пропуск записан).
+// pair === undefined: замера по сети не было (сбой API), это не повод считать пул вытащенным.
+function resolvePending(q: PendingRow, s: StrategyConfig | undefined, pair: PairInfo | null | undefined, now: number) {
+  if (!s || !s.enabled || !s.entry.delayMin) return skipPending(q, "removed", now, null, null);
+  const dueAt = q.signal_at + s.entry.delayMin * 60_000;
+  if (now < dueAt) return;
+  if (pair === undefined) {
+    if (now > dueAt + PENDING_GRACE_MS) skipPending(q, "expired", now, null, null);
+    return;
+  }
+  const price = Number(pair?.priceUsd);
+  const liq = pair?.liquidity?.usd ?? 0;
+  // Пары нет или ликвидность ниже порога руга: пул вытащили, независимо от правил стратегии.
+  if (!pair || !(price > 0) || liq < RUG_LIQ) return skipPending(q, "liq", now, price > 0 ? price : null, liq);
+  if (price > q.signal_price * MAX_JUMP) {
+    // Сбой данных: ждём следующего замера, а по истечении окна выкидываем.
+    if (now > dueAt + PENDING_GRACE_MS) skipPending(q, "expired", now, price, liq);
+    return;
+  }
+  const c = s.entry.confirm ?? {};
+  const keepPct = (liq / q.signal_liq) * 100;
+  const movePct = ((price - q.signal_price) / q.signal_price) * 100;
+  if (c.minLiqKeepPct !== undefined && keepPct < c.minLiqKeepPct) return skipPending(q, "liq", now, price, liq);
+  if (c.maxDropPct !== undefined && movePct < -c.maxDropPct) return skipPending(q, "drop", now, price, liq);
+  if (c.maxRisePct !== undefined && movePct > c.maxRisePct) return skipPending(q, "ran", now, price, liq);
+  const d = db()!;
+  const open = d.prepare("SELECT COUNT(*) AS n FROM paper_positions WHERE strategy = ?").get(s.id) as { n: number };
+  if (open.n >= MAX_OPEN) return skipPending(q, "full", now, price, liq);
+  let f: Features | null = null;
+  try {
+    f = JSON.parse(q.features) as Features;
+  } catch {
+    // старые признаки битые: входим без них
+  }
+  const features = JSON.stringify({ ...(f ?? {}), signal: { at: q.signal_at, price: q.signal_price, liqUsd: q.signal_liq, waitMin: Math.round((now - q.signal_at) / 60_000), liqKeepPct: r1(keepPct), movePct: r1(movePct) } });
+  d.exec("BEGIN");
+  try {
+    d.prepare("DELETE FROM paper_pending WHERE id = ?").run(q.id);
+    // Позиция по тому же токену могла появиться иначе (уникальный индекс): тогда просто снимаем ожидание.
+    if (!d.prepare("SELECT 1 FROM paper_positions WHERE strategy = ? AND token = ?").get(s.id, q.token)) openPosition(s, q, price, liq, features, now);
+    d.exec("COMMIT");
+  } catch (e) {
+    d.exec("ROLLBACK");
+    throw e;
   }
 }
 
@@ -353,13 +488,18 @@ export async function paperTick() {
   s.busy = true;
   try {
     const open = d.prepare("SELECT * FROM paper_positions").all() as unknown as PosRow[];
-    if (!open.length) return 0;
     const now = Date.now();
     const byId = new Map(STRATEGIES.map((x) => [x.id, x]));
+    // Ожидающие входы, чьё время пришло (или стратегию убрали): цены для них берём тем же запросом, что и для позиций.
+    const pending = (d.prepare("SELECT * FROM paper_pending").all() as unknown as PendingRow[]).filter((q) => {
+      const s = byId.get(q.strategy);
+      return !s?.enabled || !s.entry.delayMin || now >= q.signal_at + s.entry.delayMin * 60_000;
+    });
+    if (!open.length && !pending.length) return 0;
     // Один токен у нескольких стратегий запрашиваем один раз; bestPairs режет на пачки по 30 и берёт самую
     // ликвидную пару (после миграции с pump.fun цена живёт в новом пуле).
     const byChain = new Map<string, Set<string>>();
-    for (const p of open) byChain.set(p.chain, (byChain.get(p.chain) ?? new Set()).add(p.token));
+    for (const p of [...open, ...pending]) byChain.set(p.chain, (byChain.get(p.chain) ?? new Set()).add(p.token));
     const prices = new Map<string, PairInfo | null>();
     for (const [chain, ids] of byChain) {
       try {
@@ -399,6 +539,15 @@ export async function paperTick() {
         console.warn("[paper] position", p.id, (e as Error).message);
       }
     }
+    // Входы после открытых позиций: только что купленное замеряется уже со следующего тика.
+    for (const q of pending) {
+      const key = `${q.chain}:${q.token}`;
+      try {
+        resolvePending(q, byId.get(q.strategy), prices.has(key) ? prices.get(key) : undefined, now);
+      } catch (e) {
+        console.warn("[paper] pending", q.id, (e as Error).message);
+      }
+    }
     s.lastTick = now;
     cache = null;
     return open.length;
@@ -419,8 +568,9 @@ export function startPaperEngine() {
   const m = memDb()!;
   if (!kvGet(m, "paper_engine_started")) kvSet(m, "paper_engine_started", String(Date.now()));
   const n = (d.prepare("SELECT COUNT(*) AS n FROM paper_positions").get() as { n: number }).n;
+  const w = (d.prepare("SELECT COUNT(*) AS n FROM paper_pending").get() as { n: number }).n;
   setInterval(() => paperTick().catch((e) => console.warn("[paper]", (e as Error).message)), SAMPLE_MS);
-  console.log(`[paper] engine started, ${STRATEGIES.filter((x) => x.enabled).length} strategies, ${n} open positions resumed`);
+  console.log(`[paper] engine started, ${STRATEGIES.filter((x) => x.enabled).length} strategies, ${n} open positions and ${w} pending entries resumed`);
 }
 
 // ---------- статистика для страницы ----------
@@ -443,6 +593,10 @@ function compute() {
   if (!d) return { ...base, strategies: [], open: [], trades: [] };
   const trades = d.prepare("SELECT * FROM paper_trades ORDER BY exit_at").all() as unknown as TradeRow[];
   const open = d.prepare("SELECT * FROM paper_positions ORDER BY entry_at DESC").all() as unknown as PosRow[];
+  const pendingN = new Map(
+    (d.prepare("SELECT strategy, COUNT(*) AS n FROM paper_pending GROUP BY strategy").all() as unknown as { strategy: string; n: number }[]).map((x) => [x.strategy, x.n]),
+  );
+  const skipRows = d.prepare("SELECT strategy, reason, COUNT(*) AS n FROM paper_skips GROUP BY strategy, reason").all() as unknown as { strategy: string; reason: SkipReason; n: number }[];
   const ids = [...new Set([...STRATEGIES.map((s) => s.id), ...trades.map((t) => t.strategy)])];
   const strategies = ids.map((id) => {
     const cfg = STRATEGIES.find((s) => s.id === id);
@@ -476,6 +630,10 @@ function compute() {
       sizeUsd: cfg?.sizeUsd ?? 100,
       trades: ts.length,
       open: op.length,
+      delayMin: cfg?.entry.delayMin ?? null,
+      pending: pendingN.get(id) ?? 0,
+      // Сколько сигналов подтверждение отсеяло, по причинам (liq: пул вытащили, drop: упала, ran: убежала вверх).
+      skipped: Object.fromEntries(skipRows.filter((x) => x.strategy === id).map((x) => [x.reason, x.n])) as Partial<Record<SkipReason, number>>,
       wins: wins.length,
       winRate: ts.length ? r1((wins.length / ts.length) * 100) : null,
       pnl: r2(eq),
@@ -550,9 +708,11 @@ export function paperExport(since = 0) {
       return null;
     }
   };
-  if (!d) return { enabled: paperEnabled(), startedAt: null, strategies: STRATEGIES, trades: [], open: [] };
+  if (!d) return { enabled: paperEnabled(), startedAt: null, strategies: STRATEGIES, trades: [], open: [], pending: [], skips: [] };
   const trades = d.prepare("SELECT * FROM paper_trades WHERE exit_at >= ? ORDER BY exit_at").all(since) as unknown as TradeRow[];
   const open = d.prepare("SELECT * FROM paper_positions ORDER BY entry_at").all() as unknown as PosRow[];
+  const pending = d.prepare("SELECT * FROM paper_pending ORDER BY signal_at").all() as unknown as PendingRow[];
+  const skips = d.prepare("SELECT * FROM paper_skips WHERE at >= ? ORDER BY at").all(since) as unknown as Record<string, unknown>[];
   return {
     enabled: paperEnabled(),
     startedAt: startedAt(),
@@ -561,5 +721,7 @@ export function paperExport(since = 0) {
     strategies: STRATEGIES,
     trades: trades.map(({ features, ...t }) => ({ ...t, holdMin: Math.round((t.exit_at - t.entry_at) / 60_000), features: parse(features) })),
     open: open.map(({ features, ...p }) => ({ ...p, features: parse(features) })),
+    pending: pending.map(({ features, ...q }) => ({ ...q, features: parse(features) })),
+    skips,
   };
 }

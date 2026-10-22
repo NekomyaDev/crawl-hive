@@ -40,6 +40,7 @@ function rules(s: Strategy) {
   const x = s.exits;
   if (!x) return "-";
   const parts = [
+    s.delayMin != null && `buy ${s.delayMin}m after scan`,
     x.tpPct != null && `TP +${x.tpPct}%`,
     x.slPct != null && `SL -${x.slPct}%`,
     x.trailPct != null && `trail ${x.trailPct}%${x.trailArmPct ? ` after +${x.trailArmPct}%` : ""}`,
@@ -48,16 +49,36 @@ function rules(s: Strategy) {
   return parts.filter(Boolean).join(" · ");
 }
 
+// Подтверждённый вход: сколько ждут покупки и сколько сигналов отсеяно (пул вытащили, упала, убежала вверх).
+function Confirm({ s }: { s: Strategy }) {
+  if (s.delayMin == null) return <span className="text-muted">-</span>;
+  const k = s.skipped;
+  const other = (k.expired ?? 0) + (k.full ?? 0) + (k.removed ?? 0);
+  return (
+    <span className="whitespace-nowrap" title="Waiting to buy · skipped: liquidity pulled / price dropped / already ran / other">
+      <span className="text-sky">{s.pending} wait</span>
+      <span className="text-muted"> · </span>
+      <span className={k.liq ? "text-danger" : "text-muted"}>{k.liq ?? 0} liq</span>
+      <span className="text-muted"> · </span>
+      <span className={k.drop ? "text-coral" : "text-muted"}>{k.drop ?? 0} drop</span>
+      <span className="text-muted"> · </span>
+      <span className={k.ran ? "text-honey" : "text-muted"}>{k.ran ?? 0} ran</span>
+      {other > 0 && <span className="text-muted"> · {other} other</span>}
+    </span>
+  );
+}
+
 function Leaderboard({ strategies, ids }: { strategies: Strategy[]; ids: string[] }) {
   const rows = [...strategies].sort((a, b) => b.pnl + b.openPnl - (a.pnl + a.openPnl));
   return (
     <div className="overflow-x-auto">
-      <table className="num w-full min-w-[860px] text-xs">
+      <table className="num w-full min-w-[980px] text-xs">
         <thead className="text-left text-muted">
           <tr className="border-b border-line">
             <th className="px-4 py-2 font-medium">Strategy</th>
             <th className="px-2 py-2 text-right font-medium">Trades</th>
             <th className="px-2 py-2 text-right font-medium">Open</th>
+            <th className="px-2 py-2 text-right font-medium">Confirm</th>
             <th className="px-2 py-2 text-right font-medium">Win rate</th>
             <th className="px-2 py-2 text-right font-medium">Realized</th>
             <th className="px-2 py-2 text-right font-medium">Unrealized</th>
@@ -84,6 +105,9 @@ function Leaderboard({ strategies, ids }: { strategies: Strategy[]; ids: string[
               </td>
               <td className="px-2 py-2 text-right">{s.trades}</td>
               <td className="px-2 py-2 text-right">{s.open}</td>
+              <td className="px-2 py-2 text-right text-[11px]">
+                <Confirm s={s} />
+              </td>
               <td className="px-2 py-2 text-right">{s.winRate == null ? "-" : `${s.winRate}%`}</td>
               <td className={cn("px-2 py-2 text-right font-semibold", tone(s.pnl))}>{s.trades ? usd(s.pnl) : "-"}</td>
               <td className={cn("px-2 py-2 text-right", tone(s.openPnl))}>{s.open ? usd(s.openPnl) : "-"}</td>
@@ -280,7 +304,7 @@ export function PaperView() {
       {data?.legacy && <Legacy d={data.legacy} />}
 
       <p className="text-xs text-muted">
-        How it works: when Launch Radar finishes a scan, every strategy whose filter matches buys $100 at the scan price. Each buy and sell pays a {Math.round((e?.fee ?? 0.01) * 100)}% fee plus slippage of size over pool
+        How it works: when Launch Radar finishes a scan, every strategy whose filter matches buys $100 at the scan price. Confirmed strategies wait instead and buy at the price of that moment, but only if the pool still holds most of its liquidity and the price has not dropped or run too far; otherwise the signal is counted as skipped. Each buy and sell pays a {Math.round((e?.fee ?? 0.01) * 100)}% fee plus slippage of size over pool
         liquidity, capped. Exits are checked in order: stop loss, take profit, trailing stop, time limit, at the real sampled price, so a fast candle can blow past a level. A pair that vanishes or drops under $500 liquidity
         for three checks in a row is a rug at -100%. Real trading would still do worse: no failed transactions, no MEV, no delay. Verdict outcomes live on{" "}
         <Link href="/track" className="text-honey hover:underline">
