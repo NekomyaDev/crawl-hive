@@ -20,6 +20,8 @@ export interface EntryRule {
   maxScore?: number;
   verdictsV2?: VerdictV2[]; // теневой вердикт v2 (score-v2.ts); без v2 у скана фильтр не проходит
   minScoreV2?: number;
+  verdictsV3?: VerdictV2[]; // теневой вердикт v3 (score-v3.ts); без v3 у скана фильтр не проходит
+  minScoreV3?: number;
   minAgeMin?: number;
   maxAgeMin?: number;
   minLiqUsd?: number;
@@ -100,6 +102,9 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s22", label: "V2 not DANGER 20k+", note: "Second look CLEAN, OK or RISKY with $20k+ liquidity, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN", "OK", "RISKY"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // 12:55: s8 (трейлинг 25%) 15 сделок, -16% против -4.5% у контроля, выключен. Стопы SL30 закрываются около -46%: пробуем шире.
   { id: "s23", label: "Clean 20k+ wide stop", note: "CLEAN with $20k+ liquidity, TP100 SL40, 24h", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // 22.10: v2 стал публичным, теневая теперь v3 (ончейн-сигналы). Пара к s15/s16 для сравнения вперёд.
+  { id: "s24", label: "V3 CLEAN TP100", note: "Shadow score v3 says CLEAN (any public verdict), TP100 SL30, 24h", entry: { verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s25", label: "V3 CLEAN hold 24h", note: "Baseline for v3: shadow score v3 says CLEAN, no stops, sold after 24h", entry: { verdictsV3: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
@@ -121,10 +126,14 @@ export const paperEnabled = () => process.env.PAPER_ENGINE !== "0";
 // ---------- признаки входа (они же уходят в экспорт) ----------
 
 export interface Features {
+  // verdict/score - всегда v1: стратегии s1-s23 заведены на нём. С 22.10 публичный вердикт скана - это v2,
+  // а v1 лежит в r.v1; поэтому берём оттуда, а у старых сканов без r.v1 публичный и есть v1.
   verdict: Verdict;
   score: number | null;
-  scoreV2: number | null; // теневая оценка v2; null — скан без v2
+  scoreV2: number | null; // оценка v2 (с 22.10 публичная); null — скан без v2
   verdictV2: VerdictV2 | null;
+  scoreV3: number | null; // теневая оценка v3; null — скан без v3
+  verdictV3: VerdictV2 | null;
   ageMin: number | null;
   liqUsd: number | null;
   fdv: number | null;
@@ -153,10 +162,12 @@ const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : n
 export function featuresOf(r: ScanResult): Features {
   const m = r.market;
   return {
-    verdict: r.verdict,
-    score: r.score,
+    verdict: r.v1?.verdict ?? r.verdict,
+    score: r.v1 ? r.v1.score : r.score,
     scoreV2: r.v2?.scoreV2 ?? null,
     verdictV2: r.v2?.verdictV2 ?? null,
+    scoreV3: r.v3?.scoreV3 ?? null,
+    verdictV3: r.v3?.verdictV3 ?? null,
     ageMin: m?.ageHours != null ? Math.round(m.ageHours * 60) : null,
     liqUsd: num(m?.liquidityUsd),
     fdv: num(m?.fdv),
@@ -190,6 +201,9 @@ function matches(e: EntryRule, f: Features, chain: string, token: string): boole
   if (!min(f.score, e.minScore) || !max(f.score, e.maxScore)) return false;
   if (e.verdictsV2?.length && (f.verdictV2 === null || !e.verdictsV2.includes(f.verdictV2))) return false;
   if (!min(f.scoreV2, e.minScoreV2)) return false;
+  // У старых записей признаков (до 22.10) поля v3 нет вовсе: undefined считаем «нет данных».
+  if (e.verdictsV3?.length && (f.verdictV3 == null || !e.verdictsV3.includes(f.verdictV3))) return false;
+  if (!min(f.scoreV3 ?? null, e.minScoreV3)) return false;
   if (!min(f.ageMin, e.minAgeMin) || !max(f.ageMin, e.maxAgeMin)) return false;
   if (!min(f.liqUsd, e.minLiqUsd) || !max(f.liqUsd, e.maxLiqUsd)) return false;
   if (!min(f.fdv, e.minFdv) || !max(f.fdv, e.maxFdv)) return false;
@@ -332,10 +346,10 @@ export function paperOnSignal(r: ScanResult) {
   if (!paperEnabled()) return;
   const price = Number(r.market?.priceUsd);
   const liq = Number(r.market?.liquidityUsd);
-  if (!(price > 0) || !(liq > 0) || r.verdict === "TOO_EARLY") return;
+  const f = featuresOf(r);
+  if (!(price > 0) || !(liq > 0) || f.verdict === "TOO_EARLY") return;
   const d = db();
   if (!d) return;
-  const f = featuresOf(r);
   const now = Date.now();
   const fj = JSON.stringify(f);
   for (const s of STRATEGIES) {
@@ -351,12 +365,13 @@ export function paperOnSignal(r: ScanResult) {
       if (d.prepare("SELECT 1 FROM paper_skips WHERE strategy = ? AND token = ? AND signal_at > ?").get(s.id, r.id, now - REENTRY_MS)) continue;
       d.prepare(
         `INSERT INTO paper_pending (strategy, token, chain, symbol, verdict, score, signal_at, signal_price, signal_liq, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(s.id, r.id, r.chain, r.symbol, r.verdict, r.score, now, price, liq, fj);
-      console.log(`[paper] wait ${s.id} $${r.symbol} ${r.chain} ${r.verdict} ${s.entry.delayMin}m, scan $${price} liq $${Math.round(liq)}`);
+      ).run(s.id, r.id, r.chain, r.symbol, f.verdict, f.score, now, price, liq, fj);
+      console.log(`[paper] wait ${s.id} $${r.symbol} ${r.chain} ${f.verdict} ${s.entry.delayMin}m, scan $${price} liq $${Math.round(liq)}`);
       cache = null;
       continue;
     }
-    openPosition(s, { token: r.id, chain: r.chain, symbol: r.symbol, verdict: r.verdict, score: r.score }, price, liq, fj, now);
+    // В сделке пишем v1, как и в признаках: стратегии заведены на нём.
+    openPosition(s, { token: r.id, chain: r.chain, symbol: r.symbol, verdict: f.verdict, score: f.score }, price, liq, fj, now);
   }
 }
 

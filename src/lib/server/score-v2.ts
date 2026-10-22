@@ -1,5 +1,5 @@
-// Теневая оценка v2: считается рядом с публичной, но вердикт на сайте пока не меняет. Нужна, чтобы проверить
-// вперёд то, что нашёл бэктест 22.10 (3696 закрытых записей Track Record 13-21.10, проверка на свежих 30% по времени):
+// Оценка v2: с 22.10 это публичный вердикт (scan.ts кладёт её в r.score/r.verdict, старая v1 остаётся в r.v1).
+// До переключения считалась в тени, чтобы проверить вперёд то, что нашёл бэктест 22.10 (3696 закрытых записей Track Record 13-21.10, проверка на свежих 30% по времени):
 // публичный CLEAN на Launch Radar ругался в ~36% случаев, а сумма штрафов v1 почти не видит главного риска свежих
 // запусков. Правила нарочно простые (аддитивные очки, мало правил), чтобы не подогнать их под одну неделю данных.
 // Что видно по данным:
@@ -48,7 +48,7 @@ export const V2 = {
 const DUMP_WALLETS = 3;
 const HARD = ["Honeypot", "Mint open", "Freeze on"];
 
-const verdictOf = (s: number): VerdictV2 => (s >= V2.clean ? "CLEAN" : s >= V2.ok ? "OK" : s >= V2.risky ? "RISKY" : "DANGER");
+export const verdictOf = (s: number): VerdictV2 => (s >= V2.clean ? "CLEAN" : s >= V2.ok ? "OK" : s >= V2.risky ? "RISKY" : "DANGER");
 const norm = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
 export const isPumpFun = (r: ScanResult) => r.chain === "solana" && (r.id.endsWith("pump") || r.launch?.factoryLabel === "pump.fun");
 
@@ -83,6 +83,29 @@ export function priorDumpWallets(token: string): number | null {
   return n;
 }
 
+// Рыночная часть v2 (место запуска, пул, возраст): её же берёт за основу v3 (score-v3.ts).
+export function v2Market(r: ScanResult): [number, string][] {
+  const out: [number, string][] = [];
+  const liq = r.market?.liquidityUsd ?? 0;
+  const age = r.market?.ageHours;
+  const v1Verdict = r.v1?.verdict ?? r.verdict;
+  const early = v1Verdict === "TOO_EARLY" || (age !== undefined && age < 0.5);
+  const young = early || (age !== undefined && age < 24);
+  if (isPumpFun(r)) out.push([V2.pumpFun, "pump.fun launch"]);
+  else if (r.chain === "solana" || r.chain === "bsc") out.push([V2.calmChain, r.chain === "bsc" ? "BNB Chain" : "Solana outside pump.fun"]);
+  if (liq < 5_000) out.push([V2.liqDead, "pool under $5k"]);
+  else if (liq >= 100_000) out.push([V2.liqDeep, "pool of $100k or more"]);
+  else if (liq >= 20_000) out.push([V2.liqMid, "pool of $20k to $100k"]);
+  if (young && liq >= 20_000) out.push([V2.youngBigPool, "under a day old with a $20k+ pool"]);
+  if (early) out.push([V2.tooEarly, "under 30 minutes old"]);
+  return out;
+}
+
+// Жёсткий флаг для потолка: honeypot, открытый минт, заморозка, опасный байткод. Общий для v2 и v3.
+export function hardFlag(r: ScanResult): string | undefined {
+  return r.factors.find((f) => HARD.includes(f.label))?.label ?? (r.xray?.findings.some((f) => f.severity === "high") ? "High risk contract power" : undefined);
+}
+
 export function scoreV2(r: ScanResult, dumpWallets: number | null = priorDumpWallets(r.id)): ScoreV2 {
   let s: number = V2.base;
   const reasons: string[] = [];
@@ -90,25 +113,16 @@ export function scoreV2(r: ScanResult, dumpWallets: number | null = priorDumpWal
     s += pts;
     reasons.push(`${pts > 0 ? "+" : ""}${pts} ${why}`);
   };
-  const liq = r.market?.liquidityUsd ?? 0;
-  const age = r.market?.ageHours;
-  const early = r.verdict === "TOO_EARLY" || (age !== undefined && age < 0.5);
-  const young = early || (age !== undefined && age < 24);
-
-  if (isPumpFun(r)) add(V2.pumpFun, "pump.fun launch");
-  else if (r.chain === "solana" || r.chain === "bsc") add(V2.calmChain, r.chain === "bsc" ? "BNB Chain" : "Solana outside pump.fun");
-  if (liq < 5_000) add(V2.liqDead, "pool under $5k");
-  else if (liq >= 100_000) add(V2.liqDeep, "pool of $100k or more");
-  else if (liq >= 20_000) add(V2.liqMid, "pool of $20k to $100k");
-  if (young && liq >= 20_000) add(V2.youngBigPool, "under a day old with a $20k+ pool");
-  if (early) add(V2.tooEarly, "under 30 minutes old");
-  if (r.score !== null && r.verdict !== "TOO_EARLY") {
-    if (r.score >= 80) add(V2.v1High, `v1 score ${r.score}`);
-    else if (r.score < 60) add(V2.v1Low, `v1 score ${r.score}`);
+  for (const [pts, why] of v2Market(r)) add(pts, why);
+  // Балл v1 берём из r.v1, когда он уже есть: после переключения r.score/r.verdict - это сам v2.
+  const v1 = r.v1 ?? { score: r.score, verdict: r.verdict };
+  if (v1.score !== null && v1.verdict !== "TOO_EARLY") {
+    if (v1.score >= 80) add(V2.v1High, `v1 score ${v1.score}`);
+    else if (v1.score < 60) add(V2.v1Low, `v1 score ${v1.score}`);
   }
   if (dumpWallets !== null && dumpWallets >= DUMP_WALLETS) add(V2.dumpWallets, `${dumpWallets} wallets were on tokens that dumped`);
   s = Math.max(0, Math.min(100, s));
-  const hard = r.factors.find((f) => HARD.includes(f.label))?.label ?? (r.xray?.findings.some((f) => f.severity === "high") ? "High risk contract power" : undefined);
+  const hard = hardFlag(r);
   if (hard && s > V2.hardCap) {
     reasons.push(`capped at ${V2.hardCap}: ${hard.toLowerCase()}`);
     s = V2.hardCap;
@@ -116,7 +130,7 @@ export function scoreV2(r: ScanResult, dumpWallets: number | null = priorDumpWal
   return { scoreV2: s, verdictV2: verdictOf(s), reasonsV2: reasons, dumpWallets };
 }
 
-// Не роняем скан из-за теневой оценки: ошибка тут - просто нет v2.
+// Не роняем скан из-за оценки: ошибка тут - просто нет v2, публичным остаётся v1.
 export function safeScoreV2(r: ScanResult): ScoreV2 | undefined {
   try {
     return scoreV2(r);

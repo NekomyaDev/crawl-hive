@@ -25,6 +25,8 @@ import { xrayEvm, xrayFactors, xrayLive, type XRayReport } from "./scan-xray";
 import { t22Factors, xraySolana, type T22Report } from "./scan-t22";
 import { siteFactors, xraySite, type SiteReport } from "./scan-site";
 import { rugZone, safeScoreV2, ZONE_MIN_N, type ScoreV2 } from "./score-v2";
+import { safeScoreV3, type ScoreV3 } from "./score-v3";
+import { topReason, verdictWorse } from "@/lib/second-look";
 import type { XRayView } from "@/components/xray-panel";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
@@ -75,7 +77,11 @@ export interface ScanResult {
   telegram: { channel: string; url: string }[];
   x?: XBuzz; // догружается после вердикта, есть только в сохранённом скане
   since?: SinceLast; // что изменилось с прошлого скана этого токена
-  v2?: ScoreV2; // теневая оценка v2 (score-v2.ts): пишется в Track Record, на публичный вердикт и интерфейс не влияет
+  // С 22.10 публичные score/verdict/reason считаются по v2 (score-v2.ts); старая оценка v1 (сумма штрафов) лежит тут,
+  // чтобы сравнивать модели в Track Record. Нет v1 - скан до переключения или базовый актив (там публичный и есть v1).
+  v1?: { score: number | null; verdict: Verdict; reason: string };
+  v2?: ScoreV2; // оценка v2 с очками по правилам; её вердикт (с жёсткими потолками v1) и есть публичный
+  v3?: ScoreV3; // теневая оценка v3 (score-v3.ts): «Second look» в интерфейсе и Track Record, вердикт не меняет
   scannedAt: number;
 }
 
@@ -794,9 +800,11 @@ export async function runScan(
     telegram,
     scannedAt: Date.now(),
   };
-  // Теневая оценка v2: только считаем и запоминаем, публичные score/verdict остаются как были.
+  // Оценка v2 считается от готового v1 (балл v1 - одно из её правил), теневая v3 - от v2 (память кошельков).
   const v2 = core ? undefined : safeScoreV2(result);
   if (v2) result.v2 = v2;
+  const v3 = core ? undefined : safeScoreV3(result);
+  if (v3) result.v3 = v3;
   // Предупреждения по бэктесту 22.10 с нулевым весом: видны как флаги, но балл и вердикт не трогают
   // (сумма уже посчитана выше). Процент ругов показываем только при 30+ закрытых записях в корзине.
   if (!core) {
@@ -811,14 +819,24 @@ export async function runScan(
       );
     if (v2?.dumpWallets != null && v2.dumpWallets >= 3) hit("Wallets from dumped coins", 0, `${v2.dumpWallets} wallets here were on earlier coins that dumped`);
   }
+  // Переключение 22.10: публичный вердикт берём из v2, v1 сохраняем рядом. Базовые активы и сканы без v2 - как было.
+  if (v2) {
+    result.v1 = { score, verdict, reason };
+    Object.assign(result, publicFromV2(result.v1, v2, factors, xray));
+    if (trustEnabled()) {
+      const t = trustScore({ score: result.score, verdict: result.verdict }, larp);
+      if (t) result.trust = t;
+      else delete result.trust;
+    }
+  }
   // Память токена: что изменилось с прошлого скана, затем запоминаем текущий снимок.
   const since = compareToLast(result);
   if (since?.changes.length) result.since = since;
   recordSnapshot(result);
   log({
     crawler: "verdict",
-    text: `${result.score ?? "-"} ${verdict.replace("_", " ")} · ${reason}`,
-    tone: verdict === "CLEAN" || verdict === "OK" ? "ok" : verdict === "TOO_EARLY" ? "info" : "bad",
+    text: `${result.score ?? "-"} ${result.verdict.replace("_", " ")} · ${result.reason}`,
+    tone: result.verdict === "CLEAN" || result.verdict === "OK" ? "ok" : result.verdict === "TOO_EARLY" ? "info" : "bad",
   });
   const cache = mem().cache;
   cache.delete(address);
@@ -829,6 +847,43 @@ export async function runScan(
   // Каждый вердикт попадает в Track Record: через сутки видно, сбылся ли он.
   trackVerdict(result, opts.src ?? (opts.record === false ? "crawler" : "scan"));
   return result;
+}
+
+// ---------- публичный вердикт из v2 ----------
+// Жёсткие правила v1: при них итог не может быть мягче вердикта v1 (LP в руках кошелька, молодой со связанными
+// кошельками, honeypot, открытый минт, заморозка, опасный байткод). У v2 свой потолок 45, но v1 бывает строже.
+const V1_HARD = ["LP can be pulled", "Young and linked", "Honeypot", "Mint open", "Freeze on"];
+// Верх полосы вердикта по порогам v2: балл не должен противоречить вердикту, если его опустил потолок v1.
+const BAND_TOP: Partial<Record<Verdict, number>> = { OK: 69, RISKY: 54, DANGER: 39 };
+
+function publicFromV2(v1: NonNullable<ScanResult["v1"]>, v2: ScoreV2, factors: ScanFactor[], xray?: XRayView): Pick<ScanResult, "score" | "verdict" | "reason"> {
+  // «Слишком рано» остаётся: моложе 30 минут без явных флагов судить честно нельзя ни одной моделью.
+  if (v1.verdict === "TOO_EARLY") return { score: v2.scoreV2, verdict: "TOO_EARLY", reason: v1.reason };
+  let score = v2.scoreV2;
+  let verdict: Verdict = v2.verdictV2;
+  const hard = factors.some((f) => V1_HARD.includes(f.label)) || !!xray?.findings.some((f) => f.severity === "high");
+  if (hard && verdictWorse(v1.verdict, verdict)) {
+    verdict = v1.verdict;
+    score = Math.min(score, BAND_TOP[verdict] ?? score);
+  }
+  // Причина: если v2 строже v1, объясняем главным правилом v2; иначе остаётся причина v1 (самый тяжёлый фактор).
+  const why = verdictWorse(verdict, v1.verdict) ? plainV2Why(topReason(v2.reasonsV2)) : null;
+  return { score, verdict, reason: why ?? v1.reason };
+}
+
+// Правило v2 простыми словами. Балл v1 и потолок по флагу - не причина сами по себе: тогда берём причину v1.
+function plainV2Why(t: string | null): string | null {
+  if (!t || t.startsWith("crawler score") || /^(honeypot|mint open|freeze on|high risk contract power)$/.test(t)) return null;
+  const dumped = t.match(/^(\d+) wallets were on tokens that dumped$/);
+  if (dumped) return `Wallets from dumped coins: ${dumped[1]} wallets here were on earlier coins that dumped`;
+  const PLAIN: Record<string, string> = {
+    "pump.fun launch": "pump.fun launch: coins from there rug more often than other launches in our Track Record",
+    "pool under $5k": "Pool under $5k: too thin to trade, coins like this rarely go anywhere",
+    "pool of $20k to $100k": "Pool of $20k to $100k: pools this size rug more often than deep ones in our Track Record",
+    "under a day old with a $20k+ pool": "Under a day old with a $20k+ pool: this is where most rugs in our Track Record happen",
+    "under 30 minutes old": "Under 30 minutes old: most coins this young dump within a day",
+  };
+  return PLAIN[t] ?? t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 // Отчёты X-Ray в общий вид для интерфейса: одинаковые строки для EVM и Solana.

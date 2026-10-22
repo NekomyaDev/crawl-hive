@@ -16,6 +16,7 @@ const RUG_CONFIRM = 2; // руг ставим только после двух �
 const DEAD_LIQ = 500; // во всех пулах меньше $500 — продать уже нечем, руг при любой цене
 const DEEP_PER_RUN = 60; // перепроверок по всем парам за проход (лимит DexScreener 300 запросов в минуту)
 const METHOD = 2; // версия метода замера: 2 — цена и ликвидность по всем парам токена
+const PUBLIC_METHOD = 2; // какая модель дала публичный вердикт: 2 — оценка v2 (с 22.10); нет поля pv — старая v1
 
 export type TrackVerdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
 
@@ -48,11 +49,17 @@ export interface TrackEntry {
   rugBy?: "liq" | "gone"; // руг по обвалу ликвидности и цены или по исчезновению всех пар
   rc?: number; // когда старую запись перепроверили новым методом
   recheck?: "reopened" | "alive"; // reopened — свежий старый руг досчитан заново; alive — токен после «руга» жив
-  // Теневая оценка v2 (score-v2.ts) на момент скана: по ней через сутки сравниваем v2 с публичным вердиктом.
+  // Оценка v2 (score-v2.ts) на момент скана, сырая, без потолков v1. С 22.10 по ней же считается публичный verdict.
   s2?: number;
   v2?: "CLEAN" | "OK" | "RISKY" | "DANGER";
   dw?: number; // кошельков с рухнувшей историей на момент скана
   a0?: number; // возраст пары в часах на момент скана (для базовой ставки «зоны ругов» в скане)
+  // С 22.10: какая модель дала verdict, плюс v1 и теневая v3 рядом, чтобы сравнивать все три на одних монетах.
+  pv?: number; // версия публичного вердикта (PUBLIC_METHOD); нет поля — verdict/score это v1
+  s1?: number | null; // балл v1
+  vv1?: TrackVerdict; // вердикт v1
+  s3?: number; // теневая оценка v3 (score-v3.ts)
+  v3?: "CLEAN" | "OK" | "RISKY" | "DANGER";
 }
 
 // Все записи Track Record (для разовых задач вроде поиска первого появления токена).
@@ -76,7 +83,9 @@ export function trackVerdict(r: {
   score: number | null;
   name?: string;
   market?: { priceUsd?: number; liquidityUsd?: number; fdv?: number; ageHours?: number };
+  v1?: { score: number | null; verdict: TrackVerdict };
   v2?: { scoreV2: number; verdictV2: NonNullable<TrackEntry["v2"]>; dumpWallets: number | null };
+  v3?: { scoreV3: number; verdictV3: NonNullable<TrackEntry["v3"]> };
 }, src: TrackEntry["src"]) {
   const price0 = Number(r.market?.priceUsd);
   const liq0 = Number(r.market?.liquidityUsd);
@@ -91,12 +100,20 @@ export function trackVerdict(r: {
   }
   const fdv0 = Number(r.market?.fdv) > 0 ? Math.round(Number(r.market?.fdv)) : undefined;
   const age0 = r.market?.ageHours;
-  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}), ...(age0 !== undefined && age0 >= 0 ? { a0: Math.round(age0 * 10) / 10 } : {}), ...v2Fields(r.v2) });
+  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}), ...(age0 !== undefined && age0 >= 0 ? { a0: Math.round(age0 * 10) / 10 } : {}), ...v2Fields(r.v2), ...modelFields(r) });
   save(list);
 }
 
 const v2Fields = (v?: { scoreV2: number; verdictV2: NonNullable<TrackEntry["v2"]>; dumpWallets: number | null }) =>
   v ? { s2: v.scoreV2, v2: v.verdictV2, ...(v.dumpWallets !== null ? { dw: v.dumpWallets } : {}) } : {};
+
+// Без r.v1 (базовый актив, сбой v2) публичный вердикт и есть v1: пишем его же в поля v1.
+const modelFields = (r: { score: number | null; verdict: TrackVerdict; v1?: { score: number | null; verdict: TrackVerdict }; v3?: { scoreV3: number; verdictV3: NonNullable<TrackEntry["v3"]> } }) => ({
+  pv: PUBLIC_METHOD,
+  s1: r.v1 ? r.v1.score : r.score,
+  vv1: r.v1?.verdict ?? r.verdict,
+  ...(r.v3 ? { s3: r.v3.scoreV3, v3: r.v3.verdictV3 } : {}),
+});
 
 // Замер цены открытых записей. Сначала дешёвый пакетный запрос (по одной основной паре на токен, 30 адресов
 // за раз); всё, что выглядит как обвал, руг или смена пары, перепроверяем по всем парам токена. Так исход
@@ -252,15 +269,16 @@ const median = (xs: number[]) => {
   return s[Math.floor(s.length / 2)];
 };
 
-export function trackStats() {
-  const list = all();
-  const verdicts: TrackVerdict[] = ["CLEAN", "OK", "RISKY", "DANGER", "TOO_EARLY"];
-  const by = verdicts.map((v): VerdictStats => {
+const VERDICTS: TrackVerdict[] = ["CLEAN", "OK", "RISKY", "DANGER", "TOO_EARLY"];
+// Итог считаем только после полных суток с момента скана: руги закрываются раньше, и иначе
+// в первые часы «закрытыми» оказывались бы почти одни руги — ложные 100% в обе стороны.
+const settledAt = (e: TrackEntry, now: number) => !!e.done && now - e.at >= WINDOW_MS;
+
+function statsBy(list: TrackEntry[]): VerdictStats[] {
+  const now = Date.now();
+  return VERDICTS.map((v): VerdictStats => {
     const xs = list.filter((e) => e.verdict === v);
-    // Итог считаем только после полных суток с момента скана: руги закрываются раньше, и иначе
-    // в первые часы «закрытыми» оказывались бы почти одни руги — ложные 100% в обе стороны.
-    const now = Date.now();
-    const settled = xs.filter((e) => e.done && now - e.at >= WINDOW_MS);
+    const settled = xs.filter((e) => settledAt(e, now));
     return {
       verdict: v,
       tracked: xs.length,
@@ -271,6 +289,22 @@ export function trackStats() {
       medianPeak: median(settled.map((e) => e.peakPct ?? 0)),
     };
   });
+}
+
+// Когда публичный вердикт переключили на v2: первая запись с pv. null — новых записей ещё нет.
+function switchAt(list: TrackEntry[]) {
+  let at: number | null = null;
+  for (const e of list) if (e.pv && (at === null || e.at < at)) at = e.at;
+  return at;
+}
+
+export function trackStats() {
+  const list = all();
+  // by — за всё время (старые v1 и новые v2 вперемешку): его читают бот, Brain и «слишком рано» в скане.
+  // Для страницы отдельно: byPublic — только с переключения на v2, byOld — до него.
+  const by = statsBy(list);
+  const byPublic = statsBy(list.filter((e) => e.pv));
+  const byOld = statsBy(list.filter((e) => !e.pv));
   // «Мы предупреждали»: DANGER/RISKY, которые потом рухнули. «Пропустили»: CLEAN/OK, которые всё равно рухнули.
   const pub = (e: TrackEntry) => ({
     id: e.id,
@@ -290,7 +324,76 @@ export function trackStats() {
   const warned = list.filter((e) => (e.verdict === "DANGER" || e.verdict === "RISKY") && e.dumped).slice(0, 12).map(pub);
   const missed = list.filter((e) => (e.verdict === "CLEAN" || e.verdict === "OK") && e.dumped).slice(0, 12).map(pub);
   const recent = list.slice(0, 40).map(pub);
-  return { since: list.length ? list[list.length - 1].at : null, total: list.length, by, warned, missed, recent, windowHours: 24, dumpPct: DUMP_PCT };
+  return {
+    since: list.length ? list[list.length - 1].at : null,
+    total: list.length,
+    by,
+    byPublic,
+    byOld,
+    switchAt: switchAt(list),
+    totalPublic: list.filter((e) => e.pv).length,
+    warned,
+    missed,
+    recent,
+    windowHours: 24,
+    dumpPct: DUMP_PCT,
+  };
+}
+
+// ---------- какая оценка права: v1, v2 и v3 на одних и тех же монетах ----------
+// Только закрытые записи (прошли сутки). «С переключения» — записи с pv, где у монеты есть все три оценки;
+// «за всё время» — где есть хотя бы поле модели: v1 есть у всех, v2 с 21-22.10, v3 только с 22.10.
+// Ложные руги (после «руга» токен жив) ругами не считаем.
+type ModelVerdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
+export interface CompareRow {
+  verdict: ModelVerdict;
+  n: number;
+  rugRate: number | null;
+  dumpRate: number | null;
+  peak50Rate: number | null; // доля с пиком от +50% за сутки
+  medianLast: number | null; // медиана цены через сутки, % от цены скана
+}
+const MODELS = {
+  v1: (e: TrackEntry): ModelVerdict | undefined => e.vv1 ?? (e.pv ? undefined : e.verdict),
+  v2: (e: TrackEntry): ModelVerdict | undefined => e.v2,
+  v3: (e: TrackEntry): ModelVerdict | undefined => e.v3,
+};
+type Model = keyof typeof MODELS;
+
+function compareRows(list: TrackEntry[], model: Model): CompareRow[] {
+  const rate = (a: number, n: number) => (n ? Math.round((a / n) * 1000) / 10 : null);
+  return VERDICTS.flatMap((v) => {
+    const xs = list.filter((e) => MODELS[model](e) === v);
+    if (!xs.length && v === "TOO_EARLY") return [];
+    return [
+      {
+        verdict: v,
+        n: xs.length,
+        rugRate: rate(xs.filter((e) => e.rugged && e.recheck !== "alive").length, xs.length),
+        dumpRate: rate(xs.filter((e) => e.dumped).length, xs.length),
+        peak50Rate: rate(xs.filter((e) => (e.peakPct ?? 0) >= 50).length, xs.length),
+        medianLast: median(xs.flatMap((e) => (e.lastPct != null ? [e.lastPct] : []))),
+      },
+    ];
+  });
+}
+
+export function trackCompare() {
+  const now = Date.now();
+  const list = all();
+  const settled = list.filter((e) => settledAt(e, now));
+  const models = Object.keys(MODELS) as Model[];
+  const table = (xs: TrackEntry[]) => Object.fromEntries(models.map((m) => [m, compareRows(xs.filter((e) => MODELS[m](e) !== undefined), m)])) as Record<Model, CompareRow[]>;
+  // С переключения сравниваем строго на одних монетах: у записи есть вердикты всех трёх моделей.
+  const since = settled.filter((e) => e.pv && models.every((m) => MODELS[m](e) !== undefined));
+  return {
+    switchAt: switchAt(list),
+    windowHours: WINDOW_MS / 3600_000,
+    dumpPct: DUMP_PCT,
+    open: list.filter((e) => e.pv && !settledAt(e, now)).length,
+    sinceSwitch: { settled: since.length, models: table(since) },
+    allTime: { settled: settled.length, models: table(settled) },
+  };
 }
 
 // Запись по токену для скана, сделанного в момент `at` (бот «через 24 часа» спрашивает, чем кончилось).

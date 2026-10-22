@@ -2,6 +2,7 @@
 // Track Record: сбылись ли вердикты. Каждый скан сутки сверяется с реальной ценой; показываем и попадания,
 // и промахи — без этого страница ничего не стоит.
 import Link from "next/link";
+import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { VerdictPill, pct } from "@/components/verdict";
@@ -36,12 +37,32 @@ interface Data {
   since: number | null;
   total: number;
   by: By[];
+  byPublic?: By[]; // с переключения на оценку v2
+  byOld?: By[]; // до переключения (старая оценка)
+  switchAt?: number | null;
+  totalPublic?: number;
   warned: Row[];
   missed: Row[];
   recent: Row[];
   windowHours: number;
   dumpPct: number;
   signals: { scored: number; hits: number; medianPeak: number | null; recent: { crawlerId: string; crawlerName: string; kind: string; ts: number; status: string; peakPct: number | null; changePct: number | null; jev: number | null }[] };
+}
+
+interface CompareRow {
+  verdict: string;
+  n: number;
+  rugRate: number | null;
+  dumpRate: number | null;
+  peak50Rate: number | null;
+  medianLast: number | null;
+}
+type Models = Record<"v1" | "v2" | "v3", CompareRow[]>;
+interface Compare {
+  switchAt: number | null;
+  open: number;
+  sinceSwitch: { settled: number; models: Models };
+  allTime: { settled: number; models: Models };
 }
 
 const SRC: Record<string, string> = { scan: "user scan", crawler: "crawler", radar: "radar", agent: "agent" };
@@ -74,9 +95,76 @@ function Rows({ rows, empty }: { rows: Row[]; empty: string }) {
   );
 }
 
+const day = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const MODEL_LABEL: Record<string, string> = { v1: "Old score (v1)", v2: "Risk score v2 (public)", v3: "Second look v3 (beta)" };
+const rate = (x: number | null) => (x == null ? "-" : `${Math.round(x)}%`);
+
+// Сравнение моделей на одних монетах: по каждой модели и вердикту доля ругов, сливов, пиков от +50% и медиана.
+function CompareCard() {
+  const { data } = useApi<Compare>("/api/track/compare", 120000);
+  const [all, setAll] = useState(false);
+  const part = all ? data?.allTime : data?.sinceSwitch;
+  return (
+    <Card className="mb-5">
+      <CardHeader
+        title="Which score is right? v1 vs v2 vs v3"
+        sub={
+          all
+            ? "All time, wherever a coin has that score. v2 exists since Oct 21, v3 since Oct 22, so the old score has way more coins."
+            : `Same coins, all three scores, since ${data?.switchAt ? day(data.switchAt) : "the switch"}. This fills in as coins hit their 24 hours${data ? `: ${data.sinceSwitch.settled} settled, ${data.open} still running` : ""}.`
+        }
+        action={
+          <button type="button" onClick={() => setAll(!all)} className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg">
+            {all ? "Since the switch" : "All time"}
+          </button>
+        }
+      />
+      <div className="overflow-x-auto p-4">
+        <table className="w-full min-w-[520px] text-left text-xs">
+          <thead className="text-muted">
+            <tr>
+              <th className="pb-2 font-medium">Score · verdict</th>
+              <th className="pb-2 text-right font-medium">Coins</th>
+              <th className="pb-2 text-right font-medium">Rugged</th>
+              <th className="pb-2 text-right font-medium">Dumped</th>
+              <th className="pb-2 text-right font-medium">Hit +50%</th>
+              <th className="pb-2 text-right font-medium">Median 24h</th>
+            </tr>
+          </thead>
+          {(["v1", "v2", "v3"] as const).map((m) => (
+            <tbody key={m} className="border-t border-line/60">
+              <tr>
+                <td colSpan={6} className="pt-3 pb-1 font-semibold">{MODEL_LABEL[m]}</td>
+              </tr>
+              {(part?.models[m] ?? []).map((r) => (
+                <tr key={r.verdict} className="num">
+                  <td className="py-1"><VerdictPill verdict={r.verdict} /></td>
+                  <td className="py-1 text-right">{r.n}</td>
+                  <td className="py-1 text-right">{r.n ? rate(r.rugRate) : "-"}</td>
+                  <td className="py-1 text-right">{r.n ? rate(r.dumpRate) : "-"}</td>
+                  <td className="py-1 text-right">{r.n ? rate(r.peak50Rate) : "-"}</td>
+                  <td className="py-1 text-right">{r.n ? pct(r.medianLast) : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
+        </table>
+        <p className="mt-3 text-[11px] text-muted">
+          A good score has a low rug rate on CLEAN and a high one on DANGER. v3 is a hypothesis: most of its on-chain signals only exist since Oct 20, so it could not be backtested. We judge it here, forward.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 export default function TrackPage() {
   const { data } = useApi<Data>("/api/track", 60000);
-  const by = new Map((data?.by ?? []).map((b) => [b.verdict, b]));
+  // Публичная статистика: с переключения на v2 (старые вердикты другой модели не смешиваем), старая - по кнопке.
+  const [old, setOld] = useState(false);
+  const hasEra = !!data?.byPublic;
+  const era = hasEra ? (old ? data!.byOld! : data!.byPublic!) : (data?.by ?? []);
+  const eraHint = !hasEra ? null : old ? `old score, before ${data?.switchAt ? day(data.switchAt) : "the switch"}` : `risk score v2, since ${data?.switchAt ? day(data.switchAt) : "today"}`;
+  const by = new Map(era.map((b) => [b.verdict, b]));
   const group = (vs: string[]) => {
     const xs = vs.map((v) => by.get(v)).filter(Boolean) as By[];
     return { settled: xs.reduce((n, b) => n + b.settled, 0), dumped: xs.reduce((n, b) => n + b.dumped, 0), tracked: xs.reduce((n, b) => n + b.tracked, 0) };
@@ -93,8 +181,8 @@ export default function TrackPage() {
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Verdicts tracked" value={data ? fmt(data.total) : "-"} hint={data?.since ? `since ${new Date(data.since).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "starting now"} tone="honey" />
-        <Stat label="DANGER that dumped" value={share(bad.dumped, bad.settled) == null ? "-" : `${share(bad.dumped, bad.settled)}%`} hint={`${bad.dumped} of ${bad.settled} settled`} tone="coral" />
-        <Stat label="CLEAN / OK that dumped" value={share(good.dumped, good.settled) == null ? "-" : `${share(good.dumped, good.settled)}%`} hint={`${good.dumped} of ${good.settled} settled`} tone="teal" />
+        <Stat label="DANGER that dumped" value={share(bad.dumped, bad.settled) == null ? "-" : `${share(bad.dumped, bad.settled)}%`} hint={`${bad.dumped} of ${bad.settled} settled${eraHint ? ` · ${eraHint}` : ""}`} tone="coral" />
+        <Stat label="CLEAN / OK that dumped" value={share(good.dumped, good.settled) == null ? "-" : `${share(good.dumped, good.settled)}%`} hint={`${good.dumped} of ${good.settled} settled${eraHint ? ` · ${eraHint}` : ""}`} tone="teal" />
         <Stat
           label="Crawler signals hit"
           value={sig?.scored ? `${share(sig.hits, sig.scored)}%` : "-"}
@@ -106,9 +194,19 @@ export default function TrackPage() {
       <ProofCard />
 
       <Card className="mb-5">
-        <CardHeader title="By verdict" sub="Settled = 24 hours passed since the scan, rugs included. The gap between DANGER and CLEAN is what the scanner is worth." />
+        <CardHeader
+          title="By verdict"
+          sub={`Settled = 24 hours passed since the scan, rugs included. The gap between DANGER and CLEAN is what the scanner is worth.${eraHint ? ` Showing the ${eraHint}.` : ""}`}
+          action={
+            hasEra && (
+              <button type="button" onClick={() => setOld(!old)} className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg">
+                {old ? "Current score" : "Old score"}
+              </button>
+            )
+          }
+        />
         <div className="space-y-3 p-4">
-          {(data?.by ?? []).map((b) => {
+          {era.map((b) => {
             const s = share(b.dumped, b.settled);
             return (
               <div key={b.verdict} className="grid grid-cols-[92px_1fr_auto] items-center gap-3 text-sm">
@@ -124,6 +222,8 @@ export default function TrackPage() {
           })}
         </div>
       </Card>
+
+      <CompareCard />
 
       <div className="mb-5 grid gap-5 xl:grid-cols-2">
         <Card>

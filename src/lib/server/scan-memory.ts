@@ -18,6 +18,7 @@ export interface Snap {
   lp?: string;
   lpPct?: number | null;
   larp?: string;
+  m?: number; // 2 - балл и вердикт по оценке v2 (с 22.10); нет поля - по старой v1
 }
 
 export interface SinceChange {
@@ -62,6 +63,7 @@ function snapOf(r: ScanResult): Snap {
     lp: r.lp?.status,
     lpPct: r.lp?.lockedPct,
     larp: r.larp?.verdict,
+    ...(r.v1 ? { m: 2 } : {}),
   };
 }
 
@@ -82,9 +84,11 @@ export function tokenSnapshots(id: string): { snaps: Snap[]; since?: SinceLast }
 
 function diff(prev: Snap, now: Snap): SinceLast {
   const changes: SinceChange[] = [];
-  if (prev.verdict !== now.verdict)
+  // Снимки разных моделей (до и после переключения на v2) по баллу и вердикту не сравниваем: это не перемена токена.
+  const same = (prev.m ?? 1) === (now.m ?? 1);
+  if (same && prev.verdict !== now.verdict)
     changes.push({ label: "Verdict", from: prev.verdict.replace("_", " "), to: now.verdict.replace("_", " "), tone: (RANK[now.verdict] ?? 2) < (RANK[prev.verdict] ?? 2) ? "bad" : "good" });
-  if (prev.score != null && now.score != null && Math.abs(now.score - prev.score) >= 5)
+  if (same && prev.score != null && now.score != null && Math.abs(now.score - prev.score) >= 5)
     changes.push({ label: "Score", from: String(prev.score), to: String(now.score), tone: now.score < prev.score ? "bad" : "good" });
   if (prev.liq && now.liq != null && Math.abs(now.liq - prev.liq) / prev.liq >= 0.25)
     changes.push({ label: "Liquidity", from: usd(prev.liq), to: usd(now.liq), tone: now.liq < prev.liq ? "bad" : "good" });

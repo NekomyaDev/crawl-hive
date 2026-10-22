@@ -18,6 +18,7 @@ import { LarpLine } from "@/components/larp-line";
 import { TrustScore } from "@/components/trust-score";
 import { SinceLastScan } from "@/components/since-last-scan";
 import { SecondLook } from "@/components/second-look";
+import { lookV3 } from "@/lib/second-look";
 import { cn, timeAgo } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/scan/[id]">): Promise<Metadata> {
@@ -90,7 +91,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
             </div>
             {r.name && <div className="truncate text-sm text-muted">{r.name}</div>}
             <p className="mt-1">{r.reason}</p>
-            <SecondLook v={r.v2} className="mt-2" />
+            <SecondLook v={lookV3(r.v3)} className="mt-2" />
           </div>
         </div>
 

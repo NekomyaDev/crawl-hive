@@ -10,7 +10,7 @@ import { LarpLine, type LarpLineData } from "@/components/larp-line";
 import { TrustScore, type TrustData } from "@/components/trust-score";
 import { SinceLastScan, type SinceData } from "@/components/since-last-scan";
 import { SecondLook } from "@/components/second-look";
-import type { SecondLookData } from "@/lib/second-look";
+import { lookV3, type SecondLookData } from "@/lib/second-look";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -70,7 +70,7 @@ interface Result {
   larp?: LarpLineData;
   trust?: TrustData;
   since?: SinceData;
-  v2?: SecondLookData;
+  v3?: { scoreV3: number; verdictV3: SecondLookData["verdict"]; reasonsV3: string[] };
   operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean; basis?: string[] }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number }; map?: BubbleMapData };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   xray?: XRayView;
@@ -395,7 +395,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </div>
           <div className="truncate text-xs text-muted">{r.name}</div>
           <div className="mt-1 text-sm">{r.reason}</div>
-          <SecondLook v={r.v2} className="mt-1.5" />
+          <SecondLook v={lookV3(r.v3)} className="mt-1.5" />
         </div>
       </div>
       {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} />}
