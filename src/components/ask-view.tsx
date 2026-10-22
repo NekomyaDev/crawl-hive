@@ -83,7 +83,10 @@ export function AskChat({ headers, openLink, compact = false, refreshKey }: { he
     };
   }, [hdrs, refreshKey]);
 
-  useEffect(() => end.current?.scrollIntoView({ block: "end", behavior: "smooth" }), [turns, tool]);
+  // Фигурные скобки обязательны: в новом Chrome scrollIntoView возвращает Promise, а эффект не должен ничего возвращать.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [turns, tool]);
 
   const ask = async (text: string) => {
     const question = text.trim();
