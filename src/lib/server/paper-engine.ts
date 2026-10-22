@@ -78,7 +78,7 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s5", label: "CLEAN low snipers", note: "CLEAN, snipers hold under 5%, no bundles, top 10 under 40%, TP50 SL30 6h", entry: { verdicts: ["CLEAN"], maxSnipersPct: 5, noBundles: true, maxTop10Pct: 40 }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s6", label: "Every coin TP50 SL30", note: "Control: every radar coin with a verdict, same exits as S2", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s7", label: "DANGER only", note: "Inverse control: only DANGER calls, same exits as S2. Should lose the most", entry: { verdicts: ["DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
-  { id: "s8", label: "CLEAN 80+ trail", note: "CLEAN with score 80+, 25% trail from the peak, stop -35%, max 12h", entry: { verdicts: ["CLEAN"], minScore: 80 }, exits: { slPct: 35, trailPct: 25, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: true },
+  { id: "s8", label: "CLEAN 80+ trail", note: "CLEAN with score 80+, 25% trail from the peak, stop -35%, max 12h", entry: { verdicts: ["CLEAN"], minScore: 80 }, exits: { slPct: 35, trailPct: 25, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: false },
   { id: "s9", label: "Fresh momentum", note: "CLEAN or OK under 3h old, more buys than sells, TP40 SL25 3h", entry: { verdicts: ["CLEAN", "OK"], maxAgeMin: 3 * H, minBuySellRatio: 1.2 }, exits: { tpPct: 40, slPct: 25, maxHoldMin: 3 * H }, sizeUsd: 100, enabled: true },
   // Из бэктеста 22.10 (3723 записи, проверка на свежих 30%): широкий тейк и короткий стоп стабильно лучше TP30/50.
   { id: "s10", label: "Clean mid-liq", note: "Backtest #1: CLEAN 90+, not pump.fun, liquidity $20k-50k, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], minScore: 90, noPumpFun: true, minLiqUsd: 20_000, maxLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
@@ -98,6 +98,8 @@ export const STRATEGIES: StrategyConfig[] = [
   // Ночь 22.10: лучше всех держатся TP100/SL30 на ликвидности от $20k (s11, s12, s14, s15). Скальп s4 хуже контроля s6, выключен.
   { id: "s21", label: "Clean+OK 20k+ TP100", note: "CLEAN or OK with $20k+ liquidity, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s22", label: "V2 not DANGER 20k+", note: "Second look CLEAN, OK or RISKY with $20k+ liquidity, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN", "OK", "RISKY"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // 12:55: s8 (трейлинг 25%) 15 сделок, -16% против -4.5% у контроля, выключен. Стопы SL30 закрываются около -46%: пробуем шире.
+  { id: "s23", label: "Clean 20k+ wide stop", note: "CLEAN with $20k+ liquidity, TP100 SL40, 24h", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
