@@ -14,6 +14,7 @@ import type { ScanResult, Verdict } from "./scan";
 export interface EntryRule {
   verdicts?: Verdict[]; // пусто — любой вердикт (кроме TOO_EARLY, если его не указать явно)
   chains?: string[];
+  noPumpFun?: boolean; // не брать монеты pump.fun (адрес на «pump»): по истории там 43% ругов
   minScore?: number;
   maxScore?: number;
   minAgeMin?: number;
@@ -65,6 +66,12 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s7", label: "DANGER only", note: "Inverse control: only DANGER calls, same exits as S2. Should lose the most", entry: { verdicts: ["DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s8", label: "CLEAN 80+ trail", note: "CLEAN with score 80+, 25% trail from the peak, stop -35%, max 12h", entry: { verdicts: ["CLEAN"], minScore: 80 }, exits: { slPct: 35, trailPct: 25, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: true },
   { id: "s9", label: "Fresh momentum", note: "CLEAN or OK under 3h old, more buys than sells, TP40 SL25 3h", entry: { verdicts: ["CLEAN", "OK"], maxAgeMin: 3 * H, minBuySellRatio: 1.2 }, exits: { tpPct: 40, slPct: 25, maxHoldMin: 3 * H }, sizeUsd: 100, enabled: true },
+  // Из бэктеста 22.10 (3723 записи, проверка на свежих 30%): широкий тейк и короткий стоп стабильно лучше TP30/50.
+  { id: "s10", label: "Clean mid-liq", note: "Backtest #1: CLEAN 90+, not pump.fun, liquidity $20k-50k, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], minScore: 90, noPumpFun: true, minLiqUsd: 20_000, maxLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s11", label: "Radar momentum", note: "Backtest #5: CLEAN or OK 60+, not pump.fun, liquidity $20k+, TP100 SL20, 24h", entry: { verdicts: ["CLEAN", "OK"], minScore: 60, noPumpFun: true, minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s12", label: "Deep liquidity", note: "Backtest #4: CLEAN, OK or RISKY with $100k+ liquidity, TP100 SL20, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s13", label: "Momentum trail", note: "Same entry as Radar momentum, stop -20%, 25% trail once up 50%, 24h", entry: { verdicts: ["CLEAN", "OK"], minScore: 60, noPumpFun: true, minLiqUsd: 20_000 }, exits: { slPct: 20, trailPct: 25, trailArmPct: 50, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s14", label: "Clean 20k+ TP100", note: "CLEAN with $20k+ liquidity, any launchpad, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
@@ -138,10 +145,11 @@ export function featuresOf(r: ScanResult): Features {
 }
 
 // Неизвестное значение фильтр не проходит: «мало снайперов» без данных о снайперах не доказано.
-function matches(e: EntryRule, f: Features, chain: string): boolean {
+function matches(e: EntryRule, f: Features, chain: string, token: string): boolean {
   const verdicts = e.verdicts?.length ? e.verdicts : (["CLEAN", "OK", "RISKY", "DANGER"] as Verdict[]);
   if (!verdicts.includes(f.verdict)) return false;
   if (e.chains?.length && !e.chains.includes(chain)) return false;
+  if (e.noPumpFun && chain === "solana" && token.endsWith("pump")) return false;
   const min = (v: number | null, lim?: number) => lim === undefined || (v !== null && v >= lim);
   const max = (v: number | null, lim?: number) => lim === undefined || (v !== null && v <= lim);
   if (!min(f.score, e.minScore) || !max(f.score, e.maxScore)) return false;
@@ -176,6 +184,8 @@ interface PosRow {
   liq0: number;
   peak_price: number;
   peak_at: number;
+  low_price: number | null;
+  low_at: number | null;
   last_price: number;
   last_liq: number;
   last_at: number;
@@ -225,6 +235,19 @@ function db() {
       CREATE INDEX IF NOT EXISTS paper_trades_st ON paper_trades (strategy, exit_at);
       CREATE INDEX IF NOT EXISTS paper_trades_token ON paper_trades (strategy, token, entry_at);
     `);
+    // Минимум цены и время пика/минимума: по истории (замер раз в 10 мин) не видно, что было раньше, тейк или стоп.
+    for (const sql of [
+      "ALTER TABLE paper_positions ADD COLUMN low_price REAL",
+      "ALTER TABLE paper_positions ADD COLUMN low_at INTEGER",
+      "ALTER TABLE paper_trades ADD COLUMN peak_at INTEGER",
+      "ALTER TABLE paper_trades ADD COLUMN low_pct REAL",
+      "ALTER TABLE paper_trades ADD COLUMN low_at INTEGER",
+    ])
+      try {
+        d.db.exec(sql);
+      } catch {
+        // колонка уже есть
+      }
     host.__crawlhivePaperDb = true;
   }
   return d.db;
@@ -250,7 +273,7 @@ export function paperOnSignal(r: ScanResult) {
   const f = featuresOf(r);
   const now = Date.now();
   for (const s of STRATEGIES) {
-    if (!s.enabled || !matches(s.entry, f, r.chain)) continue;
+    if (!s.enabled || !matches(s.entry, f, r.chain, r.id)) continue;
     const open = d.prepare("SELECT COUNT(*) AS n FROM paper_positions WHERE strategy = ?").get(s.id) as { n: number };
     if (open.n >= MAX_OPEN) continue;
     if (d.prepare("SELECT 1 FROM paper_positions WHERE strategy = ? AND token = ?").get(s.id, r.id)) continue;
@@ -282,6 +305,8 @@ function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: n
       `INSERT INTO paper_trades (id, strategy, token, chain, symbol, verdict, score, entry_at, exit_at, entry_price, exit_price, size, proceeds, gross_pct, net_pct, pnl, peak_pct, reason, features)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(p.id, p.strategy, p.token, p.chain, p.symbol, p.verdict, p.score, p.entry_at, now, p.entry_price, reason === "rug" ? 0 : price, p.size, r2(proceeds), r2(t.gross), r2(t.net), r2(pnl), r2(t.peak), reason, p.features);
+    const low = p.low_price ?? p.entry_price;
+    d.prepare("UPDATE paper_trades SET peak_at = ?, low_pct = ?, low_at = ? WHERE id = ?").run(p.peak_at, r2(((low - p.entry_price) / p.entry_price) * 100), p.low_at ?? p.entry_at, p.id);
     d.prepare("DELETE FROM paper_positions WHERE id = ?").run(p.id);
     d.exec("COMMIT");
   } catch (e) {
@@ -351,6 +376,10 @@ export async function paperTick() {
         }
         if (price > p.last_price * MAX_JUMP) continue;
         if (price > p.peak_price) Object.assign(p, { peak_price: price, peak_at: now });
+        if (price < (p.low_price ?? p.entry_price)) {
+          Object.assign(p, { low_price: price, low_at: now });
+          d.prepare("UPDATE paper_positions SET low_price = ?, low_at = ? WHERE id = ?").run(price, now, p.id);
+        }
         const reason = exitFor(p, strat, price, now);
         if (reason) close(p, price, liq, reason, now);
         else upd.run(p.peak_price, p.peak_at, price, liq, now, 0, p.id);
