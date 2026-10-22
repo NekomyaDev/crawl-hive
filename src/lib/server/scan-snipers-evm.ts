@@ -8,7 +8,7 @@
 // без своего RPC (BSC_LOGS_RPC_URL, BASE_LOGS_RPC_URL) снайперы там считаются только у самых свежих токенов.
 import "server-only";
 import { createPublicClient, http, parseAbi, parseAbiItem, type Hex } from "viem";
-import type { SniperReport } from "./scan-snipers";
+import type { EarlyBuy, SniperReport } from "./scan-snipers";
 
 const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function totalSupply() view returns (uint256)"]);
@@ -127,7 +127,7 @@ async function read(url: string, token: Hex, pairCreatedAt: number, pair: string
     list.push({ from: (l.args.from ?? "").toLowerCase(), to: (l.args.to ?? "").toLowerCase(), value: l.args.value ?? 0n, idx: l.logIndex });
     byTx.set(l.transactionHash, list);
   }
-  const bought = new Map<string, bigint>();
+  let bought = new Map<string, bigint>();
   // Идём по пересылкам после этого перевода в той же транзакции; что адрес не переслал дальше, остаётся ему.
   const credit = (list: Tr[], who: string, amount: bigint, after: number, depth: number) => {
     if (skip(who)) return; // вернулось в кривую или пул (арбитраж), ушло создателю или в сжигание
@@ -145,17 +145,61 @@ async function read(url: string, token: Hex, pairCreatedAt: number, pair: string
     list.sort((a, b) => a.idx - b.idx);
     for (const t of list) if (!t.used && sources.has(t.from)) (t.used = true), credit(list, t.to, t.value, t.idx, 0);
   }
+  const sniped = bought;
+  const firstAmt = new Map<string, bigint>();
+  let birthAt: number | undefined;
   const supply = await c.readContract({ address: token, abi: ERC20, functionName: "totalSupply" });
   if (!supply) return null;
   // Кошельки-контракты (роутеры, агрегаторы, комиссия лаунчпада) не снайперы: отсекаем адреса с кодом до среза по MAX_WALLETS,
   // иначе крупные контракты вытесняли настоящие кошельки из двадцатки.
-  const all = [...bought.entries()].sort((a, b) => (b[1] > a[1] ? 1 : -1)).slice(0, MAX_WALLETS * 3);
+  const all = [...sniped.entries()].sort((a, b) => (b[1] > a[1] ? 1 : -1)).slice(0, MAX_WALLETS * 3);
   const codes = await Promise.all(all.map(([w]) => c.getCode({ address: w as Hex }).catch(() => undefined)));
   // Кошелёк с делегированием EIP-7702 (код 0xef0100 + адрес) остаётся кошельком: так торгуют многие боты и смарт-аккаунты.
   const eoa = all.filter((_, i) => !codes[i] || codes[i] === "0x" || codes[i]!.startsWith("0xef0100")).slice(0, MAX_WALLETS);
   const left = await Promise.all(eoa.map(([w]) => c.readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [w as Hex] }).catch(() => 0n)));
   const pct = (x: bigint) => Number((x * 1_000_000n) / supply) / 10_000; // доля в процентах, два знака
+  // «Первые покупатели»: те же правила покупки, но на всех переводах первых 15 минут (они уже прочитаны), по порядку.
+  const firstBuys: EarlyBuy[] = [];
+  try {
+    const txOrder = [...new Set(early.filter((l) => l.blockNumber >= start).map((l) => l.transactionHash))];
+    const byTx15 = new Map<string, Tr[]>();
+    const blockOf = new Map<string, bigint>();
+    for (const l of early) {
+      if (l.blockNumber < start) continue;
+      const list = byTx15.get(l.transactionHash) ?? [];
+      list.push({ from: (l.args.from ?? "").toLowerCase(), to: (l.args.to ?? "").toLowerCase(), value: l.args.value ?? 0n, idx: l.logIndex });
+      byTx15.set(l.transactionHash, list);
+      blockOf.set(l.transactionHash, l.blockNumber);
+    }
+    const seen = new Set<string>();
+    const order: { wallet: string; tx: string; block: bigint }[] = [];
+    for (const h of txOrder) {
+      const list = (byTx15.get(h) ?? []).sort((a, b) => a.idx - b.idx);
+      bought = new Map();
+      for (const t of list) if (!t.used && sources.has(t.from)) (t.used = true), credit(list, t.to, t.value, t.idx, 0);
+      for (const [w, v] of bought) {
+        if (!seen.has(w)) {
+          seen.add(w);
+          order.push({ wallet: w, tx: h, block: blockOf.get(h)! });
+        }
+        firstAmt.set(w, (firstAmt.get(w) ?? 0n) + v);
+      }
+      if (order.length >= MAX_WALLETS * 2) break;
+    }
+    // Контракты (роутеры, агрегаторы) не покупатели: код уже известен для снайперов, остальным спрашиваем.
+    const known = new Map(all.map(([w], i) => [w, codes[i]]));
+    const cand = order.slice(0, MAX_WALLETS * 2);
+    const candCodes = await Promise.all(cand.map((o) => (known.has(o.wallet) ? Promise.resolve(known.get(o.wallet)) : c.getCode({ address: o.wallet as Hex }).catch(() => undefined))));
+    const wallets = cand.filter((_, i) => !candCodes[i] || candCodes[i] === "0x" || candCodes[i]!.startsWith("0xef0100")).slice(0, MAX_WALLETS);
+    const blocks = [...new Set([mint.block, ...wallets.map((o) => o.block)])];
+    const times = new Map(await Promise.all(blocks.map(async (b) => [b, Number((await c.getBlock({ blockNumber: b }).catch(() => null))?.timestamp ?? 0n) * 1000] as const)));
+    for (const o of wallets) firstBuys.push({ wallet: o.wallet, pct: Number(((firstAmt.get(o.wallet) ?? 0n) * 100_000_000n) / supply) / 1_000_000, sig: o.tx, block: Number(o.block), at: times.get(o.block) || undefined });
+    birthAt = times.get(mint.block) || undefined;
+  } catch (e) {
+    console.warn("[scan] evm first buyers:", (e as Error).message);
+  }
   return {
+    early: firstBuys.length ? { birthAt, buys: firstBuys, sources: [...sources], fromBlock: Number(start), window: "first 15 minutes" } : undefined,
     wallets: eoa.length,
     boughtPct: pct(eoa.reduce((s, [, v]) => s + v, 0n)),
     holdPct: pct(left.reduce((s, x) => s + x, 0n)),

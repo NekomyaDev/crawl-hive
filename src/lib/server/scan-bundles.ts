@@ -19,6 +19,7 @@ export interface BundleReport {
   links?: { wallet: string; funder: string; pct: number }[]; // кто кого пополнил первым — для поиска кошельков создателя
   wallets?: { wallet: string; pct: number }[]; // топ-кошельки с долями; для «операторов», из ответа API убирается
   exchanges?: string[]; // спонсоры-биржи (их связи не считаем)
+  freshWallets?: string[]; // какие именно кошельки свежие; для оценки слива, из ответа API убирается
 }
 
 export const EXCHANGE_SOL = 5_000; // спонсор с таким балансом — почти наверняка горячий кошелёк биржи
@@ -120,10 +121,12 @@ export async function traceBundles(conn: Connection, holders: HolderAccount[]): 
   const traced = await pool(wallets, 4, (w) => cachedFunding(conn, w).catch(() => null));
   const now = Date.now();
   const fresh = { wallets: 0, pct: 0 };
+  const freshWallets: string[] = [];
   const funderOf = new Map<string, string>();
   traced.forEach((t, i) => {
     if (!t) return;
     if (t.firstAt && now - t.firstAt < FRESH_MS) {
+      freshWallets.push(wallets[i]);
       fresh.wallets++;
       fresh.pct += pctBy.get(wallets[i]) ?? 0;
     }
@@ -158,5 +161,5 @@ export async function traceBundles(conn: Connection, holders: HolderAccount[]): 
     .sort((a, b) => b.pct - a.pct);
 
   const links = [...funderOf].map(([wallet, funder]) => ({ wallet, funder, pct: pctBy.get(wallet) ?? 0 }));
-  return { checked: traced.filter(Boolean).length, clusters, fresh, links, wallets: wallets.map((w) => ({ wallet: w, pct: pctBy.get(w) ?? 0 })), exchanges: [...exchange] };
+  return { checked: traced.filter(Boolean).length, clusters, fresh, links, wallets: wallets.map((w) => ({ wallet: w, pct: pctBy.get(w) ?? 0 })), exchanges: [...exchange], freshWallets };
 }

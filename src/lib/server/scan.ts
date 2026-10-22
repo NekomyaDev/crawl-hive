@@ -11,6 +11,8 @@ import { getMeta, setMeta } from "./store";
 import { traceBundles, type BundleReport } from "./scan-bundles";
 import { traceSnipers, type SniperReport } from "./scan-snipers";
 import { evmSnipersMaxAgeH, evmSnipersSupported, traceEvmSnipers } from "./scan-snipers-evm";
+import { traceFirstBuyers, type FirstBuyersReport } from "./scan-first-buyers";
+import { probableDump, pumpCurve, type DumpProjection } from "./scan-dump";
 import { buildOperators, type LaunchEvidence, type OperatorReport } from "./scan-operators";
 import { launchOf, memDb, putLaunch } from "./memory-db";
 import { buildEvmMap, evmMapSupported } from "./scan-evm-map";
@@ -82,6 +84,8 @@ export interface ScanResult {
   v1?: { score: number | null; verdict: Verdict; reason: string };
   v2?: ScoreV2; // оценка v2 с очками по правилам; её вердикт (с жёсткими потолками v1) и есть публичный
   v3?: ScoreV3; // теневая оценка v3 (score-v3.ts): «Second look» в интерфейсе и Track Record, вердикт не меняет
+  dump?: DumpProjection; // «Probable dump»: падение цены, если подозрительные кошельки продадут сейчас; балл не меняет
+  firstBuyers?: FirstBuyersReport; // первые 20 покупателей и что они сделали потом (только где есть данные снайперов)
   scannedAt: number;
 }
 
@@ -453,6 +457,30 @@ export async function runScan(
         })
       : Promise.resolve(undefined);
 
+  // Первые покупатели: дочитываем то, что снайперы уже нашли на запуске (без снайперов блока нет).
+  const firstP: Promise<FirstBuyersReport | undefined> = snipersP.then((s) =>
+    s?.early
+      ? Promise.all([holdersP, devP]).then(([h, d]) =>
+          withTimeout(traceFirstBuyers(chain, address, s, { conn: chain === "solana" ? rpcConnection() : undefined, supplyRaw: h?.supplyRaw, creator: d?.creator }), 15_000)
+            .then((f) => {
+              if (!f) return undefined;
+              const n = (st: string) => f.buyers.filter((b) => b.status === st).length;
+              const out = n("sold_all") + n("sold_part") + n("moved");
+              log({
+                crawler: "crawler_first_buyers",
+                text: `first ${f.buyers.length} buyers: ${n("holding") + n("added")} still holding, ${n("sold_part") + n("sold_all")} sold, ${n("moved")} moved out${n("unknown") ? `, ${n("unknown")} unknown` : ""}${f.groups.length ? ` · ${f.groups.length} group${f.groups.length > 1 ? "s" : ""} sent tokens to one wallet` : ""}`,
+                tone: f.groups.length ? "warn" : out > f.buyers.length / 2 ? "warn" : "info",
+              });
+              return f;
+            })
+            .catch((e) => {
+              console.warn("[scan] first buyers:", (e as Error).message);
+              return undefined;
+            }),
+        )
+      : undefined,
+  );
+
   // LP: сожжена, залочена (и до какого числа) или лежит в кошельке — Solana по RugCheck, BNB и Base по GoPlus.
   const days = (ms: number) => Math.max(0, Math.round((ms - Date.now()) / 86_400_000));
   // Кто может вынуть ликвидность: кошелёк создателя или другой кошелёк, напрямую или через свой контракт.
@@ -609,7 +637,9 @@ export async function runScan(
             return o;
           })
           .catch(() => undefined)
-      : undefined;  let xray = xr && "program" in xr ? xrayViewSol(xr) : xr ? xrayViewEvm(xr, !!evm?.owner) : undefined;
+      : undefined;
+  const firstBuyers = await firstP;
+  let xray = xr && "program" in xr ? xrayViewSol(xr) : xr ? xrayViewEvm(xr, !!evm?.owner) : undefined;
   if (siteR) {
     const siteView = { host: siteR.host, wallet: siteR.wallet, error: siteR.error, findings: siteR.findings.map((f) => ({ label: f.label, note: f.note, severity: f.severity, detail: f.evidence })) };
     xray = xray ? { ...xray, site: siteView } : { kind: chain === "solana" ? "solana" : "evm", summary: "token contract not read", findings: [], site: siteView };
@@ -655,7 +685,7 @@ export async function runScan(
   // Пара без ликвидности — токен ещё на bonding curve лаунчпада (pump.fun, Meteora DBC, Raydium LaunchLab,
   // Moonshot, Boop…): у кривой нет пула, и «$0 ликвидности» здесь неправда.
   const onCurve = !!p && p.liquidity?.usd === undefined;
-  const launchpad = !p ? "" : /pump/i.test(p.dexId ?? "") ? "pump.fun" : /dbc|meteora/i.test(p.dexId ?? "") ? "Meteora DBC" : /launchlab/i.test(p.dexId ?? "") ? "Raydium LaunchLab" : /four/i.test(p.dexId ?? "") ? "four.meme" : p.dexId ?? "launchpad";
+  const launchpad = !p ? "" : launchpadLabel(p.dexId, address);
   if (!p) hit("No market", -35, "no trading pair found");
   else if (onCurve) hit("Bonding curve", -10, `still on the ${launchpad} curve, not graduated to a pool`);
   else if (liq < 5_000) hit("Thin liquidity", -25, `only ${usd(liq)} in the pool`);
@@ -783,8 +813,8 @@ export async function runScan(
         }
       : undefined,
     holders: holders && { top1: holders.top1, top10: holders.top10, mintAuthority: holders.mintAuthority, freezeAuthority: holders.freezeAuthority },
-    bundles: bundles && { ...bundles, links: undefined, wallets: undefined, exchanges: undefined },
-    snipers: snipers && { ...snipers, buyers: undefined },
+    bundles: bundles && { ...bundles, links: undefined, wallets: undefined, exchanges: undefined, freshWallets: undefined },
+    snipers: snipers && { ...snipers, buyers: undefined, early: undefined },
     insiders,
     operators,
     ...(larp ? { larp } : {}),
@@ -820,6 +850,17 @@ export async function runScan(
     if (v2?.dumpWallets != null && v2.dumpWallets >= 3) hit("Wallets from dumped coins", 0, `${v2.dumpWallets} wallets here were on earlier coins that dumped`);
   }
   // Переключение 22.10: публичный вердикт берём из v2, v1 сохраняем рядом. Базовые активы и сканы без v2 - как было.
+  // «Probable dump»: после всех оценок, чтобы ни одна модель его не читала (балл и вердикт он не меняет).
+  if (!core) {
+    const curve = onCurve && chain === "solana" && /pump/i.test(p?.dexId ?? "") ? await withTimeout(pumpCurve(rpcConnection(), address), 6_000).catch(() => null) : null;
+    const dump = probableDump({ snipers, bundles, operators, dev, creator: launch?.deployer, pair: p?.pairAddress, liquidityUsd: p?.liquidity?.usd, fdv: result.market?.fdv, onCurve, venue: launchpad || undefined, curve, supplyRaw: holders?.supplyRaw });
+    if (dump) {
+      result.dump = dump;
+      if (dump.meaningful)
+        log({ crawler: "crawler_dump", text: `if the suspicious wallets (${pct(dump.suspiciousPct)} of supply) sold now: price about -${dump.pct}% (estimate)`, tone: dump.pct >= 50 ? "bad" : "warn" });
+    }
+  }
+  if (firstBuyers) result.firstBuyers = firstBuyers;
   if (v2) {
     result.v1 = { score, verdict, reason };
     Object.assign(result, publicFromV2(result.v1, v2, factors, xray));
@@ -904,6 +945,30 @@ function xrayViewSol(r: T22Report): XRayView {
     summary: r.program === "spl" ? "classic SPL token: no extensions" : `Token-2022 · ${r.extensions.length ? `${r.extensions.length} extension${r.extensions.length > 1 ? "s" : ""} of note` : "metadata only"}`,
     findings: r.extensions.map((e) => ({ label: e.label, note: e.note, severity: e.severity, detail: e.detail })),
   };
+}
+
+// Лаунчпад по dexId DexScreener. Сверено с живыми парами 22.10.2026: pumpfun, pumpswap, meteoradbc, fourmeme,
+// flapsh (Flap: BNB, Base, Robinhood), bags, zora (Zora на Solana), rise. Bonk.fun выпускает минты с окончанием
+// «bonk» через Raydium LaunchLab. Чего не подтвердили (Pons, Bankr, Clanker, Believe, Moonshot), не угадываем:
+// у Clanker и Bankr пары идут как обычный uniswap, у Pons dexId это адрес контракта.
+const LAUNCHPAD: Record<string, string> = {
+  pumpfun: "pump.fun",
+  pumpswap: "PumpSwap (pump.fun)",
+  meteoradbc: "Meteora DBC",
+  fourmeme: "four.meme",
+  flapsh: "Flap",
+  bags: "Bags",
+  zora: "Zora",
+  rise: "Rise",
+};
+export function launchpadLabel(dexId: string | undefined, address: string): string {
+  const id = (dexId ?? "").toLowerCase();
+  if (LAUNCHPAD[id]) return LAUNCHPAD[id];
+  if (/launchlab/.test(id)) return address.endsWith("bonk") ? "Bonk.fun (Raydium LaunchLab)" : "Raydium LaunchLab";
+  if (/pump/.test(id)) return "pump.fun";
+  if (/dbc|meteora/.test(id)) return "Meteora DBC";
+  if (/four/.test(id)) return "four.meme";
+  return dexId || "launchpad";
 }
 
 function devTone(d: DevReport): ScanLog["tone"] {

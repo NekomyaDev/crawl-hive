@@ -18,6 +18,8 @@ import { LarpLine } from "@/components/larp-line";
 import { TrustScore } from "@/components/trust-score";
 import { SinceLastScan } from "@/components/since-last-scan";
 import { SecondLook } from "@/components/second-look";
+import { DumpProjection } from "@/components/dump-projection";
+import { FirstBuyers } from "@/components/first-buyers";
 import { lookV3 } from "@/lib/second-look";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -117,6 +119,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
 
         <Factors r={r} />
 
+        <DumpProjection d={r.dump} className="mt-4" />
+
         {launch && (
           <div className="mt-4">
             <LaunchEvidence l={{ ...launch, deployer: launch.deployer ?? undefined }} chain={r.chain} />
@@ -125,6 +129,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
         <ShareScan id={r.id} text={shareText(r)} className="mt-4" />
 
         {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} className="mt-4" />}
+
+        <FirstBuyers f={r.firstBuyers} chain={r.chain} className="mt-4" />
 
         {r.xray && <XRayPanel x={r.xray} className="mt-4" />}
 
