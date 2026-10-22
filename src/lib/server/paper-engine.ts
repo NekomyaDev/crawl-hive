@@ -57,6 +57,9 @@ export interface ExitRule {
   slPct?: number; // стоп: упала на столько % (положительное число)
   trailPct?: number; // трейлинг: откат на столько % от пика
   trailArmPct?: number; // трейлинг включается, когда пик выше входа на столько % (по умолчанию 0: сразу)
+  // Частичная фиксация: на +atPct продаём sellPct% позиции (на x2 половина возвращает вложенное), остаток едет дальше
+  // по трейлингу. breakeven: после фиксации стоп переезжает на цену входа, чтобы остаток не ушёл в минус.
+  partial?: { atPct: number; sellPct: number; breakeven?: boolean };
   maxHoldMin: number;
 }
 
@@ -137,6 +140,10 @@ export const STRATEGIES: StrategyConfig[] = [
   // Лидер теперь глубокие пулы: s12 +31.2% (9 сделок, PF 3.2), быстрый s32 два TP. Проверяем, тянут ли раннеры дальше и держится ли край на $50k.
   { id: "s39", label: "Deep liquidity TP200", note: "Like S12 but takes profit at +200%: CLEAN, OK or RISKY with $100k+ liquidity, TP200 SL20, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 200, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s40", label: "Liquidity 50k+", note: "Like S12 with a lower bar: CLEAN, OK or RISKY with $50k+ liquidity, TP100 SL20, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // 23.10: на мемах итог делают одна-две монеты. Частичная фиксация: на x2 продаём половину (вложенное вернулось),
+  // стоп переезжает на вход, остаток едет со скользящим стопом 30% от пика. Пробуем на двух лучших входах (S12 и S19).
+  { id: "s41", label: "Deep liquidity half at 2x", note: "Like S12: CLEAN, OK or RISKY with $100k+ liquidity, stop -20%, sell half at +100%, then stop at entry and 30% trail on the rest, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { slPct: 20, partial: { atPct: 100, sellPct: 50, breakeven: true }, trailPct: 30, trailArmPct: 100, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s42", label: "V2 CLEAN 10m half at 2x", note: "Like S19: score v2 CLEAN, 10 min confirmation, stop -30%, sell half at +100%, then stop at entry and 30% trail on the rest, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { slPct: 30, partial: { atPct: 100, sellPct: 50, breakeven: true }, trailPct: 30, trailArmPct: 100, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
@@ -275,6 +282,8 @@ interface PosRow {
   last_at: number;
   missing: number;
   features: string;
+  banked: number | null; // выручка частичной продажи, уже с комиссией и проскальзыванием
+  partial_at: number | null;
 }
 export type ExitReason = "sl" | "tp" | "trail" | "time" | "rug" | "removed";
 interface TradeRow {
@@ -354,6 +363,9 @@ function db() {
       "ALTER TABLE paper_trades ADD COLUMN peak_at INTEGER",
       "ALTER TABLE paper_trades ADD COLUMN low_pct REAL",
       "ALTER TABLE paper_trades ADD COLUMN low_at INTEGER",
+      "ALTER TABLE paper_positions ADD COLUMN banked REAL",
+      "ALTER TABLE paper_positions ADD COLUMN partial_at INTEGER",
+      "ALTER TABLE paper_trades ADD COLUMN partial_at INTEGER",
     ])
       try {
         d.db.exec(sql);
@@ -493,7 +505,8 @@ function resolvePending(q: PendingRow, s: StrategyConfig | undefined, pair: Pair
 
 function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: number) {
   const d = db()!;
-  const proceeds = reason === "rug" ? 0 : p.units * price * Math.max(0, 1 - slip(p.size, liq) - extraSlip(p.strategy)) * (1 - FEE);
+  // После частичной фиксации к выручке остатка прибавляется уже взятое: при руге теряется только остаток.
+  const proceeds = (p.banked ?? 0) + (reason === "rug" ? 0 : p.units * price * Math.max(0, 1 - slip(p.size, liq) - extraSlip(p.strategy)) * (1 - FEE));
   const pnl = proceeds - p.size;
   const t = {
     gross: reason === "rug" ? -100 : ((price - p.entry_price) / p.entry_price) * 100,
@@ -507,7 +520,7 @@ function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: n
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(p.id, p.strategy, p.token, p.chain, p.symbol, p.verdict, p.score, p.entry_at, now, p.entry_price, reason === "rug" ? 0 : price, p.size, r2(proceeds), r2(t.gross), r2(t.net), r2(pnl), r2(t.peak), reason, p.features);
     const low = p.low_price ?? p.entry_price;
-    d.prepare("UPDATE paper_trades SET peak_at = ?, low_pct = ?, low_at = ? WHERE id = ?").run(p.peak_at, r2(((low - p.entry_price) / p.entry_price) * 100), p.low_at ?? p.entry_at, p.id);
+    d.prepare("UPDATE paper_trades SET peak_at = ?, low_pct = ?, low_at = ?, partial_at = ? WHERE id = ?").run(p.peak_at, r2(((low - p.entry_price) / p.entry_price) * 100), p.low_at ?? p.entry_at, p.partial_at, p.id);
     d.prepare("DELETE FROM paper_positions WHERE id = ?").run(p.id);
     d.exec("COMMIT");
   } catch (e) {
@@ -517,6 +530,15 @@ function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: n
   console.log(`[paper] close ${p.strategy} $${p.symbol} ${reason} ${t.net >= 0 ? "+" : ""}${t.net.toFixed(1)}% ($${pnl.toFixed(2)}) after ${Math.round((now - p.entry_at) / 60_000)}m`);
 }
 
+// Частичная продажа по текущему замеру с теми же издержками, что и полный выход; позиция остаётся открытой.
+function takePartial(p: PosRow, sellPct: number, price: number, liq: number, now: number) {
+  const sold = p.units * (sellPct / 100);
+  const got = sold * price * Math.max(0, 1 - slip(p.size * (sellPct / 100), liq) - extraSlip(p.strategy)) * (1 - FEE);
+  Object.assign(p, { units: p.units - sold, banked: (p.banked ?? 0) + got, partial_at: now });
+  db()!.prepare("UPDATE paper_positions SET units = ?, banked = ?, partial_at = ? WHERE id = ?").run(p.units, p.banked, now, p.id);
+  console.log(`[paper] partial ${p.strategy} $${p.symbol} sold ${sellPct}% at ${pct1(((price - p.entry_price) / p.entry_price) * 100)} for $${got.toFixed(2)}`);
+}
+
 // Правила по порядку: стоп, тейк, трейлинг, время. Цена выхода — фактический замер, а не уровень стопа:
 // между минутными замерами мемкоин легко пролетает уровень, и честнее считать по реальной цене.
 function exitFor(p: PosRow, s: StrategyConfig | undefined, price: number, now: number): ExitReason | null {
@@ -524,6 +546,7 @@ function exitFor(p: PosRow, s: StrategyConfig | undefined, price: number, now: n
   const x = s.exits;
   const pct = ((price - p.entry_price) / p.entry_price) * 100;
   if (x.slPct !== undefined && pct <= -x.slPct) return "sl";
+  if (p.partial_at && x.partial?.breakeven && pct <= 0) return "sl";
   if (x.tpPct !== undefined && pct >= x.tpPct) return "tp";
   if (x.trailPct !== undefined) {
     const peakPct = ((p.peak_price - p.entry_price) / p.entry_price) * 100;
@@ -587,6 +610,8 @@ export async function paperTick(fastOnly = false) {
           Object.assign(p, { low_price: price, low_at: now });
           d.prepare("UPDATE paper_positions SET low_price = ?, low_at = ? WHERE id = ?").run(price, now, p.id);
         }
+        const pp = strat?.exits.partial;
+        if (pp && !p.partial_at && ((price - p.entry_price) / p.entry_price) * 100 >= pp.atPct) takePartial(p, pp.sellPct, price, liq, now);
         const reason = exitFor(p, strat, price, now);
         if (reason) close(p, price, liq, reason, now);
         else upd.run(p.peak_price, p.peak_at, price, liq, now, 0, p.id);
@@ -652,7 +677,7 @@ const median = (xs: number[]) => {
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
 // Нереализованный итог открытой позиции: как если бы продали по последнему замеру прямо сейчас.
-const markPnl = (p: PosRow) => p.units * p.last_price * Math.max(0, 1 - slip(p.size, p.last_liq) - extraSlip(p.strategy)) * (1 - FEE) - p.size;
+const markPnl = (p: PosRow) => (p.banked ?? 0) + p.units * p.last_price * Math.max(0, 1 - slip(p.size, p.last_liq) - extraSlip(p.strategy)) * (1 - FEE) - p.size;
 
 function compute() {
   const d = db();
@@ -688,6 +713,12 @@ function compute() {
     const step = Math.ceil(curve.length / 200) || 1;
     const reasons: Partial<Record<ExitReason, number>> = {};
     for (const t of ts) reasons[t.reason] = (reasons[t.reason] ?? 0) + 1;
+    // Устойчивость: на мемах итог часто делает одна монета. Итог без лучшей и без двух лучших сделок, доля лучшей
+    // сделки в прибыли и 95% интервал среднего показывают, преимущество это или везение.
+    const byPnl = ts.map((t) => t.pnl).sort((a, b) => b - a);
+    const mean = rets.length ? rets.reduce((a, b) => a + b, 0) / rets.length : 0;
+    const sd = rets.length > 1 ? Math.sqrt(rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length - 1)) : 0;
+    const half = rets.length >= 5 ? (1.96 * sd) / Math.sqrt(rets.length) : null;
     return {
       id,
       label: cfg?.label ?? id,
@@ -713,6 +744,12 @@ function compute() {
       maxDrawdown: r2(dd),
       avgHoldMin: ts.length ? Math.round(ts.reduce((a, t) => a + (t.exit_at - t.entry_at), 0) / ts.length / 60_000) : null,
       reasons,
+      partials: ts.filter((t) => (t as TradeRow & { partial_at?: number | null }).partial_at).length,
+      pnlExBest: ts.length >= 2 ? r2(eq - byPnl[0]) : null,
+      pnlExTop2: ts.length >= 3 ? r2(eq - byPnl[0] - byPnl[1]) : null,
+      bestShare: gain > 0 && byPnl[0] > 0 ? r1((byPnl[0] / gain) * 100) : null,
+      avgRetLo: half == null ? null : r1(mean - half),
+      avgRetHi: half == null ? null : r1(mean + half),
       curve: curve.filter((_, i) => i % step === 0 || i === curve.length - 1),
     };
   });

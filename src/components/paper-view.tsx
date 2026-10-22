@@ -43,6 +43,7 @@ function rules(s: Strategy) {
     s.delayMin != null && `buy ${s.delayMin}m after scan`,
     x.tpPct != null && `TP +${x.tpPct}%`,
     x.slPct != null && `SL -${x.slPct}%`,
+    x.partial && `sell ${x.partial.sellPct}% at +${x.partial.atPct}%${x.partial.breakeven ? ", then stop at entry" : ""}`,
     x.trailPct != null && `trail ${x.trailPct}%${x.trailArmPct ? ` after +${x.trailArmPct}%` : ""}`,
     `max ${mins(x.maxHoldMin)}`,
   ];
@@ -72,7 +73,7 @@ function Leaderboard({ strategies, ids }: { strategies: Strategy[]; ids: string[
   const rows = [...strategies].sort((a, b) => b.pnl + b.openPnl - (a.pnl + a.openPnl));
   return (
     <div className="overflow-x-auto">
-      <table className="num w-full min-w-[980px] text-xs">
+      <table className="num w-full min-w-[1180px] text-xs">
         <thead className="text-left text-muted">
           <tr className="border-b border-line">
             <th className="px-4 py-2 font-medium">Strategy</th>
@@ -83,7 +84,9 @@ function Leaderboard({ strategies, ids }: { strategies: Strategy[]; ids: string[
             <th className="px-2 py-2 text-right font-medium">Realized</th>
             <th className="px-2 py-2 text-right font-medium">Unrealized</th>
             <th className="px-2 py-2 text-right font-medium">Avg / median</th>
+            <th className="px-2 py-2 text-right font-medium" title="95% range of the average trade: wide means too few trades to tell">Avg range</th>
             <th className="px-2 py-2 text-right font-medium">Profit factor</th>
+            <th className="px-2 py-2 text-right font-medium" title="Realized P&L without the best trade and without the two best. If it flips negative, one coin made the result">Without best / top 2</th>
             <th className="px-2 py-2 text-right font-medium">Max DD</th>
             <th className="px-4 py-2 text-right font-medium">Avg hold</th>
           </tr>
@@ -114,7 +117,15 @@ function Leaderboard({ strategies, ids }: { strategies: Strategy[]; ids: string[
               <td className="px-2 py-2 text-right">
                 <span className={tone(s.avgRet)}>{pct(s.avgRet)}</span> / <span className={tone(s.medianRet)}>{pct(s.medianRet)}</span>
               </td>
+              <td className="px-2 py-2 text-right text-[11px]">
+                {s.avgRetLo == null ? <span className="text-muted">-</span> : <span className={tone(s.avgRetLo > 0 ? 1 : s.avgRetHi! < 0 ? -1 : 0)}>{pct(s.avgRetLo)} to {pct(s.avgRetHi)}</span>}
+              </td>
               <td className="px-2 py-2 text-right">{s.profitFactor ?? (s.trades && s.wins === s.trades ? "no losses" : "-")}</td>
+              <td className="px-2 py-2 text-right" title={s.bestShare != null ? `Best trade is ${s.bestShare}% of all gains` : undefined}>
+                <span className={tone(s.pnlExBest)}>{s.pnlExBest == null ? "-" : usd(s.pnlExBest)}</span>
+                <span className="text-muted"> / </span>
+                <span className={tone(s.pnlExTop2)}>{s.pnlExTop2 == null ? "-" : usd(s.pnlExTop2)}</span>
+              </td>
               <td className={cn("px-2 py-2 text-right", s.maxDrawdown ? "text-danger" : "text-muted")}>{s.maxDrawdown ? `-$${fmt(s.maxDrawdown, 2)}` : "-"}</td>
               <td className="px-4 py-2 text-right">{mins(s.avgHoldMin)}</td>
             </tr>
