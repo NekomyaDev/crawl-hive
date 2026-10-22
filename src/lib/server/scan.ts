@@ -449,14 +449,20 @@ export async function runScan(
 
   // LP: сожжена, залочена (и до какого числа) или лежит в кошельке — Solana по RugCheck, BNB и Base по GoPlus.
   const days = (ms: number) => Math.max(0, Math.round((ms - Date.now()) / 86_400_000));
+  // Кто может вынуть ликвидность: кошелёк создателя или другой кошелёк, напрямую или через свой контракт.
+  const lpPullNote = (r: LpReport) =>
+    `${r.pullable!.who === "deployer" ? "the deployer wallet" : "a wallet"} (${r.pullable!.address.slice(0, 6)}...${r.pullable!.address.slice(-4)}) ${r.pullable!.via === "holder contract" ? "controls the contract holding" : "holds"} ${pct(r.pullable!.pct)} of the pool liquidity and can pull it${r.removedPct ? `, ${pct(r.removedPct)} already removed` : ""}`;
   const lpP: Promise<LpReport | undefined> =
     (chain === "solana" || lpSupported(chain)) && !core
       ? marketP.then((m) =>
           withTimeout(traceLp(chain, address, !!m?.pair && m.pair.liquidity?.usd === undefined, m?.pair.pairAddress), 12_000)
             .then((r) => {
               if (!r) return undefined;
-              const text =
-                r.status === "curve"
+              const text = r.pullable
+                ? lpPullNote(r)
+                : r.status === "unknown"
+                  ? "LP status unknown: could not tell who can remove the liquidity"
+                  : r.status === "curve"
                   ? "still on the launchpad curve: no LP to pull yet"
                   : r.status === "burned"
                     ? `LP burned (${r.lockedPct}%): liquidity can't be pulled`
@@ -464,7 +470,7 @@ export async function runScan(
                       ? `only ${r.lockedPct ?? 0}% of the LP is locked or burned: liquidity can be pulled`
                       : `${r.lockedPct}% of the LP locked${r.locker ? ` in ${r.locker}` : ""}${r.unlockAt ? `, unlocks in ${days(r.unlockAt)} days (${new Date(r.unlockAt).toISOString().slice(0, 10)})` : ""}`;
               const soon = !!r.unlockAt && r.unlockAt - Date.now() < 30 * 86_400_000;
-              log({ crawler: "crawler_lp", text, tone: r.status === "unlocked" || soon ? "bad" : r.status === "partly" ? "warn" : "ok" });
+              log({ crawler: "crawler_lp", text, tone: r.pullable || r.status === "unlocked" || soon ? "bad" : r.status === "partly" || r.status === "unknown" ? "warn" : "ok" });
               return r;
             })
             .catch(() => undefined),
@@ -648,7 +654,8 @@ export async function runScan(
   else if (onCurve) hit("Bonding curve", -10, `still on the ${launchpad} curve, not graduated to a pool`);
   else if (liq < 5_000) hit("Thin liquidity", -25, `only ${usd(liq)} in the pool`);
   else if (liq < 20_000) hit("Low liquidity", -10, `${usd(liq)} in the pool`);
-  if (lp && lp.status === "unlocked" && liq >= 5_000) hit("LP not locked", -15, `only ${lp.lockedPct ?? 0}% of the liquidity is locked or burned: it can be pulled any time`);
+  if (lp?.pullable) hit("LP can be pulled", -25, lpPullNote(lp));
+  else if (lp && lp.status === "unlocked" && liq >= 5_000) hit("LP not locked", -15, `only ${lp.lockedPct ?? 0}% of the liquidity is locked or burned: it can be pulled any time`);
   else if (lp?.unlockAt && lp.unlockAt - Date.now() < 7 * 86_400_000) hit("LP unlocks this week", -20, `the locked LP unlocks on ${new Date(lp.unlockAt).toISOString().slice(0, 10)}${lp.locker ? ` (${lp.locker})` : ""}`);
   else if (lp?.unlockAt && lp.unlockAt - Date.now() < 30 * 86_400_000) hit("LP unlocks soon", -10, `the locked LP unlocks in ${days(lp.unlockAt)} days${lp.locker ? ` (${lp.locker})` : ""}`);
   else if (lp?.status === "burned") hit("LP burned", 5, "the liquidity tokens are burned: the pool can't be pulled");
@@ -710,6 +717,12 @@ export async function runScan(
   if (telegram.length) hit("On the radar", 5, `mentioned in ${telegram.map((t) => t.channel).join(", ")}`);
   for (const f of factors) score += f.impact;
   score = Math.max(0, Math.min(100, score));
+  // Ликвидность в руках кошелька — не выше RISKY: на Robinhood «чистые» монеты так теряли пул через минуты после скана.
+  const lpPull = factors.find((f) => f.label === "LP can be pulled");
+  if (lpPull && score >= 60) {
+    lpPull.impact -= score - 59;
+    score = 59;
+  }
   // Жёсткое правило по данным Track Record (13.10): молодые токены со связанными или свежими кошельками
   // в первые часы массово рушились на 60–98% при вердикте OK/CLEAN. Взвешенная сумма тут обманывает:
   // такой токен не выше RISKY, сколько бы баллов он ни набрал.
@@ -722,7 +735,7 @@ export async function runScan(
 
   // «Слишком рано» — только если явных красных флагов нет: связанные кошельки или серийного создателя видно
   // уже в первые минуты, и молчать о них нельзя.
-  const SERIOUS = ["LP unlocks this week", "LP not locked", "Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Dev-funded snipers", "One operator", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
+  const SERIOUS = ["LP unlocks this week", "LP not locked", "LP can be pulled", "Bundled", "Linked wallets", "Dev-funded holders", "Snipers hold a lot", "Dev-funded snipers", "One operator", "Fresh wallets", "Serial launcher", "Possible copy", "Dev holds a lot", "Concentrated"];
   const tooEarly =
     !!market && market.ageHours !== undefined && market.ageHours < 0.5 && !holders?.mintAuthority && !holders?.freezeAuthority && !evm?.honeypot && !xray?.findings.some((f) => f.severity === "high") && !factors.some((f) => SERIOUS.includes(f.label));
   const verdict: Verdict = tooEarly ? "TOO_EARLY" : score >= 80 ? "CLEAN" : score >= 60 ? "OK" : score >= 40 ? "RISKY" : "DANGER";

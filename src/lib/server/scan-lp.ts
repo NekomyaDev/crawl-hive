@@ -1,8 +1,10 @@
 // LP (crawler_lp): кто держит ликвидность и когда её можно вытащить. «Чистый контракт с LP, который
 // разлочится через неделю, — это руг с датой». Solana — по отчёту RugCheck (доля сожжённого или залоченного LP
 // в главном пуле, локеры с датами), BNB Chain и Base — по GoPlus (держатели LP-токена, отметка лока и дата окончания).
-// Монеты на кривой лаунчпада LP ещё не имеют — вытащить нечего. Для Robinhood Chain источника пока нет.
+// Монеты на кривой лаунчпада LP ещё не имеют — вытащить нечего. Robinhood Chain и пулы v3/v4 в BNB и Base — по цепочке
+// (scan-lp-evm): кто держит позицию главного пула и может ли он её вынуть.
 import "server-only";
+import { evmLpSupported, traceEvmLp, type LpControl } from "./scan-lp-evm";
 
 export interface LpReport {
   status: "burned" | "locked" | "partly" | "unlocked" | "curve" | "unknown";
@@ -10,13 +12,15 @@ export interface LpReport {
   unlockAt?: number; // ближайший анлок залоченной части, мс
   locker?: string; // название локера, если известно
   pool?: string; // тип пула (pump_fun_amm, raydium, meteoraDlmm…)
-  source: "rugcheck" | "goplus";
+  source: "rugcheck" | "goplus" | "chain";
+  pullable?: LpControl; // кошелёк, который может вынуть ликвидность сам (или через свой контракт), и его доля
+  removedPct?: number; // сколько добавленной ликвидности уже вынуто (v3/v4, по цепочке)
 }
 
 const CACHE_MS = 10 * 60_000;
 // chainId GoPlus для сетей, где он знает держателей LP.
 const GOPLUS_CHAIN: Record<string, number> = { bsc: 56, base: 8453 };
-export const lpSupported = (chain: string) => chain in GOPLUS_CHAIN;
+export const lpSupported = (chain: string) => chain in GOPLUS_CHAIN || evmLpSupported(chain);
 const g = globalThis as unknown as { __crawlhiveLp?: Map<string, { at: number; r: LpReport | null }> };
 const cache = () => (g.__crawlhiveLp ??= new Map());
 
@@ -27,10 +31,20 @@ export async function traceLp(chain: string, token: string, onCurve: boolean, po
   const key = `${chain}:${token.toLowerCase()}:${pool?.toLowerCase() ?? ""}`;
   const hit = cache().get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.r;
-  const r = chain === "solana" ? await fromRugcheck(token) : lpSupported(chain) ? await fromGoplus(token, GOPLUS_CHAIN[chain], pool) : null;
+  const r =
+    chain === "solana"
+      ? await fromRugcheck(token)
+      : ((chain in GOPLUS_CHAIN ? await fromGoplus(token, GOPLUS_CHAIN[chain], pool) : null) ?? (evmLpSupported(chain) && pool ? await fromChain(chain, token, pool) : null));
   if (cache().size > 5000) cache().clear();
   cache().set(key, { at: Date.now(), r });
   return r;
+}
+
+// По цепочке: «неизвестно» тоже отчёт — скан покажет «LP status unknown» без штрафа.
+async function fromChain(chain: string, token: string, pool: string): Promise<LpReport | null> {
+  const r = await traceEvmLp(chain, token, pool);
+  if (!r) return { status: "unknown", lockedPct: null, source: "chain" };
+  return { ...r, source: "chain" };
 }
 
 const statusOf = (pct: number): LpReport["status"] => (pct >= 99 ? "locked" : pct >= 50 ? "partly" : "unlocked");

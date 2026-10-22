@@ -66,7 +66,7 @@ interface Result {
   launch?: LaunchData;
   snipers?: { wallets: number; boughtPct: number; holdPct: number; sold: number; slots: number };
   insiders?: { wallets: number; pct: number };
-  lp?: { status: string; lockedPct: number | null; unlockAt?: number; locker?: string };
+  lp?: { status: string; lockedPct: number | null; unlockAt?: number; locker?: string; pullable?: { who: string; pct: number } };
   larp?: LarpLineData;
   trust?: TrustData;
   since?: SinceData;
@@ -438,9 +438,13 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
         {r.insiders && <Flag ok={false} label={`${r.insiders.wallets} dev-funded wallet${r.insiders.wallets > 1 ? "s" : ""} · ${r.insiders.pct.toFixed(1)}%`} />}
         {r.lp && r.lp.status !== "curve" && (
           <Flag
-            ok={r.lp.status === "burned" || (r.lp.status === "locked" && (!r.lp.unlockAt || r.lp.unlockAt - Date.now() > 30 * 86_400_000))}
+            ok={!r.lp.pullable && (r.lp.status === "burned" || (r.lp.status === "locked" && (!r.lp.unlockAt || r.lp.unlockAt - Date.now() > 30 * 86_400_000)))}
             label={
-              r.lp.status === "burned"
+              r.lp.pullable
+                ? `LP can be pulled by ${r.lp.pullable.who === "deployer" ? "deployer" : "a wallet"} (${r.lp.pullable.pct.toFixed(0)}%)`
+                : r.lp.status === "unknown"
+                  ? "LP status unknown"
+                  : r.lp.status === "burned"
                 ? "LP burned"
                 : r.lp.status === "unlocked"
                   ? `LP not locked (${r.lp.lockedPct ?? 0}%)`
