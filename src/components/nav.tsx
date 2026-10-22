@@ -172,27 +172,27 @@ export function NavShell({ path }: { path: string }) {
 
 // Верхняя панель на десктопе: кошелёк и главные ссылки (Telegram, X-бот, токен) в одну строку справа,
 // чтобы их не приходилось искать в длинном меню слева.
-const TOP_BTN = "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium whitespace-nowrap transition-colors";
+const TOP_BTN = "inline-flex h-12 items-center gap-2 rounded-xl border px-5 text-base font-semibold whitespace-nowrap transition-colors";
 function TopWallet() {
   const { address, info, signedIn, connect, signIn, disconnect } = useWallet();
   if (!address)
     return (
       <div className="flex items-center gap-2">
-        <Link href="/#wallet-safety" className="hidden items-center gap-1 text-[11px] text-muted hover:text-lime xl:flex" title="Read-only until you pay">
+        <Link href="/#wallet-safety" className="hidden items-center gap-1 text-xs text-muted hover:text-lime xl:flex" title="Read-only until you pay">
           <ShieldCheck className="size-3" /> Is it safe?
         </Link>
-        <Button onClick={() => connect()} size="sm" className="h-9 px-4">
-          <Wallet className="size-4" /> Connect wallet
+        <Button onClick={() => connect()} className="h-12 rounded-xl px-6 text-base font-bold">
+          <Wallet className="size-5" /> Connect wallet
         </Button>
       </div>
     );
   return (
-    <div className="flex h-9 items-center gap-2 rounded-lg border border-line bg-panel-2 px-3">
-      <span className="num text-xs">{short(address)}</span>
+    <div className="flex h-12 items-center gap-2.5 rounded-xl border border-line bg-panel-2 px-4">
+      <span className="num text-sm">{short(address)}</span>
       {signedIn ? (
         <>
           <HolderBadge />
-          <span className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} credits</span>
+          <span className="num text-sm text-honey">{info ? fmt(info.balance) : "…"} credits</span>
         </>
       ) : (
         <button onClick={() => signIn().catch(() => {})} className="text-xs font-medium text-honey hover:underline">
@@ -208,19 +208,19 @@ function TopWallet() {
 
 export function TopBar() {
   return (
-    <div data-chrome className="mb-5 hidden flex-wrap items-center justify-end gap-2 lg:flex">
+    <div data-chrome className="mb-6 hidden flex-wrap items-center justify-end gap-3 lg:flex">
       <Link href="/#treasury" className={cn(TOP_BTN, "border-honey/50 bg-honey/10 text-honey hover:bg-honey/20")}>
-        <span className="leading-none">🔥</span>${TOKEN.symbol}
+        <span className="text-lg leading-none">🔥</span>${TOKEN.symbol}
         <span className="rounded bg-honey px-1.5 py-px text-[9px] font-bold tracking-wide text-black">LIVE</span>
       </Link>
       <a href={APP_URL} target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-[#229ED9]/50 bg-[#229ED9]/15 text-white hover:bg-[#229ED9]/25")}>
-        <TelegramIcon className="size-4 text-[#5bc4f5]" /> Telegram app
+        <TelegramIcon className="size-5 text-[#5bc4f5]" /> Telegram app
       </a>
       <a href={COMMUNITY_URL} target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-[#229ED9]/50 bg-[#229ED9]/15 text-white hover:bg-[#229ED9]/25")}>
-        <TelegramIcon className="size-4 text-[#5bc4f5]" /> Community
+        <TelegramIcon className="size-5 text-[#5bc4f5]" /> Community
       </a>
       <a href="https://x.com/crawlhivebot" target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-white/25 bg-white/[0.06] text-white hover:bg-white/[0.12]")}>
-        <span className="text-[13px] leading-none font-black">𝕏</span> X bot
+        <span className="text-base leading-none font-black">𝕏</span> X bot
         <span className="rounded bg-white px-1.5 py-px text-[9px] font-bold tracking-wide text-black">NEW</span>
       </a>
       <TopWallet />
