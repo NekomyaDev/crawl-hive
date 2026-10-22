@@ -105,7 +105,7 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s21", label: "Clean+OK 20k+ TP100", note: "CLEAN or OK with $20k+ liquidity, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s22", label: "V2 not DANGER 20k+", note: "Second look CLEAN, OK or RISKY with $20k+ liquidity, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN", "OK", "RISKY"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // 12:55: s8 (трейлинг 25%) 15 сделок, -16% против -4.5% у контроля, выключен. Стопы SL30 закрываются около -46%: пробуем шире.
-  { id: "s23", label: "Clean 20k+ wide stop", note: "CLEAN with $20k+ liquidity, TP100 SL40, 24h", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s23", label: "Clean 20k+ wide stop", note: "CLEAN with $20k+ liquidity, TP100 SL40, 24h", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   // 22.10: v2 стал публичным, теневая теперь v3 (ончейн-сигналы). Пара к s15/s16 для сравнения вперёд.
   { id: "s24", label: "V3 CLEAN TP100", note: "Shadow score v3 says CLEAN (any public verdict), TP100 SL30, 24h", entry: { verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s25", label: "V3 CLEAN hold 24h", note: "Baseline for v3: shadow score v3 says CLEAN, no stops, sold after 24h", entry: { verdictsV3: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
@@ -133,6 +133,10 @@ export const STRATEGIES: StrategyConfig[] = [
   // Лучший вход пока v2 CLEAN с подтверждением через 10 мин (s19 +24%, PF 2.1, 7 сделок): пробуем то же на v3 и с ранней фиксацией.
   { id: "s37", label: "V3 CLEAN confirmed 10m", note: "Score v3 says CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdictsV3: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s38", label: "V2 CLEAN confirmed 10m TP50", note: "Like S19 but takes profit at +50%, TP50 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // 23.10 ночь: широкий стоп s23 18 сделок -8.3% (PF 0.79) против -3.9% у s6, стопы исполняются около -54%: выключен.
+  // Лидер теперь глубокие пулы: s12 +31.2% (9 сделок, PF 3.2), быстрый s32 два TP. Проверяем, тянут ли раннеры дальше и держится ли край на $50k.
+  { id: "s39", label: "Deep liquidity TP200", note: "Like S12 but takes profit at +200%: CLEAN, OK or RISKY with $100k+ liquidity, TP200 SL20, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 200, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s40", label: "Liquidity 50k+", note: "Like S12 with a lower bar: CLEAN, OK or RISKY with $50k+ liquidity, TP100 SL20, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
