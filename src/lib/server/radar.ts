@@ -7,6 +7,7 @@ import { getMeta, setMeta } from "./store";
 import { bestPairs, latestBoosts, latestProfiles } from "./crawl/dexscreener";
 import { runScan } from "./scan";
 import { sampleTrack } from "./track";
+import { paperOnSignal, startPaperEngine } from "./paper-engine";
 
 const KEY = "radar";
 const MAX = 150;
@@ -103,6 +104,12 @@ async function tick() {
           img: p.img?.replace(/width=\d+&height=\d+/, "width=128&height=128"),
         };
         setMeta(KEY, JSON.stringify([entry, ...all().filter((e) => e.id !== entry.id)].slice(0, MAX)));
+        // Paper Engine: вердикт готов, стратегии с подходящими правилами открывают бумажные позиции по цене скана.
+        try {
+          paperOnSignal(r);
+        } catch (e) {
+          console.warn("[paper] signal failed", r.id, (e as Error).message);
+        }
       } catch (e) {
         console.warn("[radar] scan failed", p.id, (e as Error).message);
       }
@@ -171,5 +178,6 @@ export function startRadar() {
     setInterval(() => tick().catch(() => {}), TICK_MS);
   }
   setInterval(() => sampleTrack().catch((e) => console.warn("[track]", (e as Error).message)), 5 * 60_000);
+  startPaperEngine();
   console.log("[crawlhive] launch radar and track record started");
 }

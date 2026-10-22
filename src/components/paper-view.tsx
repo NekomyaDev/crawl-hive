@@ -1,135 +1,129 @@
 "use client";
-// Paper Trading: бумажные $100 на каждый вердикт Launch Radar, выход через сутки. Показываем стратегии
-// по вердиктам рядом с базовой линией «покупать всё», чтобы было видно, помогает ли фильтр вообще.
+// Paper Trading: живой бумажный движок. Несколько стратегий торгуют сигналами Launch Radar параллельно, каждая со
+// своими стопами, тейками и сроком. Таблица лидеров, кривые, открытые позиции, последние сделки с причиной выхода.
+// Внизу старый расчёт задним числом (купить по цене скана, продать через сутки) для сравнения.
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { VerdictPill, pct } from "@/components/verdict";
 import { useApi } from "@/lib/client/use-api";
 import { cn, fmt, short, timeAgo } from "@/lib/utils";
+import type { PaperEngineData } from "@/lib/server/paper-engine";
+import type { PaperData } from "@/lib/server/paper";
 
-type Sid = "clean" | "cleanOk" | "all";
-interface Strategy {
-  id: Sid;
-  label: string;
-  note: string;
-  trades: number;
-  wins: number;
-  winRate: number | null;
-  pnl: number;
-  invested: number;
-  avgRet: number | null;
-  medianRet: number | null;
-  best: { symbol: string; id: string; retPct: number } | null;
-  worst: { symbol: string; id: string; retPct: number } | null;
-  rugs: number;
-  open: number;
-  openPnl: number;
-  curve: { day: string; pnl: number }[];
-}
-interface Trade {
-  id: string;
-  chain: string;
-  symbol: string;
-  verdict: string;
-  score: number | null;
-  at: number;
-  exitAt: number;
-  status: "closed" | "open" | "rugged";
-  retPct: number;
-  pnl: number;
-  markedAt: number | null;
-  in: Sid[];
-}
 interface Data {
-  since: number | null;
-  stake: number;
-  windowHours: number;
-  strategies: Strategy[];
-  trades: Trade[];
-  skipped: number;
-  updatedAt: number;
+  engine: PaperEngineData;
+  legacy: PaperData | null;
 }
+type Strategy = PaperEngineData["strategies"][number];
 
-// Цвета стратегий: одни и те же на карточках, в легенде и на кривой.
-const TONE: Record<Sid, { tone: "lime" | "teal" | "sky"; stroke: string; text: string }> = {
-  clean: { tone: "lime", stroke: "stroke-lime", text: "text-lime" },
-  cleanOk: { tone: "teal", stroke: "stroke-teal", text: "text-teal" },
-  all: { tone: "sky", stroke: "stroke-sky", text: "text-sky" },
-};
+// Цвета стратегий по порядку: одни и те же в таблице, легенде и на кривых.
+const COLORS = ["lime", "teal", "sky", "violet", "pink", "honey", "coral", "danger", "fg", "muted"];
+const colorOf = (ids: string[], id: string) => `var(--${COLORS[Math.max(0, ids.indexOf(id)) % COLORS.length]})`;
 
 const usd = (n: number) => `${n < 0 ? "-" : n > 0 ? "+" : ""}$${fmt(Math.abs(n), Math.abs(n) < 100 ? 2 : 0)}`;
-const tone = (n: number | null) => (n == null || n === 0 ? "text-muted" : n > 0 ? "text-lime" : "text-danger");
-const date = (ts: number) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const tone = (n: number | null | undefined) => (n == null || n === 0 ? "text-muted" : n > 0 ? "text-lime" : "text-danger");
+const when = (ts: number) => new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const mins = (m: number | null) => (m == null ? "-" : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`);
+const price = (p: number) => (p >= 1 ? p.toFixed(4) : p.toPrecision(3));
 
-function StrategyCard({ s }: { s: Strategy }) {
-  const t = TONE[s.id];
-  const ret = s.invested ? (s.pnl / s.invested) * 100 : null;
+const REASON: Record<string, { label: string; cls: string }> = {
+  tp: { label: "take profit", cls: "text-lime" },
+  sl: { label: "stop loss", cls: "text-danger" },
+  trail: { label: "trailing stop", cls: "text-honey" },
+  time: { label: "time out", cls: "text-muted" },
+  rug: { label: "rugged", cls: "font-semibold text-danger" },
+  removed: { label: "strategy removed", cls: "text-muted" },
+};
+
+function rules(s: Strategy) {
+  const x = s.exits;
+  if (!x) return "-";
+  const parts = [
+    x.tpPct != null && `TP +${x.tpPct}%`,
+    x.slPct != null && `SL -${x.slPct}%`,
+    x.trailPct != null && `trail ${x.trailPct}%${x.trailArmPct ? ` after +${x.trailArmPct}%` : ""}`,
+    `max ${mins(x.maxHoldMin)}`,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
+function Leaderboard({ strategies, ids }: { strategies: Strategy[]; ids: string[] }) {
+  const rows = [...strategies].sort((a, b) => b.pnl + b.openPnl - (a.pnl + a.openPnl));
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className={cn("text-sm font-semibold", t.text)}>{s.label}</h3>
-          <p className="mt-0.5 text-xs text-muted">{s.note}</p>
-        </div>
-        <span className={cn("num text-xl font-semibold", tone(s.pnl))}>{s.trades ? usd(s.pnl) : "-"}</span>
-      </div>
-      <dl className="num mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-        <dt className="text-muted">Closed trades</dt>
-        <dd className="text-right">{s.trades}</dd>
-        <dt className="text-muted">Win rate</dt>
-        <dd className="text-right">{s.winRate == null ? "-" : `${s.winRate}% (${s.wins}/${s.trades})`}</dd>
-        <dt className="text-muted">Return on ${fmt(s.invested)} staked</dt>
-        <dd className={cn("text-right", tone(ret))}>{pct(ret)}</dd>
-        <dt className="text-muted">Avg / median trade</dt>
-        <dd className="text-right">
-          <span className={tone(s.avgRet)}>{pct(s.avgRet)}</span> / <span className={tone(s.medianRet)}>{pct(s.medianRet)}</span>
-        </dd>
-        <dt className="text-muted">Best</dt>
-        <dd className="truncate text-right">
-          {s.best ? (
-            <Link href={`/scan/${s.best.id}`} className="hover:text-honey">
-              ${s.best.symbol} <span className={tone(s.best.retPct)}>{pct(s.best.retPct)}</span>
-            </Link>
-          ) : "-"}
-        </dd>
-        <dt className="text-muted">Worst</dt>
-        <dd className="truncate text-right">
-          {s.worst ? (
-            <Link href={`/scan/${s.worst.id}`} className="hover:text-honey">
-              ${s.worst.symbol} <span className={tone(s.worst.retPct)}>{pct(s.worst.retPct)}</span>
-            </Link>
-          ) : "-"}
-        </dd>
-        <dt className="text-muted">Rugs eaten</dt>
-        <dd className="text-right">{s.rugs}</dd>
-        <dt className="text-muted">Open now</dt>
-        <dd className="text-right">
-          {s.open} {s.open > 0 && <span className={tone(s.openPnl)}>({usd(s.openPnl)} unrealized)</span>}
-        </dd>
-      </dl>
-    </Card>
+    <div className="overflow-x-auto">
+      <table className="num w-full min-w-[860px] text-xs">
+        <thead className="text-left text-muted">
+          <tr className="border-b border-line">
+            <th className="px-4 py-2 font-medium">Strategy</th>
+            <th className="px-2 py-2 text-right font-medium">Trades</th>
+            <th className="px-2 py-2 text-right font-medium">Open</th>
+            <th className="px-2 py-2 text-right font-medium">Win rate</th>
+            <th className="px-2 py-2 text-right font-medium">Realized</th>
+            <th className="px-2 py-2 text-right font-medium">Unrealized</th>
+            <th className="px-2 py-2 text-right font-medium">Avg / median</th>
+            <th className="px-2 py-2 text-right font-medium">Profit factor</th>
+            <th className="px-2 py-2 text-right font-medium">Max DD</th>
+            <th className="px-4 py-2 text-right font-medium">Avg hold</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line/60">
+          {rows.map((s) => (
+            <tr key={s.id} className={cn(!s.enabled && "opacity-60")}>
+              <td className="px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: colorOf(ids, s.id) }} />
+                  <span className="font-semibold text-fg">
+                    {s.id.toUpperCase()} {s.label}
+                  </span>
+                  {!s.enabled && <span className="text-[10px] text-muted">paused</span>}
+                </div>
+                <div className="mt-0.5 pl-4 text-[11px] text-muted">
+                  {s.note}. {rules(s)}
+                </div>
+              </td>
+              <td className="px-2 py-2 text-right">{s.trades}</td>
+              <td className="px-2 py-2 text-right">{s.open}</td>
+              <td className="px-2 py-2 text-right">{s.winRate == null ? "-" : `${s.winRate}%`}</td>
+              <td className={cn("px-2 py-2 text-right font-semibold", tone(s.pnl))}>{s.trades ? usd(s.pnl) : "-"}</td>
+              <td className={cn("px-2 py-2 text-right", tone(s.openPnl))}>{s.open ? usd(s.openPnl) : "-"}</td>
+              <td className="px-2 py-2 text-right">
+                <span className={tone(s.avgRet)}>{pct(s.avgRet)}</span> / <span className={tone(s.medianRet)}>{pct(s.medianRet)}</span>
+              </td>
+              <td className="px-2 py-2 text-right">{s.profitFactor ?? (s.trades && s.wins === s.trades ? "no losses" : "-")}</td>
+              <td className={cn("px-2 py-2 text-right", s.maxDrawdown ? "text-danger" : "text-muted")}>{s.maxDrawdown ? `-$${fmt(s.maxDrawdown, 2)}` : "-"}</td>
+              <td className="px-4 py-2 text-right">{mins(s.avgHoldMin)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-// Кривая доходности: простой SVG без библиотек, ось нуля пунктиром.
-function EquityCurve({ strategies }: { strategies: Strategy[] }) {
-  const days = strategies[0]?.curve.map((c) => c.day) ?? [];
-  if (days.length < 2) return <p className="px-4 py-10 text-center text-sm text-muted">The curve needs at least two days of closed trades. Check back tomorrow.</p>;
+// Кривые реализованного P&L по времени закрытия: SVG без библиотек, ноль пунктиром.
+function EquityCurves({ strategies, ids, startedAt }: { strategies: Strategy[]; ids: string[]; startedAt: number | null }) {
+  const lines = strategies.filter((s) => s.curve.length);
+  if (!lines.length) return <p className="px-4 py-10 text-center text-sm text-muted">No closed trades yet. Curves show up after the first exits.</p>;
   const W = 720;
-  const H = 220;
-  const P = { l: 56, r: 12, t: 12, b: 24 };
-  const vals = strategies.flatMap((s) => s.curve.map((c) => c.pnl));
+  const Ht = 240;
+  const P = { l: 60, r: 12, t: 12, b: 24 };
+  const t0 = Math.min(startedAt ?? Infinity, ...lines.map((s) => s.curve[0][0]));
+  const t1 = Math.max(Date.now(), t0 + 60_000);
+  const vals = lines.flatMap((s) => s.curve.map((c) => c[1]));
   const lo = Math.min(0, ...vals);
   const hi = Math.max(0, ...vals);
   const span = hi - lo || 1;
-  const x = (i: number) => P.l + (i / (days.length - 1)) * (W - P.l - P.r);
-  const y = (v: number) => P.t + ((hi - v) / span) * (H - P.t - P.b);
+  const x = (t: number) => P.l + ((t - t0) / (t1 - t0)) * (W - P.l - P.r);
+  const y = (v: number) => P.t + ((hi - v) / span) * (Ht - P.t - P.b);
   const ticks = [hi, (hi + lo) / 2, lo];
-  const labelEvery = Math.max(1, Math.ceil(days.length / 6));
+  const xt = [0, 0.25, 0.5, 0.75, 1].map((f) => t0 + f * (t1 - t0));
+  // Ступенька: P&L меняется только в момент закрытия сделки, последнее значение тянем до «сейчас».
+  const points = (s: Strategy) =>
+    [`${x(t0)},${y(0)}`, ...s.curve.flatMap((c, i) => [`${x(c[0])},${y(i ? s.curve[i - 1][1] : 0)}`, `${x(c[0])},${y(c[1])}`]), `${x(t1)},${y(s.curve[s.curve.length - 1][1])}`].join(" ");
   return (
     <div className="p-4">
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Cumulative realized paper P&L by day">
+      <svg viewBox={`0 0 ${W} ${Ht}`} className="h-auto w-full" role="img" aria-label="Cumulative realized paper P&L per strategy">
         {ticks.map((v, i) => (
           <g key={i}>
             <line x1={P.l} x2={W - P.r} y1={y(v)} y2={y(v)} className="stroke-line" strokeWidth={1} />
@@ -139,30 +133,21 @@ function EquityCurve({ strategies }: { strategies: Strategy[] }) {
           </g>
         ))}
         <line x1={P.l} x2={W - P.r} y1={y(0)} y2={y(0)} className="stroke-muted" strokeWidth={1} strokeDasharray="4 4" />
-        {days.map((d, i) =>
-          i % labelEvery === 0 || i === days.length - 1 ? (
-            <text key={d} x={x(i)} y={H - 6} textAnchor="middle" className="fill-muted text-[10px]">
-              {d.slice(5)}
-            </text>
-          ) : null,
-        )}
-        {strategies.map((s) => (
-          <polyline
-            key={s.id}
-            fill="none"
-            strokeWidth={2}
-            strokeLinejoin="round"
-            className={TONE[s.id].stroke}
-            points={s.curve.map((c, i) => `${x(i)},${y(c.pnl)}`).join(" ")}
-          />
+        {xt.map((t, i) => (
+          <text key={i} x={x(t)} y={Ht - 6} textAnchor={i === 0 ? "start" : i === xt.length - 1 ? "end" : "middle"} className="fill-muted text-[10px]">
+            {new Date(t).toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          </text>
+        ))}
+        {lines.map((s) => (
+          <polyline key={s.id} fill="none" strokeWidth={2} strokeLinejoin="round" style={{ stroke: colorOf(ids, s.id) }} points={points(s)} />
         ))}
       </svg>
-      <div className="mt-2 flex flex-wrap gap-4 text-xs">
-        {strategies.map((s) => (
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        {lines.map((s) => (
           <span key={s.id} className="flex items-center gap-1.5">
-            <span className={cn("h-0.5 w-4 rounded", TONE[s.id].tone === "lime" ? "bg-lime" : TONE[s.id].tone === "teal" ? "bg-teal" : "bg-sky")} />
-            <span className={TONE[s.id].text}>{s.label}</span>
-            <span className="num text-muted">{usd(s.curve[s.curve.length - 1]?.pnl ?? 0)}</span>
+            <span className="h-0.5 w-4 rounded" style={{ background: colorOf(ids, s.id) }} />
+            <span>{s.id.toUpperCase()}</span>
+            <span className={cn("num", tone(s.pnl))}>{usd(s.pnl)}</span>
           </span>
         ))}
       </div>
@@ -170,63 +155,88 @@ function EquityCurve({ strategies }: { strategies: Strategy[] }) {
   );
 }
 
-function Status({ t }: { t: Trade }) {
-  if (t.status === "rugged") return <span className="font-semibold text-danger">rugged</span>;
-  if (t.status === "open") return <span className="text-muted">open · closes in {Math.max(0, Math.ceil((t.exitAt - Date.now()) / 3600_000))}h</span>;
-  return <span className="text-muted">closed {date(t.exitAt)}</span>;
+function Legacy({ d }: { d: PaperData }) {
+  return (
+    <Card className="mb-5">
+      <CardHeader title="Old backtest view" sub={`The first version: $${d.stake} at the Track Record scan price, sold ${d.windowHours}h later, no stops, no fees.`} />
+      <ul className="num divide-y divide-line/60 text-xs">
+        {d.strategies.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+            <span className="text-fg">{s.label}</span>
+            <span className="flex gap-4 text-muted">
+              <span>{s.trades} trades</span>
+              <span>win {s.winRate == null ? "-" : `${s.winRate}%`}</span>
+              <span>
+                avg <span className={tone(s.avgRet)}>{pct(s.avgRet)}</span>
+              </span>
+              <span className={cn("font-semibold", tone(s.pnl))}>{s.trades ? usd(s.pnl) : "-"}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
 }
 
 export function PaperView() {
-  const { data } = useApi<Data>("/api/paper", 300_000);
-  const by = new Map((data?.strategies ?? []).map((s) => [s.id, s]));
-  const clean = by.get("clean");
-  const base = by.get("all");
-  // Главный вопрос страницы: обгоняет ли фильтр CLEAN покупку всего подряд в расчёте на сделку.
-  const edge = clean?.avgRet != null && base?.avgRet != null ? clean.avgRet - base.avgRet : null;
+  const { data } = useApi<Data>("/api/paper", 60_000);
+  const e = data?.engine;
+  const ids = (e?.strategies ?? []).map((s) => s.id);
+  const totals = (e?.strategies ?? []).reduce((a, s) => ({ trades: a.trades + s.trades, open: a.open + s.open }), { trades: 0, open: 0 });
+  const best = [...(e?.strategies ?? [])].filter((s) => s.trades).sort((a, b) => b.pnl - a.pnl)[0];
+  const label = new Map((e?.strategies ?? []).map((s) => [s.id, s.label]));
 
   return (
     <>
       <PageHeader
         title="Paper Trading"
-        sub={`The swarm trades its own signals with fake money. Every token Launch Radar scans gets a virtual $${data?.stake ?? 100} buy at the scan price and gets sold ${data?.windowHours ?? 24} hours later. A rug counts as -100%. No cherry picking, losers stay on the board.`}
+        sub={`The swarm trades its own Launch Radar calls with fake money, live. ${e?.strategies.length ?? "Several"} strategies run side by side, each with its own entry filter, take profit, stop loss, trailing stop and time limit. Prices are checked every ${e?.sampleSec ?? 60}s, fees and slippage are in, a rug counts as -100%.`}
       />
-      <p className="-mt-3 mb-5 text-xs text-coral">Paper money only. Not financial advice. Past results mean nothing for the next coin.</p>
+      <p className="-mt-3 mb-5 text-xs text-coral">Paper money only. Not financial advice.</p>
+
+      {e && !e.enabled && <p className="mb-5 rounded-lg border border-line bg-panel px-4 py-3 text-sm text-muted">The paper engine is switched off right now. Numbers below are frozen.</p>}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="CLEAN only P&L" value={clean?.trades ? usd(clean.pnl) : "-"} hint={clean ? `${clean.trades} closed trades` : undefined} tone="lime" />
-        <Stat label="CLEAN win rate" value={clean?.winRate == null ? "-" : `${clean.winRate}%`} hint={base?.winRate != null ? `buy-everything: ${base.winRate}%` : undefined} tone="teal" />
-        <Stat label="Filter edge per trade" value={edge == null ? "-" : pct(edge)} hint="CLEAN avg return minus buy-everything avg" tone="honey" />
-        <Stat label="Data since" value={data?.since ? date(data.since) : "-"} hint={data ? `updated ${timeAgo(data.updatedAt)}` : "loading"} tone="sky" />
-      </div>
-
-      <div className="mb-5 grid gap-3 lg:grid-cols-3">
-        {(data?.strategies ?? []).map((s) => (
-          <StrategyCard key={s.id} s={s} />
-        ))}
+        <Stat label="Running since" value={e?.startedAt ? when(e.startedAt) : "-"} hint={e?.lastTick ? `last price check ${timeAgo(e.lastTick)}` : "waiting for the first price check"} tone="sky" />
+        <Stat label="Closed trades" value={String(totals.trades)} hint="all strategies together" tone="teal" />
+        <Stat label="Open positions" value={String(totals.open)} hint={`up to ${e?.maxOpen ?? 40} per strategy`} tone="violet" />
+        <Stat label="Leader" value={best ? `${best.id.toUpperCase()} ${usd(best.pnl)}` : "-"} hint={best ? best.label : "no closed trades yet"} tone="lime" />
       </div>
 
       <Card className="mb-5">
-        <CardHeader title="Equity curve" sub="Cumulative realized P&L by the day each trade closed, UTC. Open trades are not in here." />
-        {data ? <EquityCurve strategies={data.strategies} /> : <p className="px-4 py-10 text-center text-sm text-muted">Loading…</p>}
+        <CardHeader title="Strategy leaderboard" sub="Sorted by realized plus unrealized P&L. Each trade is a $100 paper buy." />
+        {e ? <Leaderboard strategies={e.strategies} ids={ids} /> : <p className="px-4 py-10 text-center text-sm text-muted">Loading…</p>}
       </Card>
 
       <Card className="mb-5">
-        <CardHeader title="Last 50 trades" sub="Every radar coin, whatever the verdict. Open trades show the latest 10-minute price check." />
-        {!data?.trades.length ? (
-          <p className="px-4 py-6 text-center text-sm text-muted">No trades yet. They show up as soon as Launch Radar scans fresh launches.</p>
+        <CardHeader title="Equity curves" sub="Cumulative realized P&L per strategy, by the time each trade closed." />
+        {e ? <EquityCurves strategies={e.strategies} ids={ids} startedAt={e.startedAt} /> : <p className="px-4 py-10 text-center text-sm text-muted">Loading…</p>}
+      </Card>
+
+      <Card className="mb-5">
+        <CardHeader title={`Open positions (${e?.open.length ?? 0})`} sub="Live P&L if sold at the last price check, after fees and slippage." />
+        {!e?.open.length ? (
+          <p className="px-4 py-6 text-center text-sm text-muted">Nothing open. New positions open the moment Launch Radar posts a verdict a strategy likes.</p>
         ) : (
           <ul className="divide-y divide-line/60">
-            {data.trades.map((t) => (
-              <li key={t.id + t.at} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 text-sm">
-                <span className="min-w-0">
-                  <Link href={`/scan/${t.id}`} className="font-semibold hover:text-honey">${t.symbol}</Link>
-                  <span className="num ml-2 text-[11px] text-muted">{short(t.id)} · {t.chain} · bought {timeAgo(t.at)}</span>
+            {e.open.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: colorOf(ids, p.strategy) }} />
+                  <span className="num text-[11px] text-muted">{p.strategy.toUpperCase()}</span>
+                  <Link href={`/scan/${p.token}`} className="font-semibold hover:text-honey">
+                    ${p.symbol}
+                  </Link>
+                  <span className="num text-[11px] text-muted">
+                    {short(p.token)} · {p.chain} · in {timeAgo(p.entryAt)} at ${price(p.entryPrice)}
+                  </span>
                 </span>
-                <span className="flex shrink-0 items-center gap-2 text-xs">
-                  <VerdictPill verdict={t.verdict} score={t.score} />
-                  <Status t={t} />
-                  <span className={cn("num w-20 text-right font-semibold", tone(t.retPct))}>{pct(t.retPct)}</span>
-                  <span className={cn("num w-16 text-right", tone(t.pnl))}>{usd(t.pnl)}</span>
+                <span className="num flex shrink-0 items-center gap-3 text-xs">
+                  <VerdictPill verdict={p.verdict} score={p.score} />
+                  <span className="text-muted">peak {pct(p.peakPct)}</span>
+                  {p.missing > 0 && <span className="text-danger">pair missing {p.missing}x</span>}
+                  <span className={cn("w-16 text-right font-semibold", tone(p.retPct))}>{pct(p.retPct)}</span>
+                  <span className={cn("w-16 text-right", tone(p.pnl))}>{usd(p.pnl)}</span>
                 </span>
               </li>
             ))}
@@ -234,10 +244,49 @@ export function PaperView() {
         )}
       </Card>
 
+      <Card className="mb-5">
+        <CardHeader title="Recent trades" sub="Last 100 exits across all strategies. Net return includes fees and slippage." />
+        {!e?.trades.length ? (
+          <p className="px-4 py-6 text-center text-sm text-muted">No exits yet.</p>
+        ) : (
+          <ul className="divide-y divide-line/60">
+            {e.trades.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: colorOf(ids, t.strategy) }} />
+                  <span className="num text-[11px] text-muted" title={label.get(t.strategy)}>
+                    {t.strategy.toUpperCase()}
+                  </span>
+                  <Link href={`/scan/${t.token}`} className="font-semibold hover:text-honey">
+                    ${t.symbol}
+                  </Link>
+                  <span className="num text-[11px] text-muted">
+                    {t.chain} · held {mins(Math.round((t.exitAt - t.entryAt) / 60_000))} · closed {timeAgo(t.exitAt)}
+                  </span>
+                </span>
+                <span className="num flex shrink-0 items-center gap-3 text-xs">
+                  <VerdictPill verdict={t.verdict} score={t.score} />
+                  <span className={REASON[t.reason]?.cls ?? "text-muted"}>{REASON[t.reason]?.label ?? t.reason}</span>
+                  <span className="text-muted">peak {pct(t.peakPct)}</span>
+                  <span className={cn("w-16 text-right font-semibold", tone(t.netPct))}>{pct(t.netPct)}</span>
+                  <span className={cn("w-16 text-right", tone(t.pnl))}>{usd(t.pnl)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {data?.legacy && <Legacy d={data.legacy} />}
+
       <p className="text-xs text-muted">
-        How it works: the buy price is the price Track Record stored at scan time, the exit is the first price check after {data?.windowHours ?? 24} hours. No fees, no slippage, no position limits, so real trading would do worse.
-        {data?.since ? ` Radar trades are recorded since ${date(data.since)}, older ones roll off the log.` : ""}
-        {data?.skipped ? ` ${data.skipped} radar scans are left out: no price check yet or a broken scan price.` : ""} Full verdict outcomes live on <Link href="/track" className="text-honey hover:underline">Track Record</Link>.
+        How it works: when Launch Radar finishes a scan, every strategy whose filter matches buys $100 at the scan price. Each buy and sell pays a {Math.round((e?.fee ?? 0.01) * 100)}% fee plus slippage of size over pool
+        liquidity, capped. Exits are checked in order: stop loss, take profit, trailing stop, time limit, at the real sampled price, so a fast candle can blow past a level. A pair that vanishes or drops under $500 liquidity
+        for three checks in a row is a rug at -100%. Real trading would still do worse: no failed transactions, no MEV, no delay. Verdict outcomes live on{" "}
+        <Link href="/track" className="text-honey hover:underline">
+          Track Record
+        </Link>
+        .
       </p>
     </>
   );

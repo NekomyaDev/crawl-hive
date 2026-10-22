@@ -1,10 +1,10 @@
-// Paper Trading: публичный бумажный P&L роя. Данные и расчёт в api/paper и paper.ts, здесь только метаданные.
+// Paper Trading: живой бумажный движок стратегий. Данные в api/paper и paper-engine.ts, здесь только метаданные.
 import type { Metadata } from "next";
 import { PaperView } from "@/components/paper-view";
 
 export const metadata: Metadata = {
   title: "CrawlHive Paper Trading · the swarm trades its own signals",
-  description: "Fake $100 on every Launch Radar verdict, sold 24 hours later. Public P&L for CLEAN-only and CLEAN + OK strategies against a buy-everything baseline. Paper money, not advice.",
+  description: "Live paper trading on Launch Radar calls: several strategies with stops, take profits and trailing exits, fees and slippage included. Paper money only, not financial advice.",
 };
 
 export default function PaperPage() {
