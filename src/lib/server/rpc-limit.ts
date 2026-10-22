@@ -5,9 +5,12 @@
 import "server-only";
 
 // На запасном узле свой лимит: у бесплатного Helius около 10 запросов в секунду.
+// Публичный узел Solana (последний запасной) пускает мало: держимся 4 в секунду.
 const RPS = () =>
   (globalThis as unknown as { __crawlhiveRpcDown?: number }).__crawlhiveRpcDown! > Date.now()
-    ? Math.max(1, Number(process.env.SOLANA_RPC_FALLBACK_RPS ?? 8))
+    ? (globalThis as unknown as { __crawlhiveRpcFbDown?: number }).__crawlhiveRpcFbDown! > Date.now()
+      ? 4
+      : Math.max(1, Number(process.env.SOLANA_RPC_FALLBACK_RPS ?? 8))
     : Math.max(1, Number(process.env.SOLANA_RPC_RPS ?? 12));
 const CONCURRENCY = 8;
 const RETRIES = 3;
@@ -40,7 +43,9 @@ const release = () => {
 // Запасной узел, когда у основного кончился дневной лимит (QuickNode отвечает 429 «daily request limit reached»):
 // до полуночи UTC ходим туда, повторять основной бессмысленно.
 const FALLBACK = () => process.env.SOLANA_RPC_FALLBACK?.trim() || "https://api.mainnet-beta.solana.com";
-const g2 = globalThis as unknown as { __crawlhiveRpcDown?: number };
+const g2 = globalThis as unknown as { __crawlhiveRpcDown?: number; __crawlhiveRpcFbDown?: number };
+// Последний уровень: и основной, и запасной без лимита (22.10 так и было: QuickNode отключён, у Helius кончились кредиты).
+const PUBLIC = "https://api.mainnet-beta.solana.com";
 const nextUtcMidnight = () => Math.ceil(Date.now() / 86400_000) * 86400_000;
 
 // Счётчик вызовов по методам: раз в час пишем в лог, на что уходит дневной лимит узла.
@@ -69,10 +74,11 @@ export const limitedFetch: typeof fetch = async (input, init) => {
   count(init?.body);
   for (let attempt = 0; ; attempt++) {
     const down = (g2.__crawlhiveRpcDown ?? 0) > Date.now();
+    const fbDown = down && (g2.__crawlhiveRpcFbDown ?? 0) > Date.now();
     await acquire();
     let res: Response;
     try {
-      res = await fetch(down ? FALLBACK() : input, init);
+      res = await fetch(fbDown ? PUBLIC : down ? FALLBACK() : input, init);
     } catch (e) {
       // Основной узел не отвечает вовсе (сеть, DNS): 10 минут ходим на запасной и повторяем запрос.
       if (!down && attempt < RETRIES) {
@@ -84,9 +90,18 @@ export const limitedFetch: typeof fetch = async (input, init) => {
     } finally {
       release();
     }
+    if (res.status === 429 && down && !fbDown && FALLBACK() !== PUBLIC) {
+      const text = await res.clone().text().catch(() => "");
+      if (/daily request limit|credits|quota|max usage/i.test(text)) {
+        g2.__crawlhiveRpcFbDown = nextUtcMidnight();
+        console.warn("[rpc] fallback RPC is out of its limit too, using the public Solana RPC until 00:00 UTC");
+        continue;
+      }
+    }
     if (res.status === 429 && !down) {
       const text = await res.clone().text().catch(() => "");
-      if (/daily request limit|credits|quota/i.test(text)) {
+      // QuickNode пишет и «max usage reached», когда кончился лимит тарифа.
+      if (/daily request limit|credits|quota|max usage/i.test(text)) {
         g2.__crawlhiveRpcDown = nextUtcMidnight();
         console.warn("[rpc] primary RPC is out of its daily limit, using the fallback until 00:00 UTC");
         continue;

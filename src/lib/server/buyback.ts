@@ -185,10 +185,46 @@ export function nextBuybackAt(now = Date.now()): number {
   return Math.floor(now / half) * half + half;
 }
 
+// Статистика ходит в RPC пятью запросами, а под лимитами RPC это 20+ секунд и 504 у главной.
+// Поэтому: запросы параллельно, ответ кэшируется на минуту, устаревший отдаётся сразу и обновляется в фоне.
+const STATS_TTL = 60_000;
+let statsCache: { at: number; v: Awaited<ReturnType<typeof computeBuybackStats>> } | null = null;
+let statsInflight: ReturnType<typeof computeBuybackStats> | null = null;
+
 export async function buybackStats() {
+  const refresh = () =>
+    (statsInflight ??= computeBuybackStats()
+      .then((v) => {
+        // RPC не отдал данные токена (supply null): прошлые цифры сожжённого лучше нуля, а повтор через 10 с.
+        const miss = v.configured && v.supply === null;
+        if (miss && statsCache?.v.supply != null) v = { ...v, burned: statsCache.v.burned, burnedPct: statsCache.v.burnedPct, supply: statsCache.v.supply };
+        statsCache = { at: miss ? Date.now() - STATS_TTL + 10_000 : Date.now(), v };
+        return v;
+      })
+      .finally(() => (statsInflight = null)));
+  if (statsCache) {
+    if (Date.now() - statsCache.at > STATS_TTL) refresh().catch((e) => console.warn("[buyback] stats", (e as Error).message));
+    return statsCache.v;
+  }
+  return refresh();
+}
+
+// Сброс кэша после новой записи в журнал байбеков, чтобы свежее сжигание было видно сразу.
+export function buybackStatsReset() {
+  statsCache = null;
+}
+
+async function computeBuybackStats() {
   const cfg = tokenConfig();
   const l = ledger();
-  const m = cfg.mint ? await mintInfo().catch(() => null) : null;
+  const [m, treasurySolV, dexReserve, treasuryUsdcV, rev, userBurned] = await Promise.all([
+    cfg.mint ? mintInfo().catch(() => null) : Promise.resolve(null),
+    treasurySol(),
+    dexReserveSol(),
+    treasuryUsdc(),
+    revenue(l),
+    import("./user-burns").then((x) => x.userBurnStats().total),
+  ]);
   const burnedRaw = BigInt(l.burnedRaw);
   const scale = m ? 10 ** m.decimals : 1;
   // Доля сожжённого считается от эмиссии до наших сжиганий: текущая эмиссия плюс всё, что сожгли мы.
@@ -197,18 +233,18 @@ export async function buybackStats() {
     configured: !!cfg.mint,
     symbol: cfg.symbol,
     treasury: cfg.treasury,
-    treasurySol: await treasurySol(),
+    treasurySol: treasurySolV,
     reserveSol: BUYBACK_RESERVE_SOL,
-    dexReserveSol: await dexReserveSol(),
+    dexReserveSol: dexReserve,
     count: l.count,
     solSpent: l.sol,
     usdcSpent: l.usdc ?? 0,
-    treasuryUsdc: await treasuryUsdc(),
-    revenue: await revenue(l),
+    treasuryUsdc: treasuryUsdcV,
+    revenue: rev,
     burned: m ? Number(burnedRaw) / scale : 0,
     burnedPct,
     // Сжигания пользователей за Pro и вызовы Brain (user-burns.ts) — отдельно, чтобы не смешивать с байбеками.
-    userBurned: (await import("./user-burns")).userBurnStats().total,
+    userBurned,
     supply: m ? Number(m.supplyRaw) / scale : null,
     last: l.items.find((x) => x.kind === "buyback") ?? null,
     items: l.items,
@@ -372,6 +408,7 @@ export async function confirmBuyback(wallet: string, signature: unknown) {
   setMeta("buybacks", JSON.stringify(l));
   cache().bal = undefined;
   cache().usdc = undefined;
+  buybackStatsReset();
   const stats = await buybackStats();
   // Каждое подтверждённое сжигание — сразу в Telegram: тема 🔥 Burns в группе и все, кто подписался через /burns.
   import("./telegram-public").then((t) => t.pushBurn(rec, stats)).catch(() => {});
