@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Nav } from "@/components/nav";
+import { Nav, TopBar } from "@/components/nav";
 import { WalletProvider } from "@/components/wallet-provider";
 import { ToastProvider } from "@/components/ui/toast";
 import { Mascot } from "@/components/mascot";
@@ -40,6 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <div className="flex min-h-screen flex-col lg:flex-row">
               <Nav />
               <main className="flex min-w-0 flex-1 flex-col px-4 py-5 lg:px-8 lg:py-7">
+                <TopBar />
                 <div className="flex-1">{children}</div>
                 <footer data-chrome className="mt-10 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4 text-[11px] text-muted">
                   <span>Signals are information, not financial advice.</span>

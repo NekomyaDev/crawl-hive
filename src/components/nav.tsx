@@ -110,24 +110,20 @@ export function NavShell({ path }: { path: string }) {
   return (
     <>
       {/* десктоп: боковая панель */}
-      <aside data-chrome className="sticky top-0 hidden no-scrollbar h-screen w-56 shrink-0 flex-col overflow-y-auto border-r border-line bg-panel/60 p-3 lg:flex">
+      <aside data-chrome className="sticky top-0 hidden no-scrollbar h-screen w-52 shrink-0 flex-col overflow-y-auto border-r border-line bg-panel/60 p-3 lg:flex">
         <Link href="/" className="mb-4 flex items-center gap-2 px-2 pt-1">
           <Logo size={34} />
           <span className="text-lg font-bold tracking-tight">
             Crawl<span className="text-honey">Hive</span>
           </span>
         </Link>
-        {/* Кошелёк сверху, под логотипом: внизу длинной панели его не видно. */}
-        <div className="mb-4">
-          <WalletButton />
-        </div>
         <nav className="flex flex-col gap-0.5">
           {LINKS.map(({ href, label, icon: Icon, color }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                "relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors",
                 active(href) ? "bg-gradient-to-r from-honey/15 to-transparent text-fg" : "text-muted hover:bg-panel-2 hover:text-fg",
               )}
             >
@@ -137,41 +133,6 @@ export function NavShell({ path }: { path: string }) {
             </Link>
           ))}
         </nav>
-        <a
-          href={APP_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 flex items-center gap-2.5 rounded-lg border border-[#229ED9]/50 bg-[#229ED9]/15 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#229ED9]/25"
-        >
-          <TelegramIcon className="size-4 text-[#5bc4f5]" />
-          Telegram app
-        </a>
-        <a
-          href={COMMUNITY_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-2 flex items-center gap-2.5 rounded-lg border border-[#229ED9]/50 bg-[#229ED9]/15 px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#229ED9]/25"
-        >
-          <TelegramIcon className="size-4 text-[#5bc4f5]" />
-          Community
-        </a>
-        <a
-          href="https://x.com/crawlhivebot"
-          target="_blank"
-          rel="noreferrer"
-          className="mt-2 flex items-center gap-2.5 rounded-lg border border-white/25 bg-white/[0.06] px-2.5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.12]"
-        >
-          <span className="grid size-4 place-items-center text-[13px] leading-none font-black">𝕏</span>
-          X bot
-          <span className="ml-auto rounded bg-white px-1.5 py-px text-[9px] font-bold tracking-wide text-black">NEW</span>
-        </a>
-        <Link
-          href="/#treasury"
-          className="mt-2 flex items-center gap-2.5 rounded-lg border border-honey/50 bg-honey/10 px-2.5 py-2 text-sm font-medium text-honey transition-colors hover:bg-honey/20"
-        >
-          <span className="text-base leading-none">🔥</span>${TOKEN.symbol}
-          <span className="ml-auto rounded bg-honey px-1.5 py-px text-[9px] font-bold tracking-wide text-black">LIVE</span>
-        </Link>
       </aside>
 
       {/* мобильный: верхняя полоса + горизонтальные вкладки */}
@@ -206,5 +167,63 @@ export function NavShell({ path }: { path: string }) {
         </nav>
       </header>
     </>
+  );
+}
+
+// Верхняя панель на десктопе: кошелёк и главные ссылки (Telegram, X-бот, токен) в одну строку справа,
+// чтобы их не приходилось искать в длинном меню слева.
+const TOP_BTN = "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium whitespace-nowrap transition-colors";
+function TopWallet() {
+  const { address, info, signedIn, connect, signIn, disconnect } = useWallet();
+  if (!address)
+    return (
+      <div className="flex items-center gap-2">
+        <Link href="/#wallet-safety" className="hidden items-center gap-1 text-[11px] text-muted hover:text-lime xl:flex" title="Read-only until you pay">
+          <ShieldCheck className="size-3" /> Is it safe?
+        </Link>
+        <Button onClick={() => connect()} size="sm" className="h-9 px-4">
+          <Wallet className="size-4" /> Connect wallet
+        </Button>
+      </div>
+    );
+  return (
+    <div className="flex h-9 items-center gap-2 rounded-lg border border-line bg-panel-2 px-3">
+      <span className="num text-xs">{short(address)}</span>
+      {signedIn ? (
+        <>
+          <HolderBadge />
+          <span className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} credits</span>
+        </>
+      ) : (
+        <button onClick={() => signIn().catch(() => {})} className="text-xs font-medium text-honey hover:underline">
+          Sign in
+        </button>
+      )}
+      <button onClick={disconnect} className="text-muted hover:text-fg" title="Disconnect">
+        <LogOut className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+export function TopBar() {
+  return (
+    <div data-chrome className="mb-5 hidden flex-wrap items-center justify-end gap-2 lg:flex">
+      <Link href="/#treasury" className={cn(TOP_BTN, "border-honey/50 bg-honey/10 text-honey hover:bg-honey/20")}>
+        <span className="leading-none">🔥</span>${TOKEN.symbol}
+        <span className="rounded bg-honey px-1.5 py-px text-[9px] font-bold tracking-wide text-black">LIVE</span>
+      </Link>
+      <a href={APP_URL} target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-[#229ED9]/50 bg-[#229ED9]/15 text-white hover:bg-[#229ED9]/25")}>
+        <TelegramIcon className="size-4 text-[#5bc4f5]" /> Telegram app
+      </a>
+      <a href={COMMUNITY_URL} target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-[#229ED9]/50 bg-[#229ED9]/15 text-white hover:bg-[#229ED9]/25")}>
+        <TelegramIcon className="size-4 text-[#5bc4f5]" /> Community
+      </a>
+      <a href="https://x.com/crawlhivebot" target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-white/25 bg-white/[0.06] text-white hover:bg-white/[0.12]")}>
+        <span className="text-[13px] leading-none font-black">𝕏</span> X bot
+        <span className="rounded bg-white px-1.5 py-px text-[9px] font-bold tracking-wide text-black">NEW</span>
+      </a>
+      <TopWallet />
+    </div>
   );
 }
