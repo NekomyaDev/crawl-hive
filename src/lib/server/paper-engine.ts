@@ -94,7 +94,7 @@ export const STRATEGIES: StrategyConfig[] = [
   // Подтверждённый вход (22.10): CLEAN на Robinhood (PB, SPOUR) теряли ликвидность за 1-4 минуты после скана,
   // мгновенный вход съедал каждый такой вытащенный пул. Ждём и входим, только если пул жив и цена не убежала.
   { id: "s17", label: "CLEAN confirmed 10m", note: "CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
-  { id: "s18", label: "Every coin confirmed 10m", note: "Control for S17: every verdict, same 10 min confirmation, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s18", label: "Every coin confirmed 10m", note: "Control for S17: every verdict, same 10 min confirmation, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   { id: "s19", label: "V2 CLEAN confirmed 10m", note: "Shadow score v2 says CLEAN, same 10 min confirmation, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s20", label: "CLEAN confirmed 30m", note: "Like S17 but waits 30 min after the scan, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // Ночь 22.10: лучше всех держатся TP100/SL30 на ликвидности от $20k (s11, s12, s14, s15). Скальп s4 хуже контроля s6, выключен.
@@ -105,6 +105,9 @@ export const STRATEGIES: StrategyConfig[] = [
   // 22.10: v2 стал публичным, теневая теперь v3 (ончейн-сигналы). Пара к s15/s16 для сравнения вперёд.
   { id: "s24", label: "V3 CLEAN TP100", note: "Shadow score v3 says CLEAN (any public verdict), TP100 SL30, 24h", entry: { verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s25", label: "V3 CLEAN hold 24h", note: "Baseline for v3: shadow score v3 says CLEAN, no stops, sold after 24h", entry: { verdictsV3: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // 14:40: s18 (любая монета через 10 мин) 35 сделок, -18.5% против -5.4% у контроля s6, выключен. Ожидание 30 мин (s20) пока лучше 10 мин: пробуем его на v2.
+  { id: "s26", label: "V2 CLEAN confirmed 30m", note: "Score v2 says CLEAN, buy 30 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s27", label: "V2 CLEAN deep no pump", note: "Score v2 says CLEAN, not pump.fun, liquidity $50k+, TP100 SL40, 24h", entry: { verdictsV2: ["CLEAN"], noPumpFun: true, minLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
