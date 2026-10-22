@@ -17,6 +17,7 @@ import { LaunchEvidence } from "@/components/launch-evidence";
 import { LarpLine } from "@/components/larp-line";
 import { TrustScore } from "@/components/trust-score";
 import { SinceLastScan } from "@/components/since-last-scan";
+import { SecondLook } from "@/components/second-look";
 import { cn, timeAgo } from "@/lib/utils";
 
 export async function generateMetadata({ params }: PageProps<"/scan/[id]">): Promise<Metadata> {
@@ -89,6 +90,7 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
             </div>
             {r.name && <div className="truncate text-sm text-muted">{r.name}</div>}
             <p className="mt-1">{r.reason}</p>
+            <SecondLook v={r.v2} className="mt-2" />
           </div>
         </div>
 
@@ -187,8 +189,9 @@ function Factors({ r }: { r: ScanResult }) {
         .sort((a, b) => a.impact - b.impact)
         .map((f) => (
           <li key={f.label} className="flex items-center gap-3 px-3 py-2">
-            <span className={cn("num w-10 shrink-0 text-right font-semibold", f.impact < 0 ? "text-danger" : "text-lime")}>
-              {f.impact > 0 ? `+${f.impact}` : f.impact}
+            {/* Нулевой вес: предупреждение без влияния на балл, показываем «!» вместо 0. */}
+            <span className={cn("num w-10 shrink-0 text-right font-semibold", f.impact < 0 ? "text-danger" : f.impact === 0 ? "text-honey" : "text-lime")}>
+              {f.impact > 0 ? `+${f.impact}` : f.impact === 0 ? "!" : f.impact}
             </span>
             <span className="font-medium">{f.label}</span>
             <span className="min-w-0 truncate text-muted">{f.note}</span>

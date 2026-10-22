@@ -7,6 +7,7 @@
 // - inline-режим (@bot <адрес> в любом чате) и /track — точность сканера.
 import "server-only";
 import { TOKEN } from "@/lib/token";
+import { secondLookWhy, secondLookWorse } from "@/lib/second-look";
 import type { ScanResult } from "./scan";
 import type { Tier } from "./tiers";
 import { call, esc, send, sendPhoto, siteUrl, telegramBotName, telegramMainApp, type Keyboard } from "./telegram";
@@ -163,12 +164,21 @@ function caption(r: ScanResult, take: { take: string; conf: number } | null, com
     mk,
     ...flags.map((f) => `▫️ ${esc(f.label)}${compact ? "" : `: ${esc(f.note).slice(0, 80)}`}`),
     xrayLine(r, compact),
+    secondLookLine(r),
     take ? `⚡ Jev: <b>${TAKE_LABEL[take.take] ?? take.take}</b> · ${Math.round(take.conf * 100)}% sure` : "",
     compact ? "" : `<code>${esc(r.id)}</code>`,
   ]
     .filter(Boolean)
     .join("\n")
     .slice(0, 1000);
+}
+
+// «Второй взгляд» v2 - одной строкой и только когда он строже публичного вердикта.
+function secondLookLine(r: ScanResult) {
+  const v = r.v2;
+  if (!v || !secondLookWorse(r.verdict, v)) return "";
+  const why = secondLookWhy(v);
+  return `🔍 Second look (beta): <b>${v.verdictV2} ${v.scoreV2}</b>${why ? `, ${esc(why)}` : ""}`;
 }
 
 // Одна строка Contract X-Ray: самые опасные рычаги владельца и находки на сайте проекта.

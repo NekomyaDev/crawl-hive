@@ -52,6 +52,7 @@ export interface TrackEntry {
   s2?: number;
   v2?: "CLEAN" | "OK" | "RISKY" | "DANGER";
   dw?: number; // кошельков с рухнувшей историей на момент скана
+  a0?: number; // возраст пары в часах на момент скана (для базовой ставки «зоны ругов» в скане)
 }
 
 // Все записи Track Record (для разовых задач вроде поиска первого появления токена).
@@ -74,7 +75,7 @@ export function trackVerdict(r: {
   verdict: TrackVerdict;
   score: number | null;
   name?: string;
-  market?: { priceUsd?: number; liquidityUsd?: number; fdv?: number };
+  market?: { priceUsd?: number; liquidityUsd?: number; fdv?: number; ageHours?: number };
   v2?: { scoreV2: number; verdictV2: NonNullable<TrackEntry["v2"]>; dumpWallets: number | null };
 }, src: TrackEntry["src"]) {
   const price0 = Number(r.market?.priceUsd);
@@ -89,7 +90,8 @@ export function trackVerdict(r: {
     list.splice(prev, 1);
   }
   const fdv0 = Number(r.market?.fdv) > 0 ? Math.round(Number(r.market?.fdv)) : undefined;
-  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}), ...v2Fields(r.v2) });
+  const age0 = r.market?.ageHours;
+  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}), ...(age0 !== undefined && age0 >= 0 ? { a0: Math.round(age0 * 10) / 10 } : {}), ...v2Fields(r.v2) });
   save(list);
 }
 

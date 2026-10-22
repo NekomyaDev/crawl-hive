@@ -16,7 +16,7 @@
 // это защита, а не подбор.
 import "server-only";
 import { memDb } from "./memory-db";
-import { trackIndex } from "./track";
+import { trackEntries, trackIndex } from "./track";
 import type { ScanResult } from "./scan";
 
 export type VerdictV2 = "CLEAN" | "OK" | "RISKY" | "DANGER";
@@ -50,7 +50,7 @@ const HARD = ["Honeypot", "Mint open", "Freeze on"];
 
 const verdictOf = (s: number): VerdictV2 => (s >= V2.clean ? "CLEAN" : s >= V2.ok ? "OK" : s >= V2.risky ? "RISKY" : "DANGER");
 const norm = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
-const isPumpFun = (r: ScanResult) => r.chain === "solana" && (r.id.endsWith("pump") || r.launch?.factoryLabel === "pump.fun");
+export const isPumpFun = (r: ScanResult) => r.chain === "solana" && (r.id.endsWith("pump") || r.launch?.factoryLabel === "pump.fun");
 
 // Сколько кошельков этого токена (кроме фабрик и создателей пула) были на ДРУГИХ токенах, которые потом рухнули
 // (−50% или руг по Track Record). Исходы берутся только уже известные на момент скана, так что заглядывания
@@ -124,4 +124,63 @@ export function safeScoreV2(r: ScanResult): ScoreV2 | undefined {
     console.warn("[score-v2]", (e as Error).message);
     return undefined;
   }
+}
+
+// ---------- «Зона ругов» для скана: живая базовая ставка из Track Record ----------
+// Доля ругов среди закрытых записей (прошли сутки) того же места запуска, моложе 24 ч на момент скана и с пулом
+// той же корзины. Возраст берём из записи (a0, пишется с 22.10), для старых записей - из времени выпуска в памяти
+// токенов. Ложные руги (после «руга» токен жив) ругами не считаем. Пересчёт всех корзин раз в 30 минут.
+const ZONE_TTL = 30 * 60_000;
+export const ZONE_MIN_N = 30; // меньше записей - процент не показываем, только общий текст
+const DAY = 24 * 3600_000;
+type Zone = { n: number; rugged: number };
+let zoneCache: { at: number; m: Map<string, Zone> } | null = null;
+
+const venueOf = (chain: string, id: string) => (chain === "solana" && id.endsWith("pump") ? "pump" : chain);
+const liqBucket = (liq: number) => (liq >= 100_000 ? "deep" : liq >= 20_000 ? "mid" : null);
+
+function zones(): Map<string, Zone> {
+  if (zoneCache && Date.now() - zoneCache.at < ZONE_TTL) return zoneCache.m;
+  const m = new Map<string, Zone>();
+  const now = Date.now();
+  const d = memDb();
+  const launchAt = d?.db.prepare("SELECT launched_at FROM launches WHERE token = ?");
+  for (const e of trackEntries()) {
+    if (!e.done || now - e.at < DAY) continue;
+    const b = liqBucket(e.liq0);
+    if (!b) continue;
+    let age = e.a0;
+    if (age === undefined && launchAt)
+      try {
+        const t = (launchAt.get(norm(e.id)) as { launched_at: number | null } | undefined)?.launched_at;
+        if (t && t <= e.at) age = (e.at - t) / 3600_000;
+      } catch {
+        // память недоступна - запись без возраста просто пропускаем
+      }
+    if (age === undefined || age >= 24) continue;
+    const k = `${venueOf(e.chain, e.id)}|${b}`;
+    const z = m.get(k) ?? { n: 0, rugged: 0 };
+    z.n++;
+    if (e.rugged && e.recheck !== "alive") z.rugged++;
+    m.set(k, z);
+  }
+  zoneCache = { at: now, m };
+  return m;
+}
+
+// Базовая ставка для токена из скана: null, если он не в зоне (взрослый или пул меньше $20k).
+export function rugZone(r: ScanResult): { n: number; pct: number; venue: string; pool: string } | null {
+  const liq = r.market?.liquidityUsd ?? 0;
+  const age = r.market?.ageHours;
+  const b = liqBucket(liq);
+  if (!b || !(r.verdict === "TOO_EARLY" || (age !== undefined && age < 24))) return null;
+  const venue = isPumpFun(r) ? "pump" : r.chain;
+  let z: Zone | undefined;
+  try {
+    z = zones().get(`${venue}|${b}`);
+  } catch (e) {
+    console.warn("[score-v2] rug zone:", (e as Error).message);
+  }
+  const NAME: Record<string, string> = { pump: "pump.fun", solana: "Solana", robinhood: "Robinhood Chain", bsc: "BNB Chain", base: "Base" };
+  return { n: z?.n ?? 0, pct: z?.n ? Math.round((z.rugged / z.n) * 100) : 0, venue: NAME[venue] ?? venue, pool: b === "deep" ? "$100k+" : "$20k to $100k" };
 }

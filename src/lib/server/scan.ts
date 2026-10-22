@@ -24,7 +24,7 @@ import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
 import { xrayEvm, xrayFactors, xrayLive, type XRayReport } from "./scan-xray";
 import { t22Factors, xraySolana, type T22Report } from "./scan-t22";
 import { siteFactors, xraySite, type SiteReport } from "./scan-site";
-import { safeScoreV2, type ScoreV2 } from "./score-v2";
+import { rugZone, safeScoreV2, ZONE_MIN_N, type ScoreV2 } from "./score-v2";
 import type { XRayView } from "@/components/xray-panel";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
@@ -784,6 +784,20 @@ export async function runScan(
   // Теневая оценка v2: только считаем и запоминаем, публичные score/verdict остаются как были.
   const v2 = core ? undefined : safeScoreV2(result);
   if (v2) result.v2 = v2;
+  // Предупреждения по бэктесту 22.10 с нулевым весом: видны как флаги, но балл и вердикт не трогают
+  // (сумма уже посчитана выше). Процент ругов показываем только при 30+ закрытых записях в корзине.
+  if (!core) {
+    const zone = rugZone(result);
+    if (zone)
+      hit(
+        "Rug zone: young coin, big pool",
+        0,
+        zone.n >= ZONE_MIN_N
+          ? `${zone.pct}% of ${zone.venue} coins under a day old with a ${zone.pool} pool rugged within 24h (${zone.n} tracked)`
+          : "coins under a day old with a pool this big rug a lot in our Track Record",
+      );
+    if (v2?.dumpWallets != null && v2.dumpWallets >= 3) hit("Wallets from dumped coins", 0, `${v2.dumpWallets} wallets here were on earlier coins that dumped`);
+  }
   // Память токена: что изменилось с прошлого скана, затем запоминаем текущий снимок.
   const since = compareToLast(result);
   if (since?.changes.length) result.since = since;

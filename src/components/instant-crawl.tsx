@@ -9,6 +9,8 @@ import { LaunchEvidence, type LaunchData } from "@/components/launch-evidence";
 import { LarpLine, type LarpLineData } from "@/components/larp-line";
 import { TrustScore, type TrustData } from "@/components/trust-score";
 import { SinceLastScan, type SinceData } from "@/components/since-last-scan";
+import { SecondLook } from "@/components/second-look";
+import type { SecondLookData } from "@/lib/second-look";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -68,6 +70,7 @@ interface Result {
   larp?: LarpLineData;
   trust?: TrustData;
   since?: SinceData;
+  v2?: SecondLookData;
   operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean; basis?: string[] }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number }; map?: BubbleMapData };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   xray?: XRayView;
@@ -392,6 +395,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </div>
           <div className="truncate text-xs text-muted">{r.name}</div>
           <div className="mt-1 text-sm">{r.reason}</div>
+          <SecondLook v={r.v2} className="mt-1.5" />
         </div>
       </div>
       {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} />}
@@ -415,6 +419,14 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
         ))}
       </div>
       <div className="flex flex-wrap gap-1.5 text-[11px]">
+        {/* Предупреждения с нулевым весом (зона ругов, кошельки с рухнувших монет): балл не меняют. */}
+        {r.factors
+          .filter((f) => f.impact === 0 && (f.label.startsWith("Rug zone") || f.label === "Wallets from dumped coins"))
+          .map((f) => (
+            <span key={f.label} title={f.note} className="rounded-md border border-honey/40 px-1.5 py-0.5 text-honey">
+              {f.label === "Wallets from dumped coins" ? f.note : `rug zone: ${f.note}`}
+            </span>
+          ))}
         {r.holders && (
           <>
             <Flag ok={!r.holders.mintAuthority} label={r.holders.mintAuthority ? "mint open" : "mint renounced"} />
