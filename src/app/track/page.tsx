@@ -41,6 +41,7 @@ interface Data {
   byOld?: By[]; // до переключения (старая оценка)
   switchAt?: number | null;
   totalPublic?: number;
+  old?: { since: number | null; total: number }; // до переключения (старая оценка)
   warned: Row[];
   missed: Row[];
   recent: Row[];
@@ -95,6 +96,7 @@ function Rows({ rows, empty }: { rows: Row[]; empty: string }) {
   );
 }
 
+const FILLING_MIN = 20; // меньше закрытых монет с переключения - подпись «статистика заполняется»
 const day = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const MODEL_LABEL: Record<string, string> = { v1: "Old score (v1)", v2: "Risk score v2 (public)", v3: "Second look v3 (beta)" };
 const rate = (x: number | null) => (x == null ? "-" : `${Math.round(x)}%`);
@@ -169,6 +171,11 @@ export default function TrackPage() {
     const xs = vs.map((v) => by.get(v)).filter(Boolean) as By[];
     return { settled: xs.reduce((n, b) => n + b.settled, 0), dumped: xs.reduce((n, b) => n + b.dumped, 0), tracked: xs.reduce((n, b) => n + b.tracked, 0) };
   };
+  // Новая оценка копит закрытые монеты сутки: пока их мало, прямо говорим, что карточки ещё заполняются.
+  const settledNow = (data?.byPublic ?? []).reduce((n, b) => n + b.settled, 0);
+  const filling = hasEra && !old && settledNow < FILLING_MIN;
+  const shownTotal = old && data?.old ? data.old.total : data?.total;
+  const shownSince = old && data?.old ? data.old.since : data?.since;
   const bad = group(["DANGER"]);
   const good = group(["CLEAN", "OK"]);
   const sig = data?.signals;
@@ -180,7 +187,7 @@ export default function TrackPage() {
         sub={`Every verdict is checked against the real price for ${data?.windowHours ?? 24} hours after the scan. A token counts as dumped when it falls ${Math.abs(data?.dumpPct ?? 50)}% below the scan price or its liquidity is pulled. Hits and misses, nothing hidden, and every record is committed to Solana.`}
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Verdicts tracked" value={data ? fmt(data.total) : "-"} hint={data?.since ? `since ${new Date(data.since).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "starting now"} tone="honey" />
+        <Stat label="Verdicts tracked" value={shownTotal != null ? fmt(shownTotal) : "-"} hint={shownSince ? `since ${day(shownSince)}` : "starting now"} tone="honey" />
         <Stat label="DANGER that dumped" value={share(bad.dumped, bad.settled) == null ? "-" : `${share(bad.dumped, bad.settled)}%`} hint={`${bad.dumped} of ${bad.settled} settled${eraHint ? ` · ${eraHint}` : ""}`} tone="coral" />
         <Stat label="CLEAN / OK that dumped" value={share(good.dumped, good.settled) == null ? "-" : `${share(good.dumped, good.settled)}%`} hint={`${good.dumped} of ${good.settled} settled${eraHint ? ` · ${eraHint}` : ""}`} tone="teal" />
         <Stat
@@ -190,6 +197,11 @@ export default function TrackPage() {
           tone="lime"
         />
       </div>
+      {filling && (
+        <p className="-mt-3 mb-5 text-xs text-muted">
+          New score since {data?.switchAt ? day(data.switchAt) : "Oct 22"}, stats are filling up: {settledNow} {settledNow === 1 ? "coin" : "coins"} settled so far, each one needs {data?.windowHours ?? 24} hours. Old score numbers are one click away under By verdict.
+        </p>
+      )}
 
       <ProofCard />
 

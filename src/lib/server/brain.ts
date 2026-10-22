@@ -15,6 +15,7 @@ import { walletByBrainKey } from "./brain-keys";
 import { TIER_LIMITS, tierOf, type Tier } from "./tiers";
 import { brainCredits, spendBrainCredit } from "./user-burns";
 import { allowHit, savedScan } from "./scan";
+import { dumpBrief, firstBuyersBrief } from "./scan-brief";
 import { tokenSnapshots } from "./scan-memory";
 import { launchesBy, launchOf, memDb, operators, operatorTokens, rowsFor, type Launch } from "./memory-db";
 import { walletEntries, walletMemCap, walletMemSize, type MemRole } from "./scan-operators";
@@ -111,7 +112,8 @@ function outcomeOf(token: string) {
 let baseCache: { at: number; v: number | null } | null = null;
 function baselineDumpRate() {
   if (baseCache && Date.now() - baseCache.at < 60_000) return baseCache.v;
-  const by = trackStats().by;
+  // База не зависит от модели вердикта (сумма по всем вердиктам), поэтому вся история, а не только с переключения.
+  const by = trackStats().allTime.by;
   const settled = by.reduce((s, x) => s + x.settled, 0);
   const v = settled ? Math.round((by.reduce((s, x) => s + x.dumped, 0) / settled) * 1000) / 1000 : null;
   baseCache = { at: Date.now(), v };
@@ -349,7 +351,7 @@ export function tokenReport(raw: string) {
   if (!saved && !e && !snaps.length) throw new ApiError("The hive has no memory of this token yet. Scan it once at crawlhive.xyz and ask again.", 404);
   const last = snaps[snaps.length - 1];
   const latest = saved
-    ? { verdict: saved.verdict, score: saved.score, reason: saved.reason, scannedAt: new Date(saved.scannedAt).toISOString() }
+    ? { verdict: saved.verdict, score: saved.score, reason: saved.reason, scannedAt: new Date(saved.scannedAt).toISOString(), dump: dumpBrief(saved.dump) ?? null, firstBuyers: firstBuyersBrief(saved.firstBuyers) ?? null }
     : last
       ? { verdict: last.verdict, score: last.score, reason: null, scannedAt: new Date(last.at).toISOString() }
       : { verdict: e!.verdict, score: e!.score, reason: null, scannedAt: new Date(e!.at).toISOString() };
@@ -369,13 +371,18 @@ export function tokenReport(raw: string) {
 
 export function trackReport() {
   const t = trackStats();
+  const iso = (x: number | null) => (x ? new Date(x).toISOString() : null);
+  const rates = (by: typeof t.by) => by.map((v) => ({ ...v, dumpRate: v.settled ? Math.round((v.dumped / v.settled) * 1000) / 1000 : null }));
+  // verdicts - только текущая модель (v2, с переключения); старая v1 отдельно, чтобы не смешивать две модели.
   return {
     windowHours: t.windowHours,
     dumpThresholdPct: t.dumpPct,
-    since: t.since ? new Date(t.since).toISOString() : null,
+    model: t.model,
+    since: iso(t.since),
     tracked: t.total,
-    verdicts: t.by.map((v) => ({ ...v, dumpRate: v.settled ? Math.round((v.dumped / v.settled) * 1000) / 1000 : null })),
+    verdicts: rates(t.by),
+    previousModel: { model: t.old.model, since: iso(t.old.since), until: iso(t.old.until), tracked: t.old.total, verdicts: rates(t.old.by) },
     baselineDumpRate: baselineDumpRate(),
-    notes: "Each verdict is graded 24h after the scan. Dumped = fell 50%+ (rugged included). CLEAN tokens dump too: most memecoins do. Read the gap between verdicts, not any single number.",
+    notes: "Each verdict is graded 24h after the scan. Dumped = fell 50%+ (rugged included). CLEAN tokens dump too: most memecoins do. Read the gap between verdicts, not any single number. verdicts covers the current score (v2) since the switch; previousModel is the old score (v1) before it.",
   };
 }

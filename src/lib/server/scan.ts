@@ -127,7 +127,8 @@ const RECENT_KEY = "recentScans";
 let earlyCache: { at: number; pct: number | null } | undefined;
 function earlyDumpPct() {
   if (earlyCache && Date.now() - earlyCache.at < 600_000) return earlyCache.pct;
-  const v = trackStats().by.find((x) => x.verdict === "TOO_EARLY");
+  // TOO_EARLY одинаков в v1 и v2, поэтому берём всю историю, а не только с переключения.
+  const v = trackStats().allTime.by.find((x) => x.verdict === "TOO_EARLY");
   earlyCache = { at: Date.now(), pct: v && v.settled >= 50 ? Math.round((v.dumped / v.settled) * 100) : null };
   return earlyCache.pct;
 }

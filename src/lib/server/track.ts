@@ -298,15 +298,18 @@ function switchAt(list: TrackEntry[]) {
   return at;
 }
 
+// По умолчанию (by, total, since) только вердикты после переключения на v2 (записи с pv): старые вердикты
+// другой модели не смешиваем. Период до переключения (v1) отдельно в old, всё вместе в allTime: нужно там,
+// где модель не важна (TOO_EARLY одинаков в обеих, базовая доля сливов в Brain).
 export function trackStats() {
   const list = all();
-  // by — за всё время (старые v1 и новые v2 вперемешку): его читают бот, Brain и «слишком рано» в скане.
-  // Для страницы отдельно: byPublic — только с переключения на v2, byOld — до него.
-  const by = statsBy(list);
-  const byPublic = statsBy(list.filter((e) => e.pv));
-  const byOld = statsBy(list.filter((e) => !e.pv));
+  const pub = list.filter((e) => e.pv);
+  const prev = list.filter((e) => !e.pv);
+  const by = statsBy(pub);
+  const byOld = statsBy(prev);
+  const firstAt = (xs: TrackEntry[]) => (xs.length ? xs[xs.length - 1].at : null);
   // «Мы предупреждали»: DANGER/RISKY, которые потом рухнули. «Пропустили»: CLEAN/OK, которые всё равно рухнули.
-  const pub = (e: TrackEntry) => ({
+  const view = (e: TrackEntry) => ({
     id: e.id,
     chain: e.chain,
     symbol: e.symbol,
@@ -321,17 +324,21 @@ export function trackStats() {
     dumped: !!e.dumped,
     rugged: !!e.rugged,
   });
-  const warned = list.filter((e) => (e.verdict === "DANGER" || e.verdict === "RISKY") && e.dumped).slice(0, 12).map(pub);
-  const missed = list.filter((e) => (e.verdict === "CLEAN" || e.verdict === "OK") && e.dumped).slice(0, 12).map(pub);
-  const recent = list.slice(0, 40).map(pub);
+  const warned = list.filter((e) => (e.verdict === "DANGER" || e.verdict === "RISKY") && e.dumped).slice(0, 12).map(view);
+  const missed = list.filter((e) => (e.verdict === "CLEAN" || e.verdict === "OK") && e.dumped).slice(0, 12).map(view);
+  const recent = list.slice(0, 40).map(view);
   return {
-    since: list.length ? list[list.length - 1].at : null,
-    total: list.length,
+    since: firstAt(pub),
+    total: pub.length,
     by,
-    byPublic,
-    byOld,
+    model: "v2" as const,
     switchAt: switchAt(list),
-    totalPublic: list.filter((e) => e.pv).length,
+    old: { model: "v1" as const, since: firstAt(prev), until: switchAt(list), total: prev.length, by: byOld },
+    allTime: { since: firstAt(list), total: list.length, by: statsBy(list) },
+    // Старые имена полей для страницы: byPublic = by, totalPublic = total.
+    byPublic: by,
+    byOld,
+    totalPublic: pub.length,
     warned,
     missed,
     recent,

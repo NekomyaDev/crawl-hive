@@ -38,7 +38,7 @@ const ROUTES: Record<X402Route, { path: string; priceEnv: string; price: number;
     price: 0.01,
     timeout: 60,
     description:
-      "CrawlHive memecoin safety scan: market, holders, bundled wallets, dev history, copycat tickers and Contract X-Ray (owner powers from EVM bytecode or risky Token-2022 extensions). 0-100 score and a verdict.",
+      "CrawlHive memecoin safety scan: market, holders, bundled wallets, dev history, copycat tickers, Contract X-Ray (owner powers from EVM bytecode or risky Token-2022 extensions), a probable dump estimate (how far the price would fall if snipers, bundles and insiders sold) and the first 20 buyers with what they did since. 0-100 score and a verdict.",
   },
   "scan-x": {
     path: "/api/x402/scan-x",
@@ -578,6 +578,85 @@ export const x402Prices = () => ({ scan: priceUsd("scan"), scanX: priceUsd("scan
 
 // /openapi.json: описание API для агентов и каталогов (x402scan читает его первым, Circle требует).
 // Платные операции помечены x-payment-info и ответом 402, бесплатные (доказательство, A2A) — без них.
+// Схема ответа скана (scanBrief в scan-brief.ts). Описаны новые и основные поля, остальные открыты (additionalProperties).
+const SCHEMAS = {
+  DumpProjection: {
+    type: "object",
+    description:
+      "Probable dump: an estimate, not a price prediction and not financial advice. How far the price would fall if the suspicious wallets (creator, linked operator and bundle wallets, snipers, fresh wallets) sold everything they hold now into the current liquidity in one go. Does not change the score or the verdict.",
+    properties: {
+      pct: { type: "integer", minimum: 0, maximum: 99, description: "Price drop in percent if they sell" },
+      suspiciousPct: { type: "number", description: "Share of supply held by the suspicious wallets now, percent" },
+      basis: { type: "string", enum: ["pool", "curve"], description: "pool: constant-product pool with current liquidity; curve: pump.fun bonding curve reserves" },
+      venue: { type: "string", description: "Launchpad or DEX id" },
+      liquidityUsd: { type: "number", description: "Quote side of the pool that meets the sale, USD (basis=pool only)" },
+      sellUsd: { type: "number", description: "Value of the suspicious share at the current price, USD" },
+      breakdown: {
+        type: "array",
+        items: { type: "object", properties: { label: { type: "string" }, wallets: { type: "integer" }, pct: { type: "number" } } },
+      },
+      shown: { type: "boolean", description: "True when the suspicious share is at least 5% of supply: only then the site and the bot show it" },
+      note: { type: "string" },
+    },
+    required: ["pct", "suspiciousPct", "basis", "breakdown", "shown"],
+  },
+  FirstBuyers: {
+    type: "object",
+    description: "The first 20 wallets that bought the token and what they did since. Buyers that sent tokens to the same wallet share a group.",
+    properties: {
+      total: { type: "integer", description: "How many first buyers were found (up to 20)" },
+      holding: { type: "integer" },
+      added: { type: "integer", description: "Hold more than they bought" },
+      soldPart: { type: "integer" },
+      soldAll: { type: "integer" },
+      movedOut: { type: "integer", description: "Sent the tokens to another wallet rather than selling" },
+      unknown: { type: "integer", description: "Balance dropped but outgoing transfers were not read" },
+      groups: { type: "array", items: { type: "object", properties: { to: { type: "string" }, wallets: { type: "integer" } } } },
+      window: { type: "string", description: "Which launch window is covered" },
+      partial: { type: "boolean", description: "Outgoing transfers were read only for part of the wallets" },
+      buyers: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            wallet: { type: "string" },
+            afterSec: { type: "integer", description: "Seconds after launch" },
+            boughtPct: { type: "number", description: "Bought in the window, percent of supply" },
+            leftPct: { type: "number", description: "Holds now, percent of supply" },
+            status: { type: "string", enum: ["holding", "added", "sold_part", "sold_all", "moved", "unknown"] },
+            to: { type: "string", description: "Largest wallet the tokens were sent to" },
+            group: { type: "integer" },
+          },
+        },
+      },
+    },
+    required: ["total", "holding", "added", "soldPart", "soldAll", "movedOut", "unknown", "buyers"],
+  },
+  ScanBrief: {
+    type: "object",
+    additionalProperties: true,
+    properties: {
+      token: { type: "object", properties: { address: { type: "string" }, chain: { type: "string" }, symbol: { type: "string" }, name: { type: "string" } } },
+      score: { type: ["integer", "null"], minimum: 0, maximum: 100 },
+      verdict: { type: "string", enum: ["CLEAN", "OK", "RISKY", "DANGER", "TOO_EARLY"] },
+      reason: { type: "string" },
+      flags: { type: "array", items: { type: "string" } },
+      market: { type: "object" },
+      holders: { type: "object" },
+      bundles: { type: "object" },
+      dev: { type: "object" },
+      evm: { type: "object" },
+      contractXray: { type: "object" },
+      copycats: { type: "array", items: { type: "object" } },
+      original: { type: "object" },
+      dump: { $ref: "#/components/schemas/DumpProjection" },
+      firstBuyers: { $ref: "#/components/schemas/FirstBuyers" },
+      page: { type: "string", format: "uri" },
+    },
+    required: ["token", "verdict", "reason", "flags", "page"],
+  },
+};
+
 export function openApi() {
   const cfg = x402Config();
   const routes = (Object.keys(ROUTES) as X402Route[]).filter((r) => !isBrain(r));
@@ -598,7 +677,7 @@ export function openApi() {
             protocols: [{ x402: { scheme: "exact", network: cfg.network, asset: cfg.asset, payTo: cfg.payTo, facilitator: cfg.facilitator } }],
           },
           responses: {
-            "200": { description: "Scan result", content: { "application/json": { schema: { type: "object" } } } },
+            "200": { description: "Scan result", content: { "application/json": { schema: { $ref: "#/components/schemas/ScanBrief" } } } },
             "402": { description: "Payment required: requirements in the PAYMENT-REQUIRED header (x402 v2) and the body (v1)" },
             "504": { description: "Scan did not finish in time; you were not charged" },
           },
@@ -634,6 +713,7 @@ export function openApi() {
     },
     servers: [{ url: ISSUER }],
     paths,
+    components: { schemas: SCHEMAS },
     "x-discovery": { x402: `${ISSUER}/.well-known/x402`, a2a: `${ISSUER}/.well-known/agent-card.json`, mcp: `${ISSUER}/mcp` },
   };
 }
@@ -643,7 +723,7 @@ export function llmsTxt() {
   const on = !!x402Config();
   return `# CrawlHive
 
-> Memecoin safety scanner for Solana, BNB Chain, Robinhood Chain and Base. A scan returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY) with holders, bundled wallets, dev history, copycat tickers and Contract X-Ray. Every verdict is committed to Solana every 15 minutes, so the track record can be verified.
+> Memecoin safety scanner for Solana, BNB Chain, Robinhood Chain and Base. A scan returns a 0-100 score and a verdict (CLEAN / OK / RISKY / DANGER / TOO_EARLY) with holders, bundled wallets, dev history, copycat tickers, Contract X-Ray, the first 20 buyers and what they did since, and a probable dump estimate (how far the price would fall if snipers, bundles and insiders sold; an "if they sell" estimate, not a prediction). Every verdict is committed to Solana every 15 minutes, so the track record can be verified.
 
 ## For agents
 ${on ? `- [Paid scan, $${p.scan} USDC over x402](${ISSUER}/api/x402/scan?q=%24BONK): GET with q=<address | link | $TICKER>, answers 402 with payment requirements; no account, no API key

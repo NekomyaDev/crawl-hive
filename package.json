@@ -14,6 +14,7 @@
     "@pump-fun/pump-sdk": "^2.0.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
+    "@types/three": "0.186.0",
     "@x402/core": "2.28.0",
     "bn.js": "^5.2.5",
     "bs58": "^4.0.1",
@@ -26,6 +27,7 @@
     "react-force-graph-2d": "^1.29.2",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.7.0",
+    "three": "0.186.1",
     "viem": "^2.21.55"
   },
   "devDependencies": {

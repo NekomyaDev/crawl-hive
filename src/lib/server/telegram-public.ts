@@ -9,6 +9,7 @@ import "server-only";
 import { TOKEN } from "@/lib/token";
 import { lookV3, secondLookWhy, secondLookWorse } from "@/lib/second-look";
 import type { ScanResult } from "./scan";
+import { dumpWho, firstBuyersBrief } from "./scan-brief";
 import type { Tier } from "./tiers";
 import { call, esc, send, sendPhoto, siteUrl, telegramBotName, telegramMainApp, type Keyboard } from "./telegram";
 import { getMeta, listCrawlers, metaEntries, setMeta } from "./store";
@@ -158,19 +159,23 @@ function caption(r: ScanResult, take: { take: string; conf: number } | null, com
         .join(" · ")
     : "no tradable pair yet";
   const flags = r.factors.filter((f) => f.impact < 0).slice(0, compact ? 2 : 4);
-  return [
+  // Строки «Probable dump» и первых покупателей не влезают в подпись к фото (1024) - тогда без них, а не обрезкой посередине тега.
+  const extra = compact ? [] : [dumpLine(r), firstBuyersLine(r)];
+  const build = (more: string[]) => [
     `${VERDICT_ICON[r.verdict] ?? "⚪️"} <b>$${esc(r.symbol)}</b> · <b>${r.score != null ? `${r.score} ` : ""}${r.verdict.replace("_", " ")}</b> · ${CHAIN_LABEL[r.chain] ?? r.chain}`,
     esc(r.reason),
     mk,
     ...flags.map((f) => `▫️ ${esc(f.label)}${compact ? "" : `: ${esc(f.note).slice(0, 80)}`}`),
     xrayLine(r, compact),
     secondLookLine(r),
+    ...more,
     take ? `⚡ Jev: <b>${TAKE_LABEL[take.take] ?? take.take}</b> · ${Math.round(take.conf * 100)}% sure` : "",
     compact ? "" : `<code>${esc(r.id)}</code>`,
   ]
     .filter(Boolean)
-    .join("\n")
-    .slice(0, 1000);
+    .join("\n");
+  const full = build(extra);
+  return (full.length <= 1000 ? full : build([])).slice(0, 1000);
 }
 
 // «Второй взгляд» v3 - одной строкой и только когда он строже публичного вердикта (теперь это v2).
@@ -179,6 +184,28 @@ function secondLookLine(r: ScanResult) {
   if (!v || !secondLookWorse(r.verdict, v)) return "";
   const why = secondLookWhy(v);
   return `🔍 Second look (beta): <b>${v.verdict} ${v.score}</b>${why ? `, ${esc(why)}` : ""}`;
+}
+
+// «Probable dump» одной строкой: только «если продадут», не прогноз; показываем от DUMP_MIN_PCT эмиссии, как на сайте.
+function dumpLine(r: ScanResult) {
+  const d = r.dump;
+  if (!d?.meaningful) return "";
+  const share = d.suspiciousPct < 10 ? Math.round(d.suspiciousPct * 10) / 10 : Math.round(d.suspiciousPct);
+  return `📉 Probable dump: <b>-${d.pct}%</b> if ${esc(dumpWho(d))} sell (${share}% of supply)`;
+}
+
+// Первые покупатели одной строкой: сколько продали, держат, докупили (нулевые счётчики не пишем).
+function firstBuyersLine(r: ScanResult) {
+  const f = firstBuyersBrief(r.firstBuyers);
+  if (!f?.total) return "";
+  const parts = [
+    [f.soldPart + f.soldAll, "sold"],
+    [f.holding, "holding"],
+    [f.added, "added"],
+    [f.movedOut, "moved out"],
+    [f.unknown, "unknown"],
+  ] as const;
+  return `👥 First ${f.total} buyers: ${parts.filter(([c]) => c > 0).map(([c, l]) => `${c} ${l}`).join(", ")}`;
 }
 
 // Одна строка Contract X-Ray: самые опасные рычаги владельца и находки на сайте проекта.

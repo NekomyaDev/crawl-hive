@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { ArrowRight, ExternalLink, Radar } from "lucide-react";
 import { savedScan, type ScanResult } from "@/lib/server/scan";
+import { V2 } from "@/lib/server/score-v2";
 import { launchOf, memDb } from "@/lib/server/memory-db";
 import { CHAIN_LABEL, VERDICT_COLOR, VERDICT_LABEL, explorerToken, shareText } from "@/lib/scan-share";
 import { ShareScan } from "@/components/share-scan";
@@ -188,7 +189,72 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
   );
 }
 
+// С 22.10 публичный балл считает v2: строки списка - её правила, и их сумма равна показанному баллу.
+// Флаги краулеров (v1) идут ниже со знаком «!»: в v2 они входят одним правилом «балл краулеров», свои очки v1
+// видны в подсказке. Скан без v2 (базовый актив, старый скан) показываем по-старому.
+interface Line {
+  key: string;
+  impact: number | null; // null - флаг без своих очков в балле
+  label: string;
+  note: string;
+  hint?: string;
+  v1?: number; // очки этого флага в старой оценке v1, только для цвета и подсказки
+}
+
+const cap1 = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
+function v2Lines(r: ScanResult): Line[] | null {
+  if (!r.v1 || !r.v2 || r.score === null) return null;
+  const out: Line[] = [{ key: "base", impact: V2.base, label: "Starting score", note: "every coin starts here, the rules below move it" }];
+  let raw: number = V2.base;
+  let cap: string | undefined;
+  for (const x of r.v2.reasonsV2) {
+    if (x.startsWith("capped")) {
+      cap = x.replace(/^capped at \d+: /, "");
+      continue;
+    }
+    const m = x.match(/^([+-]?\d+) (.*)$/);
+    if (!m) continue;
+    const pts = Number(m[1]);
+    raw += pts;
+    const v1 = m[2].match(/^v1 score (\d+)$/);
+    const dumped = m[2].match(/^(\d+) wallets were on tokens that dumped$/);
+    out.push(
+      v1
+        ? { key: x, impact: pts, label: `Crawler checks: ${v1[1]}/100`, note: pts > 0 ? "80 or more, few red flags below" : "under 60, see the red flags below" }
+        : dumped
+          ? { key: x, impact: pts, label: "Wallets from dumped coins", note: `${dumped[1]} wallets here were on earlier coins that dumped` }
+          : { key: x, impact: pts, label: cap1(m[2]), note: "" },
+    );
+  }
+  // Сумма правил обрезается в 0-100, потом потолок по жёсткому флагу, потом жёсткие правила v1 могут держать вердикт ниже.
+  const clamped = Math.max(0, Math.min(100, raw));
+  if (clamped !== raw) out.push({ key: "clamp", impact: clamped - raw, label: clamped === 0 ? "Floor at 0" : "Ceiling at 100", note: "the score stays between 0 and 100" });
+  if (cap && r.v2.scoreV2 < clamped) out.push({ key: "cap", impact: r.v2.scoreV2 - clamped, label: `Capped at ${r.v2.scoreV2}`, note: `${cap}: a coin with this flag can't score above RISKY` });
+  if (r.score !== r.v2.scoreV2) out.push({ key: "hard", impact: r.score - r.v2.scoreV2, label: `Held at ${VERDICT_LABEL[r.verdict]}`, note: "a hard red flag below keeps the verdict this low" });
+  const ruled = new Set(out.map((l) => l.label));
+  for (const f of r.factors)
+    if (!ruled.has(f.label))
+      out.push({ key: `f:${f.label}`, impact: null, label: f.label, note: f.note, v1: f.impact, hint: f.impact ? `Old score (v1): ${f.impact > 0 ? `+${f.impact}` : f.impact}` : undefined });
+  return out;
+}
+
 function Factors({ r }: { r: ScanResult }) {
+  const lines = v2Lines(r);
+  if (lines)
+    return (
+      <ul className="mt-4 divide-y divide-line rounded-lg border border-line text-sm">
+        {lines.map((l) => (
+          <li key={l.key} className="flex items-center gap-3 px-3 py-2" title={l.hint}>
+            <span className={cn("num w-10 shrink-0 text-right font-semibold", l.key === "base" ? "text-muted" : l.impact === null ? ((l.v1 ?? 0) < 0 ? "text-danger" : (l.v1 ?? 0) > 0 ? "text-lime" : "text-honey") : l.impact < 0 ? "text-danger" : "text-lime")}>
+              {l.impact === null ? "!" : l.key !== "base" && l.impact > 0 ? `+${l.impact}` : l.impact}
+            </span>
+            <span className="font-medium">{l.label}</span>
+            {l.note && <span className="min-w-0 truncate text-muted">{l.note}</span>}
+          </li>
+        ))}
+      </ul>
+    );
   if (!r.factors.length) return <p className="mt-4 text-sm text-lime">No red flags found by the crawlers.</p>;
   return (
     <ul className="mt-4 divide-y divide-line rounded-lg border border-line text-sm">
