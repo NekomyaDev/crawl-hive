@@ -20,6 +20,7 @@ const LINKS = [
   { href: "/radar", label: "Launch Radar", icon: Radar, color: "text-lime" },
   { href: "/narratives", label: "Narrative Radar", icon: Sparkles, color: "text-violet" },
   { href: "/track", label: "Track Record", icon: Target, color: "text-honey" },
+  { href: "/paper", label: "Auto Trading", icon: Bot, color: "text-lime", badge: "PAPER" },
   { href: "/replay", label: "Gem & Rug Replay", icon: History, color: "text-pink" },
   { href: "/extension", label: "Extension", icon: Puzzle, color: "text-lime" },
   { href: "/brain", label: "Brain API", icon: Brain, color: "text-pink" },
@@ -118,7 +119,7 @@ export function NavShell({ path }: { path: string }) {
           </span>
         </Link>
         <nav className="flex flex-col gap-0.5">
-          {LINKS.map(({ href, label, icon: Icon, color }) => (
+          {LINKS.map(({ href, label, icon: Icon, color, badge }) => (
             <Link
               key={href}
               href={href}
@@ -130,6 +131,7 @@ export function NavShell({ path }: { path: string }) {
               {active(href) && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-gradient-to-b from-honey to-pink" />}
               <Icon className={cn("size-4", color)} />
               {label}
+              {badge && <span className="ml-auto rounded bg-lime/15 px-1 py-px text-[9px] font-bold text-lime">{badge}</span>}
             </Link>
           ))}
         </nav>

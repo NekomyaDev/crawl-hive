@@ -213,10 +213,10 @@ export function PaperView() {
   return (
     <>
       <PageHeader
-        title="Paper Trading"
-        sub={`The swarm trades its own Launch Radar calls with fake money, live. ${e?.strategies.length ?? "Several"} strategies run side by side, each with its own entry filter, take profit, stop loss, trailing stop and time limit. Prices are checked every ${e?.sampleSec ?? 60}s, fees and slippage are in, a rug counts as -100%.`}
+        title="Auto Trading · paper"
+        sub={`The swarm trades its own Launch Radar calls automatically with fake money, live. ${e?.strategies.length ?? "Several"} strategies run side by side, each with its own entry filter, take profit, stop loss, trailing stop and time limit. Prices are checked every ${e?.sampleSec ?? 60}s (fast strategies every 10s with extra slippage), fees and slippage are in, a rug counts as -100%. Losing strategies get switched off, new ones get added, every trade stays on the page.`}
       />
-      <p className="-mt-3 mb-5 text-xs text-coral">Paper money only. Not financial advice.</p>
+      <p className="-mt-3 mb-5 text-xs text-coral">Paper money only. No real trades are made. Not financial advice.</p>
 
       {e && !e.enabled && <p className="mb-5 rounded-lg border border-line bg-panel px-4 py-3 text-sm text-muted">The paper engine is switched off right now. Numbers below are frozen.</p>}
 
