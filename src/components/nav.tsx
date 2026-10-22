@@ -21,6 +21,7 @@ const LINKS = [
   { href: "/narratives", label: "Narrative Radar", icon: Sparkles, color: "text-violet" },
   { href: "/track", label: "Track Record", icon: Target, color: "text-honey" },
   { href: "/paper", label: "Auto Trading", icon: Bot, color: "text-lime", badge: "PAPER" },
+  { href: "/hunt", label: "Gem Hunter", icon: Trophy, color: "text-honey", badge: "NEW" },
   { href: "/replay", label: "Gem & Rug Replay", icon: History, color: "text-pink" },
   { href: "/extension", label: "Extension", icon: Puzzle, color: "text-lime" },
   { href: "/brain", label: "Brain API", icon: Brain, color: "text-pink" },

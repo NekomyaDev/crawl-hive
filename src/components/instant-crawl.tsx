@@ -10,6 +10,8 @@ import { LarpLine, type LarpLineData } from "@/components/larp-line";
 import { TrustScore, type TrustData } from "@/components/trust-score";
 import { SinceLastScan, type SinceData } from "@/components/since-last-scan";
 import { SecondLook } from "@/components/second-look";
+import { DumpProjection, type DumpData } from "@/components/dump-projection";
+import { FirstBuyers, type FirstBuyersData } from "@/components/first-buyers";
 import { lookV3, type SecondLookData } from "@/lib/second-look";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
 import Link from "next/link";
@@ -71,6 +73,8 @@ interface Result {
   trust?: TrustData;
   since?: SinceData;
   v3?: { scoreV3: number; verdictV3: SecondLookData["verdict"]; reasonsV3: string[] };
+  dump?: DumpData;
+  firstBuyers?: FirstBuyersData;
   operators?: { operators: { wallets: number; pct: number; roles: string[]; devLinked: boolean; basis?: string[] }[]; devSnipers: number; history?: { wallets: number; tokens: number; dumped: number }; map?: BubbleMapData };
   evm?: { holders?: number; top10?: number; honeypot?: boolean; owner?: string | null };
   xray?: XRayView;
@@ -169,6 +173,7 @@ export function InstantCrawl() {
           gotResult = true;
           setResult(e.result);
           setRunning(false);
+          post("/api/hunt", { id: e.result.id }).catch(() => {}); // Gem Hunter: засчитать скан, если вошёл держатель
           try {
             window.history.replaceState(null, "", `/?scan=${e.result.id}`);
           } catch {}
@@ -476,9 +481,11 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </a>
         ))}
       </div>
+      <DumpProjection d={r.dump} />
       {r.launch && <LaunchEvidence l={r.launch} chain={r.chain} />}
       <ShareScan id={r.id} text={shareText(r)} />
       {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} />}
+      <FirstBuyers f={r.firstBuyers} chain={r.chain} />
       {r.xray && <XRayPanel x={r.xray} />}
       {x !== undefined && <XPanel x={x} onCheck={onCheckX} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">

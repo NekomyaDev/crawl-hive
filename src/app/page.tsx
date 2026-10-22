@@ -14,12 +14,12 @@ import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InstantCrawl } from "@/components/instant-crawl";
 import { WalletSafety } from "@/components/wallet-safety";
-import { Shipped } from "@/components/shipped";
 import { TelegramCta } from "@/components/telegram-cta";
 import { XBotBanner } from "@/components/x-bot-banner";
 import { BrainBanner } from "@/components/brain-banner";
 import { PricingBanner } from "@/components/pricing-banner";
 import { WhatsNew } from "@/components/whats-new";
+import { HomeLive } from "@/components/home-live";
 import { useStream } from "@/lib/client/use-stream";
 import { fmt, timeLeft } from "@/lib/utils";
 import type { NetworkStats, Signal } from "@/lib/types";
@@ -63,6 +63,9 @@ export default function Dashboard() {
   return (
     <>
       <InstantCrawl />
+
+      {/* Живой блок: свежие сканы, счётчики, лог роя, сжигания, выкатки. */}
+      <HomeLive signals={signals} />
 
       <PricingBanner className="mb-6" />
       <XBotBanner className="mb-6" />
@@ -175,7 +178,6 @@ export default function Dashboard() {
         <WalletSafety />
       </div>
 
-      <Shipped />
     </>
   );
 }

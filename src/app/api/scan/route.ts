@@ -5,6 +5,7 @@ import { clientIp } from "@/lib/server/http";
 import { connection } from "next/server";
 import { allowScan, runScan, savedBuzz, SCAN_CHAINS } from "@/lib/server/scan";
 import { buzzLine, cachedBuzz, scanXEnabled } from "@/lib/server/scan-x";
+import { gemHunterOnScan } from "@/lib/server/gem-hunter";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
         const log = (l: object) => send({ type: "log", ts: Date.now(), ...l });
         const result = await runScan(q, log, chain);
         send({ type: "result", result });
+        gemHunterOnScan(result, { ip }); // Gem Hunter: клиент подтверждает скан POST /api/hunt с сессией
         // Поиск по X платный (Grok), поэтому сам он не запускается: готовая сводка из кэша отдаётся сразу,
         // иначе клиент показывает кнопку и зовёт /api/scan/x по нажатию.
         if (SCAN_CHAINS[result.chain]) {

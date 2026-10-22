@@ -171,7 +171,7 @@ async function handleUpdate(u: {
   }
   if (m.chat.type === "private" && cmd === "/status") {
     const mine = metaEntries("tg:").filter(([, v]) => v === chatId);
-    send(chatId, mine.length ? `Linked: ${mine.map(([k]) => `<code>${short(k.slice(3))}</code>`).join(", ")}` : `No wallet linked. Connect one at ${siteUrl()}/signals to get your crawlers' signals here.`);
+    send(chatId, mine.length ? `Linked: ${mine.map(([k]) => `<code>${short(k.slice(3))}</code>`).join(", ")}` : `No wallet linked. Send /verify &lt;address&gt; to unlock your tier here, or connect one at ${siteUrl()}/signals to get your crawlers' signals here.`);
     return;
   }
   return pub.handlePublic({ ...m, text: m.text });
@@ -254,12 +254,15 @@ export function startTelegram() {
   setInterval(() => pub().then((p) => p.checkWatches()).catch((e) => console.warn("[telegram] watchlist", (e as Error).message)), 10 * 60_000);
   setInterval(() => pub().then((p) => p.sendFollowups()).catch((e) => console.warn("[telegram] follow-ups", (e as Error).message)), 30 * 60_000);
   setInterval(() => pub().then((p) => p.pushRadar()).catch((e) => console.warn("[telegram] radar", (e as Error).message)), 60_000);
+  // /verify: ищем в сети перевод-доказательство по открытым проверкам.
+  setInterval(() => import("./tg-verify").then((v) => v.checkVerifications()).catch((e) => console.warn("[telegram] verify", (e as Error).message)), 30_000);
   setInterval(() => pub().then((p) => p.buybackReminder()).catch((e) => console.warn("[telegram] buyback", (e as Error).message)), 60_000);
   // В меню только главное: проверка токена и поддержка. Остальные команды работают, просто не мешают.
   call("setMyCommands", {
     commands: [
       { command: "start", description: "Check a token: send an address, link or $TICKER" },
       { command: "token", description: "$CRAWLHIVE: contract, buy, buybacks" },
+      { command: "verify", description: "Unlock your holder tier: no wallet connect, no signing" },
       { command: "narratives", description: "Narrative Radar: what is starting to spread on X" },
       { command: "narrativealerts", description: "Alerts when a coin launches on a narrative" },
       { command: "support", description: "Write to the CrawlHive team" },

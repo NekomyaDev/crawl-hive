@@ -240,6 +240,7 @@ async function doScan(chat: string, q: string, chain?: string) {
     if (!chat.startsWith("-")) seenTgUser({ id: Number(chat) }, "scan");
     await scanCard(chat, r);
     rememberForFollowup(chat, r);
+    import("./gem-hunter").then((m) => m.gemHunterOnScan(r, { tgChat: chat })).catch(() => {});
     // По тикеру ищем на Solana — предлагаем ту же монету в EVM-сетях.
     const t = q.match(TICKER_RE);
     if (q.startsWith("$") && t && r.chain === "solana")
@@ -762,7 +763,7 @@ async function watchOwner(chat: string): Promise<string | null> {
   return best?.w ?? null;
 }
 
-const LINK_FIRST = () => `Link your wallet first: open ${siteUrl()}/watchlist, sign in and press <b>Connect Telegram</b>. Then /watch works here.`;
+const LINK_FIRST = () => `Link your wallet first: send /verify &lt;address&gt; here (no wallet connect, no signing), or open ${siteUrl()}/watchlist, sign in and press <b>Connect Telegram</b>. Then /watch works here.`;
 
 async function watchWallet(chat: string, arg: string) {
   const [addr, ...label] = arg.trim().split(/\s+/);
@@ -832,6 +833,7 @@ function welcome(chat: string) {
       "",
       "👛 <b>/watch</b> &lt;wallet&gt;: I DM you when a wallet you follow shows up on a new coin ($CRAWLHIVE holders and Pro).",
       "🕸 <b>/watchop</b> &lt;wallet or op id&gt;: watch a whole operator, every linked wallet (Whale).",
+      `🔐 <b>/verify</b> &lt;wallet&gt;: unlock your Holder, Pro or Whale tier here. No wallet connect, no signing: a tiny transfer to yourself proves the wallet is yours. /unlink removes it.`,
       "",
       `🔥 <b>$${TOKEN.symbol}</b> is live: the treasury buys back and burns it every 12 hours.`,
       `<code>${TOKEN.mint}</code>`,
@@ -964,6 +966,8 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   if (cmd === "/alerts") return alertsMenu(chat);
   if (cmd === "/narrativealerts") return narrMenu(chat);
   if (cmd === "/burns") return burnsMenu(chat);
+  if (cmd === "/verify") return (await import("./tg-verify")).handleVerify(chat, arg);
+  if (cmd === "/unlink") return (await import("./tg-verify")).handleUnlink(chat, arg);
   if (cmd === "/watch") return watchWallet(chat, arg);
   if (cmd === "/watchop") return watchOperator(chat, arg);
   if (cmd === "/watchlist") {

@@ -136,6 +136,7 @@ export function PricingClient() {
         <div className="text-lg font-bold text-fg">How it works</div>
         <ul className="mt-2 space-y-1.5">
           <li>• Holder and Whale: keep the tokens in the wallet you sign in with. The amount follows the price: Holder is about $10 of tokens and Whale about $100, recalculated every few minutes.</li>
+          <li>• No wallet connect needed: verify in the Telegram bot with /verify.</li>
           <li>• Pro: you burn the tokens yourself from your wallet, signed in Phantom. Nobody receives them, they leave the supply for good, and the burn shows publicly below.</li>
           <li>• Brain API calls can be bought the same way on the <Link href="/brain" className="text-honey hover:underline">Brain page</Link>.</li>
           <li>• Tiers give access to features. They are not an investment and we make no promises about the token price.</li>

@@ -179,5 +179,6 @@ export function startRadar() {
   }
   setInterval(() => sampleTrack().catch((e) => console.warn("[track]", (e as Error).message)), 5 * 60_000);
   startPaperEngine();
+  import("./gem-hunter").then((m) => m.startGemHunter()).catch((e) => console.warn("[hunt]", (e as Error).message));
   console.log("[crawlhive] launch radar and track record started");
 }

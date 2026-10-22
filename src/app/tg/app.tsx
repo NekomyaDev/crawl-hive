@@ -128,6 +128,7 @@ function ScanView({ initial, inTg, onWatched }: { initial: string | null; inTg: 
         else if (e.type === "result") {
           setRes(e.result);
           setBusy(false);
+          tgApi("/api/hunt", { method: "POST", body: JSON.stringify({ id: e.result.id }) }).catch(() => {}); // Gem Hunter
           haptic(e.result.verdict === "DANGER" ? "error" : e.result.verdict === "RISKY" ? "warning" : "success");
         } else if (e.type === "done" || e.type === "error") {
           if (e.type === "error") {
