@@ -13,7 +13,8 @@ import { recentLaunches } from "./launch";
 import { postInfo } from "./narrative-media";
 
 const KEY = "narrRadar";
-const LAST_KEY = "narrRadarAt";
+const LAST_KEY = "narrRadarAt"; // последняя попытка
+const OK_KEY = "narrRadarOkAt"; // последняя удачная охота: после сбоя (кончились кредиты Grok) пробуем снова через 30 мин, а не через 3 ч
 const MAX = 200;
 const TICK_MS = 10 * 60_000;
 const HOUR = 3600_000;
@@ -243,9 +244,12 @@ async function tick(force = false) {
   s.busy = true;
   try {
     const last = Number(getMeta(LAST_KEY) ?? 0);
-    if (grokEnabled() && (force || Date.now() - last >= everyMs())) {
+    const ok = Number(getMeta(OK_KEY) ?? 0);
+    if (grokEnabled() && (force || (Date.now() - ok >= everyMs() && Date.now() - last >= 30 * 60_000))) {
       setMeta(LAST_KEY, String(Date.now()));
-      await hunt().catch((e) => console.warn("[narratives] radar", (e as Error).message));
+      await hunt()
+        .then(() => setMeta(OK_KEY, String(Date.now())))
+        .catch((e) => console.warn("[narratives] radar", (e as Error).message));
     }
     if (Date.now() - s.outcomesAt > 30 * 60_000) {
       s.outcomesAt = Date.now();
