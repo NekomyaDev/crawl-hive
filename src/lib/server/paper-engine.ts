@@ -125,6 +125,10 @@ export const STRATEGIES: StrategyConfig[] = [
   // (s14 +11.4%, s21 +12.6%, s23 SL40 +15.3%), быстрый s29 +16.1%. Пробуем быстрые близнецы широкого стопа.
   { id: "s33", label: "Clean 20k+ wide stop fast", note: "Like S23, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
   { id: "s34", label: "Clean+OK 20k+ wide fast", note: "CLEAN or OK with $20k+ liquidity, TP100 SL40, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  // 22.10 ночь: стратегии на теневых оценках впереди (s15 +16%, s19 +34%, s24 +21%, s30 +44%, выборки малые), а широкий стоп s23 сполз до -3.8% (стопы по -56%).
+  // Проверяем согласие v2 и v3 и быстрый близнец s24.
+  { id: "s35", label: "V2 and V3 CLEAN", note: "Both score v2 and score v3 say CLEAN, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s36", label: "V3 CLEAN TP100 fast", note: "Like S24, prices every 10s, +3% slippage per side", entry: { verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
