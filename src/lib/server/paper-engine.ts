@@ -8,6 +8,7 @@ import "server-only";
 import { bestPairs, type PairInfo } from "./crawl/dexscreener";
 import { kvGet, kvSet, memDb } from "./memory-db";
 import type { ScanResult, Verdict } from "./scan";
+import type { VerdictV2 } from "./score-v2";
 
 // ---------- стратегии ----------
 
@@ -17,6 +18,8 @@ export interface EntryRule {
   noPumpFun?: boolean; // не брать монеты pump.fun (адрес на «pump»): по истории там 43% ругов
   minScore?: number;
   maxScore?: number;
+  verdictsV2?: VerdictV2[]; // теневой вердикт v2 (score-v2.ts); без v2 у скана фильтр не проходит
+  minScoreV2?: number;
   minAgeMin?: number;
   maxAgeMin?: number;
   minLiqUsd?: number;
@@ -72,6 +75,9 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s12", label: "Deep liquidity", note: "Backtest #4: CLEAN, OK or RISKY with $100k+ liquidity, TP100 SL20, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s13", label: "Momentum trail", note: "Same entry as Radar momentum, stop -20%, 25% trail once up 50%, 24h", entry: { verdicts: ["CLEAN", "OK"], minScore: 60, noPumpFun: true, minLiqUsd: 20_000 }, exits: { slPct: 20, trailPct: 25, trailArmPct: 50, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s14", label: "Clean 20k+ TP100", note: "CLEAN with $20k+ liquidity, any launchpad, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // Теневая оценка v2 (score-v2.ts): вход по вердикту v2 при любом публичном. Пара к s1 и s14 для сравнения вперёд.
+  { id: "s15", label: "V2 CLEAN TP100", note: "Shadow score v2 says CLEAN (any public verdict), TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s16", label: "V2 CLEAN hold 24h", note: "Baseline for v2: shadow score v2 says CLEAN, no stops, sold after 24h", entry: { verdictsV2: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
@@ -94,6 +100,8 @@ export const paperEnabled = () => process.env.PAPER_ENGINE !== "0";
 export interface Features {
   verdict: Verdict;
   score: number | null;
+  scoreV2: number | null; // теневая оценка v2; null — скан без v2
+  verdictV2: VerdictV2 | null;
   ageMin: number | null;
   liqUsd: number | null;
   fdv: number | null;
@@ -122,6 +130,8 @@ export function featuresOf(r: ScanResult): Features {
   return {
     verdict: r.verdict,
     score: r.score,
+    scoreV2: r.v2?.scoreV2 ?? null,
+    verdictV2: r.v2?.verdictV2 ?? null,
     ageMin: m?.ageHours != null ? Math.round(m.ageHours * 60) : null,
     liqUsd: num(m?.liquidityUsd),
     fdv: num(m?.fdv),
@@ -153,6 +163,8 @@ function matches(e: EntryRule, f: Features, chain: string, token: string): boole
   const min = (v: number | null, lim?: number) => lim === undefined || (v !== null && v >= lim);
   const max = (v: number | null, lim?: number) => lim === undefined || (v !== null && v <= lim);
   if (!min(f.score, e.minScore) || !max(f.score, e.maxScore)) return false;
+  if (e.verdictsV2?.length && (f.verdictV2 === null || !e.verdictsV2.includes(f.verdictV2))) return false;
+  if (!min(f.scoreV2, e.minScoreV2)) return false;
   if (!min(f.ageMin, e.minAgeMin) || !max(f.ageMin, e.maxAgeMin)) return false;
   if (!min(f.liqUsd, e.minLiqUsd) || !max(f.liqUsd, e.maxLiqUsd)) return false;
   if (!min(f.fdv, e.minFdv) || !max(f.fdv, e.maxFdv)) return false;

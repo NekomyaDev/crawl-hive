@@ -48,6 +48,10 @@ export interface TrackEntry {
   rugBy?: "liq" | "gone"; // руг по обвалу ликвидности и цены или по исчезновению всех пар
   rc?: number; // когда старую запись перепроверили новым методом
   recheck?: "reopened" | "alive"; // reopened — свежий старый руг досчитан заново; alive — токен после «руга» жив
+  // Теневая оценка v2 (score-v2.ts) на момент скана: по ней через сутки сравниваем v2 с публичным вердиктом.
+  s2?: number;
+  v2?: "CLEAN" | "OK" | "RISKY" | "DANGER";
+  dw?: number; // кошельков с рухнувшей историей на момент скана
 }
 
 // Все записи Track Record (для разовых задач вроде поиска первого появления токена).
@@ -71,6 +75,7 @@ export function trackVerdict(r: {
   score: number | null;
   name?: string;
   market?: { priceUsd?: number; liquidityUsd?: number; fdv?: number };
+  v2?: { scoreV2: number; verdictV2: NonNullable<TrackEntry["v2"]>; dumpWallets: number | null };
 }, src: TrackEntry["src"]) {
   const price0 = Number(r.market?.priceUsd);
   const liq0 = Number(r.market?.liquidityUsd);
@@ -84,9 +89,12 @@ export function trackVerdict(r: {
     list.splice(prev, 1);
   }
   const fdv0 = Number(r.market?.fdv) > 0 ? Math.round(Number(r.market?.fdv)) : undefined;
-  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}) });
+  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}), ...v2Fields(r.v2) });
   save(list);
 }
+
+const v2Fields = (v?: { scoreV2: number; verdictV2: NonNullable<TrackEntry["v2"]>; dumpWallets: number | null }) =>
+  v ? { s2: v.scoreV2, v2: v.verdictV2, ...(v.dumpWallets !== null ? { dw: v.dumpWallets } : {}) } : {};
 
 // Замер цены открытых записей. Сначала дешёвый пакетный запрос (по одной основной паре на токен, 30 адресов
 // за раз); всё, что выглядит как обвал, руг или смена пары, перепроверяем по всем парам токена. Так исход

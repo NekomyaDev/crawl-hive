@@ -24,6 +24,7 @@ import { BUZZ_TTL_MS, type XBuzz } from "./scan-x";
 import { xrayEvm, xrayFactors, xrayLive, type XRayReport } from "./scan-xray";
 import { t22Factors, xraySolana, type T22Report } from "./scan-t22";
 import { siteFactors, xraySite, type SiteReport } from "./scan-site";
+import { safeScoreV2, type ScoreV2 } from "./score-v2";
 import type { XRayView } from "@/components/xray-panel";
 
 export type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
@@ -74,6 +75,7 @@ export interface ScanResult {
   telegram: { channel: string; url: string }[];
   x?: XBuzz; // догружается после вердикта, есть только в сохранённом скане
   since?: SinceLast; // что изменилось с прошлого скана этого токена
+  v2?: ScoreV2; // теневая оценка v2 (score-v2.ts): пишется в Track Record, на публичный вердикт и интерфейс не влияет
   scannedAt: number;
 }
 
@@ -779,6 +781,9 @@ export async function runScan(
     telegram,
     scannedAt: Date.now(),
   };
+  // Теневая оценка v2: только считаем и запоминаем, публичные score/verdict остаются как были.
+  const v2 = core ? undefined : safeScoreV2(result);
+  if (v2) result.v2 = v2;
   // Память токена: что изменилось с прошлого скана, затем запоминаем текущий снимок.
   const since = compareToLast(result);
   if (since?.changes.length) result.since = since;
