@@ -74,7 +74,7 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s1", label: "CLEAN hold 24h", note: "Baseline like the old page: CLEAN, no stops, sold after 24h", entry: { verdicts: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s2", label: "CLEAN TP50 SL30", note: "CLEAN, take +50%, stop -30%, max 6h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s3", label: "CLEAN runner", note: "CLEAN, take +100%, stop -40%, 30% trail once up 30%, max 12h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 100, slPct: 40, trailPct: 30, trailArmPct: 30, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: true },
-  { id: "s4", label: "CLEAN+OK scalp", note: "CLEAN or OK, take +30%, stop -20%, max 2h", entry: { verdicts: ["CLEAN", "OK"] }, exits: { tpPct: 30, slPct: 20, maxHoldMin: 2 * H }, sizeUsd: 100, enabled: true },
+  { id: "s4", label: "CLEAN+OK scalp", note: "CLEAN or OK, take +30%, stop -20%, max 2h", entry: { verdicts: ["CLEAN", "OK"] }, exits: { tpPct: 30, slPct: 20, maxHoldMin: 2 * H }, sizeUsd: 100, enabled: false },
   { id: "s5", label: "CLEAN low snipers", note: "CLEAN, snipers hold under 5%, no bundles, top 10 under 40%, TP50 SL30 6h", entry: { verdicts: ["CLEAN"], maxSnipersPct: 5, noBundles: true, maxTop10Pct: 40 }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s6", label: "Every coin TP50 SL30", note: "Control: every radar coin with a verdict, same exits as S2", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s7", label: "DANGER only", note: "Inverse control: only DANGER calls, same exits as S2. Should lose the most", entry: { verdicts: ["DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
@@ -95,6 +95,9 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s18", label: "Every coin confirmed 10m", note: "Control for S17: every verdict, same 10 min confirmation, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s19", label: "V2 CLEAN confirmed 10m", note: "Shadow score v2 says CLEAN, same 10 min confirmation, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s20", label: "CLEAN confirmed 30m", note: "Like S17 but waits 30 min after the scan, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // Ночь 22.10: лучше всех держатся TP100/SL30 на ликвидности от $20k (s11, s12, s14, s15). Скальп s4 хуже контроля s6, выключен.
+  { id: "s21", label: "Clean+OK 20k+ TP100", note: "CLEAN or OK with $20k+ liquidity, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s22", label: "V2 not DANGER 20k+", note: "Second look CLEAN, OK or RISKY with $20k+ liquidity, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN", "OK", "RISKY"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
