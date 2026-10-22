@@ -604,8 +604,20 @@ export function startPaperEngine() {
   if (!kvGet(m, "paper_engine_started")) kvSet(m, "paper_engine_started", String(Date.now()));
   const n = (d.prepare("SELECT COUNT(*) AS n FROM paper_positions").get() as { n: number }).n;
   const w = (d.prepare("SELECT COUNT(*) AS n FROM paper_pending").get() as { n: number }).n;
-  setInterval(() => paperTick().catch((e) => console.warn("[paper]", (e as Error).message)), SAMPLE_MS);
-  if (STRATEGIES.some((x) => x.enabled && x.fast)) setInterval(() => paperTick(true).catch((e) => console.warn("[paper] fast", (e as Error).message)), FAST_MS);
+  // Один таймер на оба тика: два setInterval совпадают по фазе, и занятый быстрый тик съедал бы минутный.
+  // Полный тик раз в SAMPLE_MS, между ними быстрые; полный, попавший на занятый движок, переносится на следующий шаг.
+  const every = SAMPLE_MS / FAST_MS;
+  const fast = STRATEGIES.some((x) => x.enabled && x.fast);
+  let step = 0;
+  let fullDue = true;
+  setInterval(() => {
+    if (++step % every === 0) fullDue = true;
+    if (st().busy) return;
+    const full = fullDue;
+    if (!full && !fast) return;
+    fullDue = false;
+    paperTick(!full).catch((e) => console.warn(full ? "[paper]" : "[paper] fast", (e as Error).message));
+  }, FAST_MS);
   console.log(`[paper] engine started, ${STRATEGIES.filter((x) => x.enabled).length} strategies, ${n} open positions and ${w} pending entries resumed`);
 }
 
