@@ -97,7 +97,7 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s16", label: "V2 CLEAN hold 24h", note: "Baseline for v2: shadow score v2 says CLEAN, no stops, sold after 24h", entry: { verdictsV2: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // Подтверждённый вход (22.10): CLEAN на Robinhood (PB, SPOUR) теряли ликвидность за 1-4 минуты после скана,
   // мгновенный вход съедал каждый такой вытащенный пул. Ждём и входим, только если пул жив и цена не убежала.
-  { id: "s17", label: "CLEAN confirmed 10m", note: "CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s17", label: "CLEAN confirmed 10m", note: "CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   { id: "s18", label: "Every coin confirmed 10m", note: "Control for S17: every verdict, same 10 min confirmation, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   { id: "s19", label: "V2 CLEAN confirmed 10m", note: "Shadow score v2 says CLEAN, same 10 min confirmation, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s20", label: "CLEAN confirmed 30m", note: "Like S17 but waits 30 min after the scan, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
@@ -121,6 +121,10 @@ export const STRATEGIES: StrategyConfig[] = [
   // Лучше всех глубокие пулы (s12 +9.1%, PF 1.49) и v2 не DANGER от $20k (s22): скрещиваем, и быстрый близнец s12.
   { id: "s31", label: "V2 not DANGER deep", note: "Score v2 CLEAN, OK or RISKY with $100k+ liquidity, TP100 SL20, 24h", entry: { verdictsV2: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s32", label: "Deep liquidity fast", note: "Like S12, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  // 22.10 ночь: s17 (CLEAN через 10 мин) 17 сделок -14.9% при контроле s6 -4.1%, выключен. Лидеры: CLEAN от $20k с TP100
+  // (s14 +11.4%, s21 +12.6%, s23 SL40 +15.3%), быстрый s29 +16.1%. Пробуем быстрые близнецы широкого стопа.
+  { id: "s33", label: "Clean 20k+ wide stop fast", note: "Like S23, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  { id: "s34", label: "Clean+OK 20k+ wide fast", note: "CLEAN or OK with $20k+ liquidity, TP100 SL40, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
