@@ -4,14 +4,18 @@
 // с каждым вердиктом рухнула (−50% от цены скана) или потеряла ликвидность (руг) за сутки.
 import "server-only";
 import { getMeta, setMeta } from "./store";
-import { bestPairs } from "./crawl/dexscreener";
+import { bestPairs, tokenPairs, type PairInfo } from "./crawl/dexscreener";
 
 const KEY = "track";
 const MAX = 4000;
 const WINDOW_MS = 24 * 3600_000;
 const SAMPLE_MS = 10 * 60_000;
 const DUMP_PCT = -50; // рухнул: минимум за сутки на 50% ниже цены скана
-const RUG_LIQ = 0.2; // руг: ликвидность упала до 20% от исходной или пара исчезла
+const RUG_LIQ = 0.2; // руг: ликвидность по всем парам упала до 20% от исходной вместе с ценой, или пары исчезли
+const RUG_CONFIRM = 2; // руг ставим только после двух таких замеров подряд
+const DEAD_LIQ = 500; // во всех пулах меньше $500 — продать уже нечем, руг при любой цене
+const DEEP_PER_RUN = 60; // перепроверок по всем парам за проход (лимит DexScreener 300 запросов в минуту)
+const METHOD = 2; // версия метода замера: 2 — цена и ликвидность по всем парам токена
 
 export type TrackVerdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
 
@@ -37,6 +41,13 @@ export interface TrackEntry {
   done?: boolean;
   dumped?: boolean;
   rugged?: boolean;
+  // Метод v2 (поля необязательные, старые записи читаются как раньше):
+  m?: number; // версия метода замера; нет поля — запись считалась старым методом по одной паре
+  pair?: string; // основная пара DexScreener на последнем замере (по её смене ловим миграцию)
+  rugHits?: number; // сколько замеров подряд выполняется условие руга
+  rugBy?: "liq" | "gone"; // руг по обвалу ликвидности и цены или по исчезновению всех пар
+  rc?: number; // когда старую запись перепроверили новым методом
+  recheck?: "reopened" | "alive"; // reopened — свежий старый руг досчитан заново; alive — токен после «руга» жив
 }
 
 // Все записи Track Record (для разовых задач вроде поиска первого появления токена).
@@ -73,16 +84,42 @@ export function trackVerdict(r: {
     list.splice(prev, 1);
   }
   const fdv0 = Number(r.market?.fdv) > 0 ? Math.round(Number(r.market?.fdv)) : undefined;
-  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, ...(fdv0 ? { fdv0 } : {}) });
+  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}) });
   save(list);
 }
 
-// Замер цены открытых записей: пачками по 30 адресов на сеть.
+// Замер цены открытых записей. Сначала дешёвый пакетный запрос (по одной основной паре на токен, 30 адресов
+// за раз); всё, что выглядит как обвал, руг или смена пары, перепроверяем по всем парам токена. Так исход
+// следует за токеном через миграцию с кривой pump.fun на PumpSwap/Raydium и через переезд в другой пул:
+// цена берётся из самой ликвидной пары, ликвидность суммируется по всем.
+const sampling = globalThis as unknown as { __crawlhiveTrackBusy?: boolean };
+
 export async function sampleTrack() {
+  if (sampling.__crawlhiveTrackBusy) return 0;
+  sampling.__crawlhiveTrackBusy = true;
+  try {
+    return await sampleOnce();
+  } finally {
+    sampling.__crawlhiveTrackBusy = false;
+  }
+}
+
+async function sampleOnce() {
   const list = all();
   const now = Date.now();
   const open = list.filter((e) => !e.done && now - (e.sampledAt ?? e.at) >= SAMPLE_MS - 30_000);
-  if (!open.length) return 0;
+  const touched: TrackEntry[] = [];
+  let deepLeft = DEEP_PER_RUN;
+  const deep = async (e: TrackEntry): Promise<Snap | null | undefined> => {
+    if (deepLeft <= 0) return undefined;
+    deepLeft--;
+    try {
+      return snapOf(e.id, await tokenPairs(e.chain, e.id));
+    } catch (err) {
+      console.warn("[track] token pairs failed:", (err as Error).message);
+      return undefined;
+    }
+  };
   const byChain = new Map<string, TrackEntry[]>();
   for (const e of open) byChain.set(e.chain, [...(byChain.get(e.chain) ?? []), e]);
   for (const [chain, entries] of byChain) {
@@ -94,31 +131,97 @@ export async function sampleTrack() {
       continue;
     }
     for (const e of entries) {
-      const p = pairs.get(e.id);
-      const price = Number(p?.priceUsd);
+      const main = pairs.get(e.id);
+      let s = snapOf(e.id, main ? [main] : []);
+      const pctOf = (x: Snap) => Math.round(((x.price - e.price0) / e.price0) * 1000) / 10;
+      const rugCond = (x: Snap) => (x.liq < e.liq0 * RUG_LIQ && pctOf(x) <= DUMP_PCT) || x.liq < Math.min(DEAD_LIQ, e.liq0 * RUG_LIQ);
+      // Перепроверяем по всем парам только то, что меняет исход: пары нет, условие руга, первый обвал
+      // ниже −50% или DexScreener сменил основную пару (миграция с кривой, переезд в другой пул).
+      const mainPair = main?.pairAddress;
+      const switched = !!mainPair && !!e.pair && mainPair !== e.pair;
+      if (!s || rugCond(s) || (!e.dumped && pctOf(s) <= DUMP_PCT) || switched) {
+        const d = await deep(e);
+        // Перепроверить не удалось (лимит или сбой) — замер откладываем, а не пишем непроверенный обвал.
+        if (d === undefined) continue;
+        s = d;
+      }
       e.sampledAt = now;
-      if (!p || !(price > 0)) {
-        // Пара пропала: три замера подряд (30 минут) — считаем, что ликвидность вытащили.
+      touched.push(e);
+      if (!s) {
+        // Ни одной пары даже в полном списке: три замера подряд (30 минут) — DexScreener снимает с листинга
+        // токены с вытащенной ликвидностью. Пустой ответ бывает и случайно, поэтому одного раза мало.
         e.missing = (e.missing ?? 0) + 1;
-        if (e.missing >= 3) Object.assign(e, { rugged: true, dumped: true, lowPct: -100, lastPct: -100 });
+        if (e.missing >= 3) Object.assign(e, { rugged: true, dumped: true, rugBy: "gone", lowPct: -100, lastPct: -100 });
       } else {
         e.missing = 0;
-        const pct = Math.round(((price - e.price0) / e.price0) * 1000) / 10;
+        const pct = pctOf(s);
         if (e.peakPct === undefined || pct > e.peakPct) e.peakAt = now;
         e.peakPct = Math.max(e.peakPct ?? pct, pct);
         e.lowPct = Math.min(e.lowPct ?? pct, pct);
         e.lastPct = pct;
-        e.liqNow = Math.round(p.liquidity?.usd ?? 0);
+        e.liqNow = Math.round(s.liq);
+        e.pair = mainPair ?? s.pair;
         if (e.lowPct <= DUMP_PCT) e.dumped = true;
-        // Ликвидность одной пары DexScreener бывает ниже суммы по всем пулам на момент скана, поэтому
-        // одно падение ликвидности ругом не считаем — только вместе с падением цены.
-        if (e.liqNow < e.liq0 * RUG_LIQ && e.lowPct <= DUMP_PCT) e.rugged = e.dumped = true;
+        // Руг: ликвидность по всем парам сейчас ниже 20% исходной и цена сейчас (а не когда-то за сутки) ниже
+        // −50%, либо пулы почти пусты при любой цене. Подтверждаем двумя замерами подряд: один кривой ответ
+        // DexScreener не должен навсегда записывать токен в руги.
+        e.rugHits = rugCond(s) ? (e.rugHits ?? 0) + 1 : 0;
+        if (e.rugHits >= RUG_CONFIRM) Object.assign(e, { rugged: true, dumped: true, rugBy: "liq" });
       }
       if (now - e.at >= WINDOW_MS || e.rugged) e.done = true;
     }
   }
-  save(list);
-  return open.length;
+  // Разовая перепроверка записей, посчитанных старым методом (см. recheckLegacy).
+  for (const e of list) {
+    if (deepLeft <= 0) break;
+    if (e.m || e.rc || e.rugBy || !e.rugged) continue;
+    const r = await recheckLegacy(e, now, deep);
+    if (r) touched.push(e);
+  }
+  if (touched.length) saveMerged(touched);
+  return touched.length;
+}
+
+// Записи до исправления метода (без поля m) считались по одной паре и по минимуму цены за сутки: руг ставился,
+// если хоть раз цена была −50%, а основная пара в какой-то замер оказалась бедной (миграция, переезд в другой
+// пул, пыльная пара). Свежие такие руги (окно ещё открыто) переоткрываем и досчитываем новым методом.
+// Старые не переписываем — прошлых замеров уже не восстановить; только помечаем, если токен сейчас жив
+// (суммарная ликвидность не ниже половины исходной и цена не ниже −50%): такой «руг» почти наверняка ложный.
+async function recheckLegacy(e: TrackEntry, now: number, deep: (e: TrackEntry) => Promise<Snap | null | undefined>) {
+  if (now - e.at < WINDOW_MS && (e.missing ?? 0) < 3) {
+    Object.assign(e, { rugged: false, done: false, rugHits: 0, rc: now, recheck: "reopened" as const });
+    e.dumped = (e.lowPct ?? 0) <= DUMP_PCT;
+    return true;
+  }
+  const s = await deep(e);
+  if (s === undefined) return false;
+  e.rc = now;
+  const alive = !!s && s.liq >= e.liq0 * 0.5 && s.price >= e.price0 * 0.5;
+  if (alive) e.recheck = "alive";
+  return true;
+}
+
+// Снимок по парам токена: цена из самой ликвидной пары, ликвидность суммой по всем. Пары, где токен
+// стоит котируемым (quote), пропускаем: priceUsd в них — цена другого токена.
+interface Snap {
+  price: number;
+  liq: number;
+  pair: string;
+}
+function snapOf(id: string, pairs: PairInfo[]): Snap | null {
+  const mine = pairs.filter((p) => p.baseToken?.address?.toLowerCase() === id.toLowerCase() && Number(p.priceUsd) > 0);
+  if (!mine.length) return null;
+  const liqOf = (p: PairInfo) => p.liquidity?.usd ?? 0;
+  const best = mine.reduce((a, b) => (liqOf(b) > liqOf(a) ? b : a));
+  return { price: Number(best.priceUsd), liq: mine.reduce((n, p) => n + liqOf(p), 0), pair: best.pairAddress };
+}
+
+// Пока шли запросы к DexScreener, могли добавиться новые вердикты: пишем свои записи поверх свежего журнала,
+// а не весь старый список, иначе новые записи терялись бы.
+function saveMerged(touched: TrackEntry[]) {
+  const key = (e: TrackEntry) => `${e.id}|${e.at}`;
+  const upd = new Map(touched.map((e) => [key(e), e]));
+  save(all().map((e) => upd.get(key(e)) ?? e));
 }
 
 // ---------- для страницы ----------
@@ -129,6 +232,7 @@ export interface VerdictStats {
   settled: number; // прошли сутки или руг — исход известен
   dumped: number; // рухнули на 50%+ или руг
   rugged: number;
+  suspectRugs: number; // из rugged: старые руги, после которых токен жив (recheck "alive") — почти наверняка ложные
   medianPeak: number | null;
 }
 
@@ -153,6 +257,7 @@ export function trackStats() {
       settled: settled.length,
       dumped: settled.filter((e) => e.dumped).length,
       rugged: settled.filter((e) => e.rugged).length,
+      suspectRugs: settled.filter((e) => e.rugged && e.recheck === "alive").length,
       medianPeak: median(settled.map((e) => e.peakPct ?? 0)),
     };
   });

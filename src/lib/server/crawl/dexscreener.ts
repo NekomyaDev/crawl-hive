@@ -55,4 +55,11 @@ export async function bestPairs(chainId: string, addresses: string[]): Promise<M
   return out;
 }
 
+// Все пары одного токена (пакетный tokens/v1 отдаёт по одной паре на токен — основную по мнению DexScreener).
+// Нужно, чтобы увидеть миграцию с кривой на пул и ликвидность, разбросанную по нескольким пулам.
+export async function tokenPairs(chainId: string, address: string): Promise<PairInfo[]> {
+  const pairs = await get<PairInfo[] | null>(`/token-pairs/v1/${chainId}/${address}`);
+  return Array.isArray(pairs) ? pairs : [];
+}
+
 export const priceOf = (p?: PairInfo) => (p?.priceUsd ? Number(p.priceUsd) : undefined);
