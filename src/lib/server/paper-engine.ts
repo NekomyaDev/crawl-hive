@@ -114,7 +114,7 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s27", label: "V2 CLEAN deep no pump", note: "Score v2 says CLEAN, not pump.fun, liquidity $50k+, TP100 SL40, 24h", entry: { verdictsV2: ["CLEAN"], noPumpFun: true, minLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // 22.10: стопы SL30 на минутных замерах исполняются около -45%. Быстрые близнецы s6/s14/s15: замер каждые 10 с,
   // зато +3% проскальзывания на каждую сторону (как высокий допуск и приоритетная комиссия в живой торговле).
-  { id: "s28", label: "Every coin fast", note: "Control for fast fills: like S6, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  { id: "s28", label: "Every coin fast", note: "Control for fast fills: like S6, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: false },
   { id: "s29", label: "Clean 20k+ TP100 fast", note: "Like S14, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
   { id: "s30", label: "V2 CLEAN TP100 fast", note: "Like S15, prices every 10s, +3% slippage per side", entry: { verdictsV2: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
   // 22.10 вечер: s3 (runner) 24 сделки -19.2% и s9 (fresh momentum) 22 сделки -9.8% при контроле s6 -5%, выключены.
@@ -129,6 +129,10 @@ export const STRATEGIES: StrategyConfig[] = [
   // Проверяем согласие v2 и v3 и быстрый близнец s24.
   { id: "s35", label: "V2 and V3 CLEAN", note: "Both score v2 and score v3 say CLEAN, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s36", label: "V3 CLEAN TP100 fast", note: "Like S24, prices every 10s, +3% slippage per side", entry: { verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  // 23.10 ночь: быстрый контроль s28 54 сделки -8.4% (PF 0.69) против -4.2% у обычного s6: на случайных монетах скорость не окупает +3%, выключен.
+  // Лучший вход пока v2 CLEAN с подтверждением через 10 мин (s19 +24%, PF 2.1, 7 сделок): пробуем то же на v3 и с ранней фиксацией.
+  { id: "s37", label: "V3 CLEAN confirmed 10m", note: "Score v3 says CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdictsV3: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s38", label: "V2 CLEAN confirmed 10m TP50", note: "Like S19 but takes profit at +50%, TP50 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
