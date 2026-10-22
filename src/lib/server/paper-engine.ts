@@ -79,13 +79,13 @@ const CONFIRM: EntryConfirm = { minLiqKeepPct: 80, maxDropPct: 15, maxRisePct: 6
 export const STRATEGIES: StrategyConfig[] = [
   { id: "s1", label: "CLEAN hold 24h", note: "Baseline like the old page: CLEAN, no stops, sold after 24h", entry: { verdicts: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s2", label: "CLEAN TP50 SL30", note: "CLEAN, take +50%, stop -30%, max 6h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
-  { id: "s3", label: "CLEAN runner", note: "CLEAN, take +100%, stop -40%, 30% trail once up 30%, max 12h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 100, slPct: 40, trailPct: 30, trailArmPct: 30, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: true },
+  { id: "s3", label: "CLEAN runner", note: "CLEAN, take +100%, stop -40%, 30% trail once up 30%, max 12h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 100, slPct: 40, trailPct: 30, trailArmPct: 30, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: false },
   { id: "s4", label: "CLEAN+OK scalp", note: "CLEAN or OK, take +30%, stop -20%, max 2h", entry: { verdicts: ["CLEAN", "OK"] }, exits: { tpPct: 30, slPct: 20, maxHoldMin: 2 * H }, sizeUsd: 100, enabled: false },
   { id: "s5", label: "CLEAN low snipers", note: "CLEAN, snipers hold under 5%, no bundles, top 10 under 40%, TP50 SL30 6h", entry: { verdicts: ["CLEAN"], maxSnipersPct: 5, noBundles: true, maxTop10Pct: 40 }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s6", label: "Every coin TP50 SL30", note: "Control: every radar coin with a verdict, same exits as S2", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s7", label: "DANGER only", note: "Inverse control: only DANGER calls, same exits as S2. Should lose the most", entry: { verdicts: ["DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s8", label: "CLEAN 80+ trail", note: "CLEAN with score 80+, 25% trail from the peak, stop -35%, max 12h", entry: { verdicts: ["CLEAN"], minScore: 80 }, exits: { slPct: 35, trailPct: 25, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: false },
-  { id: "s9", label: "Fresh momentum", note: "CLEAN or OK under 3h old, more buys than sells, TP40 SL25 3h", entry: { verdicts: ["CLEAN", "OK"], maxAgeMin: 3 * H, minBuySellRatio: 1.2 }, exits: { tpPct: 40, slPct: 25, maxHoldMin: 3 * H }, sizeUsd: 100, enabled: true },
+  { id: "s9", label: "Fresh momentum", note: "CLEAN or OK under 3h old, more buys than sells, TP40 SL25 3h", entry: { verdicts: ["CLEAN", "OK"], maxAgeMin: 3 * H, minBuySellRatio: 1.2 }, exits: { tpPct: 40, slPct: 25, maxHoldMin: 3 * H }, sizeUsd: 100, enabled: false },
   // Из бэктеста 22.10 (3723 записи, проверка на свежих 30%): широкий тейк и короткий стоп стабильно лучше TP30/50.
   { id: "s10", label: "Clean mid-liq", note: "Backtest #1: CLEAN 90+, not pump.fun, liquidity $20k-50k, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], minScore: 90, noPumpFun: true, minLiqUsd: 20_000, maxLiqUsd: 50_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s11", label: "Radar momentum", note: "Backtest #5: CLEAN or OK 60+, not pump.fun, liquidity $20k+, TP100 SL20, 24h", entry: { verdicts: ["CLEAN", "OK"], minScore: 60, noPumpFun: true, minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
@@ -117,6 +117,10 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s28", label: "Every coin fast", note: "Control for fast fills: like S6, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK", "RISKY", "DANGER"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
   { id: "s29", label: "Clean 20k+ TP100 fast", note: "Like S14, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
   { id: "s30", label: "V2 CLEAN TP100 fast", note: "Like S15, prices every 10s, +3% slippage per side", entry: { verdictsV2: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  // 22.10 вечер: s3 (runner) 24 сделки -19.2% и s9 (fresh momentum) 22 сделки -9.8% при контроле s6 -5%, выключены.
+  // Лучше всех глубокие пулы (s12 +9.1%, PF 1.49) и v2 не DANGER от $20k (s22): скрещиваем, и быстрый близнец s12.
+  { id: "s31", label: "V2 not DANGER deep", note: "Score v2 CLEAN, OK or RISKY with $100k+ liquidity, TP100 SL20, 24h", entry: { verdictsV2: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s32", label: "Deep liquidity fast", note: "Like S12, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK", "RISKY"], minLiqUsd: 100_000 }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
