@@ -77,7 +77,7 @@ async function logWindow(c: PublicClient, chain: string, pairCreatedAt?: number)
 type TLog = { from: string; to: string; value: bigint; tx: Hex; block: bigint };
 
 // Известные фабрики и лаунчпады: подпись вместо голого адреса. Остальные контракты-создатели — просто «launchpad contract».
-const FACTORY_LABEL: Record<string, string> = {
+export const FACTORY_LABEL: Record<string, string> = {
   "0x5c952063c7fc8610ffdb798152d69f0b9550762b": "four.meme",
   "0x3711cea4feade896c913c68f01eda97cb06d1a42": "Pons launchpad",
 };

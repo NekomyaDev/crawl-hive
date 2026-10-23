@@ -24,7 +24,7 @@ export function LaunchEvidence({ l, chain }: { l: LaunchData; chain: string }) {
       "Deployer",
       l.deployer ? (
         <a href={`/dev/${l.deployer}`} className="num text-honey hover:underline" title="The wallet that signed the launch: every coin it launched and how it ended">
-          {short(l.deployer)}
+          {short(l.deployer)} <span className="text-xs text-muted">· dev reputation →</span>
         </a>
       ) : (
         <span className="text-muted">{l.factory ? "searching the launch transaction…" : "not found"}</span>

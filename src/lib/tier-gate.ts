@@ -9,3 +9,7 @@ export const tierAtLeast = (t: Tier, min: Tier) => TIER_ORDER.indexOf(t) >= TIER
 // Полный разбор скана (bubble map, первые покупатели, роли кошельков, раскладка балла, история дева,
 // доказательства запуска, Second look, что изменилось с прошлого скана). Вердикт, балл и главные флаги видят все.
 export const DEEP_SCAN_TIER: Tier = "holder";
+
+// Страница репутации дева /dev/<адрес>: ярлык, сводка и последние DEV_FREE_ROWS монет видят все, полная таблица от этого тарифа.
+export const DEV_TABLE_TIER: Tier = "holder";
+export const DEV_FREE_ROWS = 5;

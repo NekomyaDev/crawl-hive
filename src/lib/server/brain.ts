@@ -161,7 +161,7 @@ function operatorStats(id: string) {
 
 // strong — в операторе есть бандлы (одна транзакция или блок) или деньги дева; иначе кошельки связаны в основном
 // общими спонсорами, а это связь, не доказательство общего владельца.
-function operatorBrief(wallet: string) {
+export function operatorBrief(wallet: string) {
   const id = operators().byWallet.get(normAddr(wallet));
   const st = id ? operatorStats(id) : null;
   return st ? { id: st.op.id, wallets: st.op.wallets.length, tokens: st.tokens.length, dumpRate: st.dumpRate, settled: st.outcomes.settled, strong: !!(st.roles.bundle || st.roles.dev) } : null;
@@ -340,6 +340,7 @@ export async function devReport(raw: string) {
     pumpfun: pumpfun && { launched: pumpfun.launched, graduated: pumpfun.graduated, verdict: pumpfun.verdict, summary: pumpfun.summary, coins: pumpfun.coins.slice(0, 50) },
     pumpfunError,
     baselineDumpRate: baselineDumpRate(),
+    page: `https://crawlhive.xyz/dev/${dev}`,
   };
 }
 
