@@ -106,7 +106,7 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s19", label: "V2 CLEAN confirmed 10m", note: "Shadow score v2 says CLEAN, same 10 min confirmation, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   { id: "s20", label: "CLEAN confirmed 30m", note: "Like S17 but waits 30 min after the scan, TP100 SL30, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // Ночь 22.10: лучше всех держатся TP100/SL30 на ликвидности от $20k (s11, s12, s14, s15). Скальп s4 хуже контроля s6, выключен.
-  { id: "s21", label: "Clean+OK 20k+ TP100", note: "CLEAN or OK with $20k+ liquidity, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s21", label: "Clean+OK 20k+ TP100", note: "CLEAN or OK with $20k+ liquidity, TP100 SL30, 24h", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   { id: "s22", label: "V2 not DANGER 20k+", note: "Second look CLEAN, OK or RISKY with $20k+ liquidity, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN", "OK", "RISKY"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // 12:55: s8 (трейлинг 25%) 15 сделок, -16% против -4.5% у контроля, выключен. Стопы SL30 закрываются около -46%: пробуем шире.
   { id: "s23", label: "Clean 20k+ wide stop", note: "CLEAN with $20k+ liquidity, TP100 SL40, 24h", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
@@ -128,7 +128,7 @@ export const STRATEGIES: StrategyConfig[] = [
   // 22.10 ночь: s17 (CLEAN через 10 мин) 17 сделок -14.9% при контроле s6 -4.1%, выключен. Лидеры: CLEAN от $20k с TP100
   // (s14 +11.4%, s21 +12.6%, s23 SL40 +15.3%), быстрый s29 +16.1%. Пробуем быстрые близнецы широкого стопа.
   { id: "s33", label: "Clean 20k+ wide stop fast", note: "Like S23, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
-  { id: "s34", label: "Clean+OK 20k+ wide fast", note: "CLEAN or OK with $20k+ liquidity, TP100 SL40, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  { id: "s34", label: "Clean+OK 20k+ wide fast", note: "CLEAN or OK with $20k+ liquidity, TP100 SL40, prices every 10s, +3% slippage per side", entry: { verdicts: ["CLEAN", "OK"], minLiqUsd: 20_000 }, exits: { tpPct: 100, slPct: 40, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: false },
   // 22.10 ночь: стратегии на теневых оценках впереди (s15 +16%, s19 +34%, s24 +21%, s30 +44%, выборки малые), а широкий стоп s23 сполз до -3.8% (стопы по -56%).
   // Проверяем согласие v2 и v3 и быстрый близнец s24.
   { id: "s35", label: "V2 and V3 CLEAN", note: "Both score v2 and score v3 say CLEAN, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
@@ -152,6 +152,8 @@ export const STRATEGIES: StrategyConfig[] = [
   // Скрещиваем: v2 CLEAN, подтверждение через 10 мин, пул от $50k, стоп -20% как у s12.
   // 23.10 день: базовый s1 (CLEAN без стопов, 24 ч) 17 сделок -61.5% (5 рагов, остальные по времени) против -5.6% у s6:
   // урок усвоен, без стопов нельзя; выключен, его 36 открытых позиций доживут свои сутки.
+  // 23.10 вечер: контроль s6 -5.0%. Выключены s21 (CLEAN+OK от $20k, 33 сделки -11.8%, PF 0.66) и быстрый широкий стоп s34
+  // (16 сделок -37.5%, стопы исполняются около -57%).
   { id: "s44", label: "V2 CLEAN 10m 50k+", note: "Score v2 CLEAN, 10 min confirmation, liquidity $50k+, TP100 SL20, 24h", entry: { verdictsV2: ["CLEAN"], minLiqUsd: 50_000, delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
