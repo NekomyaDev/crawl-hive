@@ -123,7 +123,8 @@ export default function RugsPage() {
   const st = data?.stats[chain];
   const cur = st?.[win];
   const rows = useMemo(() => {
-    const now = Date.now();
+    // Время берём из ответа сервера: Date.now() в клиентском компоненте ломает пререндер (cacheComponents).
+    const now = data?.updatedAt ?? 0;
     return (data?.items ?? []).filter((r) => (chain === "all" || r.chain === chain) && now - r.eventAt < WIN_MS[win] && (!warnedOnly || r.warned));
   }, [data, chain, win, warnedOnly]);
 
