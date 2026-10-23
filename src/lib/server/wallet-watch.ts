@@ -3,8 +3,10 @@
 // заголовке) — опрашивать кошельки не нужно, на событие уходит один кредит. Свопы ложатся в очередь по кошельку,
 // краулеры-наблюдатели просыпаются сразу, и их обычный обход превращает сделки в сигналы через общий конвейер
 // (дедупликация, Jev, проверка безопасности токена, Telegram).
+// В тот же вебхук идут кошельки wallet tracker людей (wallet-tracker.ts): их свопы разбирает ingestTracked.
 import "server-only";
 import { watchedWallets, wakeWalletWatchers } from "./store";
+import { trackedWallets } from "./wallet-tracker";
 
 export interface WalletTrade {
   wallet: string;
@@ -27,12 +29,14 @@ interface WatchState {
   trades: Map<string, WalletTrade[]>;
   hook?: { id: string; addrs: string; checked: number }; // checked - когда сверяли со списком Helius
   started: boolean;
+  run?: () => void; // внеочередная сверка вебхука (добавили или убрали кошелёк в трекере)
 }
 const g = globalThis as unknown as { __crawlhiveWallets?: WatchState };
 const st = (): WatchState => (g.__crawlhiveWallets ??= { trades: new Map<string, WalletTrade[]>(), started: false });
 
 const heliusKey = () => process.env.HELIUS_API_KEY?.trim() || process.env.SOLANA_RPC_FALLBACK?.match(/api-key=([0-9a-f-]{20,})/i)?.[1] || "";
 export const webhookSecret = () => process.env.HELIUS_WEBHOOK_SECRET?.trim() || "";
+export const walletWatchEnabled = () => !!heliusKey() && !!webhookSecret();
 const siteUrl = () => (process.env.PUBLIC_SITE_URL?.trim() || "https://crawlhive.xyz").replace(/\/$/, "");
 
 interface HeliusTx {
@@ -87,7 +91,7 @@ async function syncWebhook(retry = true): Promise<void> {
   const secret = webhookSecret();
   if (!key || !secret) return;
   const s = st();
-  const addrs = [...watchedWallets()].sort();
+  const addrs = [...new Set([...watchedWallets(), ...trackedWallets()])].sort();
   const sig = addrs.join(",");
   const fresh = s.hook && Date.now() - s.hook.checked < RECHECK_MS;
   if (fresh && s.hook!.addrs === sig) return;
@@ -149,6 +153,19 @@ export function startWalletWatch() {
       .catch((e) => console.warn("[wallet-watch] webhook error:", scrub((e as Error).message, heliusKey())))
       .finally(() => (busy = false));
   };
+  s.run = run;
   setTimeout(run, 30_000);
   setInterval(run, 2 * 60_000);
+}
+
+// Список трекера изменился: сверяем вебхук через несколько секунд (пачка правок схлопывается в один проход).
+let nudgeTimer: ReturnType<typeof setTimeout> | undefined;
+export function nudgeWalletWatch() {
+  const s = st();
+  if (!s.run || nudgeTimer) return;
+  nudgeTimer = setTimeout(() => {
+    nudgeTimer = undefined;
+    s.run?.();
+  }, 5_000);
+  nudgeTimer.unref?.();
 }

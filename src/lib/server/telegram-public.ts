@@ -7,6 +7,8 @@
 //   получают её без задержки, бесплатный тариф — через FREE_RADAR_DELAY_MIN (tiers.ts);
 // - /signals: сделки сигнальных стратегий Paper Engine для Holder и выше (tg-signals.ts);
 // - inline-режим (@bot <адрес> в любом чате) и /track — точность сканера;
+// - wallet tracker (wallet-tracker.ts): /track <кошелёк> [подпись], /untrack, /tracked: алерты о покупках и продажах.
+//   /track без адреса по-прежнему показывает Track Record;
 // - Ask CrawlHive (ask.ts): /ask <вопрос> в личке и в группах, в группе ещё вопрос с @ботом или ответом на его сообщение.
 import "server-only";
 import { TOKEN } from "@/lib/token";
@@ -856,6 +858,61 @@ async function operatorWatchText(chat: string) {
   return [`🕸 <b>Operators</b> · ${st.list.length}/${st.max}`, ...(rows.length ? rows : ["Empty. Add one: /watchop &lt;wallet or op id&gt;"])].join("\n");
 }
 
+// ---------- wallet tracker ----------
+
+// Владелец трекера в чате: лучший привязанный кошелёк, без него сам чат (free). Кошельки, добавленные до привязки,
+// переезжают на кошелёк.
+async function trackOwner(chat: string): Promise<string> {
+  const tr = await import("./wallet-tracker");
+  const w = await watchOwner(chat);
+  if (!w) return tr.chatOwner(chat);
+  await tr.adoptChatList(chat, w).catch(() => {});
+  return w;
+}
+
+async function trackWallet(chat: string, arg: string) {
+  const [addr, ...label] = arg.trim().split(/\s+/);
+  const tr = await import("./wallet-tracker");
+  try {
+    const r = await tr.addTracked(await trackOwner(chat), addr, label.join(" "));
+    const hint = tr.upgradeHint(r.tier);
+    return send(
+      chat,
+      [
+        `👣 Tracking <code>${esc(tr.short(r.wallet))}</code>${r.label ? ` (${esc(r.label)})` : ""}. ${r.count}/${r.max} on your ${r.tier} plan.`,
+        `I DM you every buy and sell over 0.05 SOL, and each buy comes with the CrawlHive verdict for that token.${r.delayMin ? ` Free plan alerts arrive ${r.delayMin} min late.` : ""}`,
+        ...(hint ? [hint] : []),
+        "/tracked · /untrack &lt;wallet&gt;",
+      ].join("\n"),
+    );
+  } catch (e) {
+    return send(chat, esc((e as Error).message));
+  }
+}
+
+async function untrackWallet(chat: string, arg: string) {
+  const target = arg.trim().split(/\s+/)[0];
+  if (!target) return send(chat, "Send /untrack followed by a wallet from /tracked.");
+  const tr = await import("./wallet-tracker");
+  const ok = await Promise.resolve()
+    .then(async () => tr.removeTracked(await trackOwner(chat), target))
+    .catch(() => false);
+  return send(chat, ok ? "Stopped tracking that wallet." : "That wallet is not in your /tracked list.");
+}
+
+async function trackedText(chat: string) {
+  const tr = await import("./wallet-tracker");
+  const st = await tr.trackedState(await trackOwner(chat)).catch(() => null);
+  if (!st) return "👣 <b>Tracked wallets</b>\nThe wallet tracker is unavailable right now, try again later.";
+  const rows = st.list.map((w) => `<code>${esc(w.wallet)}</code>${w.label ? ` ${esc(w.label)}` : ""}${w.active ? "" : " · paused, over your plan limit"}`);
+  return [
+    `👣 <b>Tracked wallets</b> · ${st.list.length}/${st.max} (${st.tier})${st.delayMin ? ` · alerts ${st.delayMin} min late` : " · instant alerts"}`,
+    ...(rows.length ? rows : ["Empty. Add one: /track &lt;wallet&gt; [label]"]),
+    ...(st.hint ? [st.hint] : []),
+    ...(st.live ? [] : ["Live tracking is not switched on yet, alerts start once it is."]),
+  ].join("\n");
+}
+
 function welcome(chat: string) {
   const bot = telegramBotName();
   sendPhoto(
@@ -869,6 +926,7 @@ function welcome(chat: string) {
       "",
       "👛 <b>/watch</b> &lt;wallet&gt;: I DM you when a wallet you follow shows up on a new coin ($CRAWLHIVE holders and Pro).",
       "🕸 <b>/watchop</b> &lt;wallet or op id&gt;: watch a whole operator, every linked wallet (Whale).",
+      "👣 <b>/track</b> &lt;wallet&gt; [label]: I DM you when a wallet buys or sells, with the CrawlHive verdict on every buy. /tracked lists them.",
       "💬 <b>/ask</b> &lt;question&gt;: ask CrawlHive about a token, wallet or dev. Answers come only from CrawlHive data.",
       `🔐 <b>/verify</b> &lt;wallet&gt;: unlock your Holder, Pro or Whale tier here. No wallet connect, no signing: a tiny transfer to yourself proves the wallet is yours. /unlink removes it.`,
       "",
@@ -1011,7 +1069,14 @@ export async function handlePublic(m: TgMessage) {
   if (cmd === "/scan") return arg ? doScan(chat, scanQuery(arg) ?? arg) : send(chat, "Send /scan followed by a token address, link or $TICKER.");
   if (cmd === "/radar") return radarMessage(chat);
   if (cmd === "/narratives") return narrativesMessage(chat);
-  if (cmd === "/track") return trackMessage(chat);
+  // /track без адреса: Track Record, как раньше; с адресом: wallet tracker. Трекер работает только в личке.
+  if (cmd === "/track" && !arg.trim()) return trackMessage(chat);
+  if (cmd === "/track" || cmd === "/untrack" || cmd === "/tracked") {
+    if (group) return send(chat, `Wallet tracking works in a private chat with me${telegramBotName() ? `: t.me/${telegramBotName()}` : ""}. Here /track shows the Track Record.`, undefined, m.message_thread_id ? { message_thread_id: m.message_thread_id } : {});
+    if (cmd === "/track") return trackWallet(chat, arg);
+    if (cmd === "/untrack") return untrackWallet(chat, arg);
+    return send(chat, await trackedText(chat));
+  }
   if (group) {
     if (cmd === "/autoscan") {
       if (!(await isAdmin(chat, m.from?.id))) return send(chat, "Only group admins can change this.");

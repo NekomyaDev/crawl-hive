@@ -82,6 +82,9 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
                 {VERDICT_LABEL[r.verdict]}
               </span>
               <span className="rounded-md border border-violet/40 px-1.5 py-0.5 text-[10px] text-violet">{CHAIN_LABEL[r.chain] ?? r.chain}</span>
+              <Link href={`/token/${r.id}`} className="text-[11px] text-muted hover:text-fg">
+                Token history →
+              </Link>
             </div>
             {r.name && <div className="truncate text-sm text-muted">{r.name}</div>}
             <p className="mt-1">{r.reason}</p>

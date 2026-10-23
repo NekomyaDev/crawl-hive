@@ -24,12 +24,13 @@ export const PRO_DAYS = num(process.env.TIER_PRO_DAYS, 30);
 export const FREE_RADAR_DELAY_MIN = 15;
 
 // Лимиты по тарифам. Infinity: без лимита. Части продукта берут отсюда, а не держат свои числа.
-export const TIER_LIMITS: Record<Tier, { watchlist: number; botScansDay: number; brainMult: number; radarDelayMin: number; positions: number; operators: number }> = {
-  free: { watchlist: 0, botScansDay: 20, brainMult: 1, radarDelayMin: FREE_RADAR_DELAY_MIN, positions: 0, operators: 0 },
-  holder: { watchlist: 3, botScansDay: 60, brainMult: 10, radarDelayMin: 0, positions: 0, operators: 0 },
-  pro: { watchlist: 50, botScansDay: Infinity, brainMult: 20, radarDelayMin: 0, positions: 20, operators: 0 },
+export const TIER_LIMITS: Record<Tier, { watchlist: number; botScansDay: number; brainMult: number; radarDelayMin: number; positions: number; operators: number; trackedWallets: number }> = {
+  free: { watchlist: 0, botScansDay: 20, brainMult: 1, radarDelayMin: FREE_RADAR_DELAY_MIN, positions: 0, operators: 0, trackedWallets: 1 },
+  holder: { watchlist: 3, botScansDay: 60, brainMult: 10, radarDelayMin: 0, positions: 0, operators: 0, trackedWallets: 10 },
+  pro: { watchlist: 50, botScansDay: Infinity, brainMult: 20, radarDelayMin: 0, positions: 20, operators: 0, trackedWallets: 25 },
   // operators: watch операторов целиком (группы связанных кошельков), только Whale.
-  whale: { watchlist: 500, botScansDay: Infinity, brainMult: 50, radarDelayMin: 0, positions: 100, operators: 25 },
+  // trackedWallets: wallet tracker (wallet-tracker.ts), алерты о покупках и продажах; free с задержкой radarDelayMin.
+  whale: { watchlist: 500, botScansDay: Infinity, brainMult: 50, radarDelayMin: 0, positions: 100, operators: 25, trackedWallets: 100 },
 };
 
 // Цена токена: из рынка (DexScreener через buyback.tokenInfo), кэш 5 минут.

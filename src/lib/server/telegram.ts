@@ -282,6 +282,9 @@ export function startTelegram() {
       { command: "signals", description: "Live paper strategy signals for $CRAWLHIVE holders" },
       { command: "narratives", description: "Narrative Radar: what is starting to spread on X" },
       { command: "narrativealerts", description: "Alerts when a coin launches on a narrative" },
+      { command: "track", description: "Track a wallet: buy and sell alerts with a verdict. No address: Track Record" },
+      { command: "untrack", description: "Stop tracking a wallet" },
+      { command: "tracked", description: "Wallets you track and your plan limit" },
       { command: "support", description: "Write to the CrawlHive team" },
     ],
   }).catch(() => {});

@@ -1,10 +1,11 @@
 "use client";
 // Watchlist кошельков: за кем следишь, их история в памяти роя и алерты, когда такой кошелёк появляется
 // в новой монете. Алерты приходят в Telegram; лимит кошельков зависит от тарифа (holder, Pro, whale).
-// Ниже — операторы (только Whale): watch целой группы связанных кошельков, а не одного адреса.
+// Ниже: wallet tracker (алерты о покупках и продажах кошелька, лимит с free) и операторы (только Whale):
+// watch целой группы связанных кошельков, а не одного адреса.
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Eye, Lock, Network, Trash2, Wallet } from "lucide-react";
+import { Eye, Footprints, Lock, Network, Trash2, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,16 @@ interface OpState {
   list: OpEntry[];
   alerts: OpAlert[];
 }
+interface TrackedState {
+  tier: string;
+  max: number;
+  delayMin: number;
+  hint: string;
+  list: { wallet: string; label: string; at: number; active: boolean }[];
+  moves: { sig: string; mint: string; wallet: string; side: "buy" | "sell"; sol: number | null; usd: number | null; symbol: string | null; verdict: string | null; score: number | null; at: number }[];
+  telegram: boolean;
+  live: boolean;
+}
 interface State {
   tier: string;
   max: number | null;
@@ -78,6 +89,9 @@ export default function WatchlistPage() {
   const ops = useApi<OpState>(ready ? "/api/watchlist/operators" : null, 30000);
   const [opTarget, setOpTarget] = useState("");
   const [opLabel, setOpLabel] = useState("");
+  const tracked = useApi<TrackedState>(ready ? "/api/watchlist/tracked" : null, 30000);
+  const [trWallet, setTrWallet] = useState("");
+  const [trLabel, setTrLabel] = useState("");
 
   // Быстрое добавление со страницы скана: /watchlist?add=<кошелёк>, оператор — /watchlist?op=<кошелёк группы>
   useEffect(() => {
@@ -116,6 +130,28 @@ export default function WatchlistPage() {
       setBusy(false);
     }
   };
+  const addTracked = async () => {
+    setBusy(true);
+    try {
+      await post("/api/watchlist/tracked", { wallet: trWallet.trim(), label: trLabel });
+      setTrWallet("");
+      setTrLabel("");
+      toast("Tracking. Buys and sells arrive in Telegram");
+      tracked.reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const removeTracked = async (w: string) => {
+    try {
+      await del(`/api/watchlist/tracked?wallet=${encodeURIComponent(w)}`);
+      tracked.reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
   const removeOp = async (anchor: string) => {
     try {
       await del(`/api/watchlist/operators?target=${encodeURIComponent(anchor)}`);
@@ -148,7 +184,7 @@ export default function WatchlistPage() {
         <Card className="flex flex-col items-center gap-3 px-6 py-16 text-center">
           <Lock className="size-8 text-honey" />
           <div className="font-semibold">Sign in to manage your watchlist</div>
-          <p className="max-w-sm text-sm text-muted">Signing is free and sends no transaction. The watchlist is for $CRAWLHIVE holders and Pro.</p>
+          <p className="max-w-sm text-sm text-muted">Signing is free and sends no transaction. The wallet tracker is free for 1 wallet, the watchlist is for $CRAWLHIVE holders and Pro.</p>
           <Button onClick={() => (address ? signIn() : connect())}>
             <Wallet className="size-4" /> {address ? "Sign in" : "Connect wallet"}
           </Button>
@@ -251,6 +287,71 @@ export default function WatchlistPage() {
           )}
         </Card>
       </div>
+
+      <Card className="mt-5 p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <Footprints className="size-4 text-sky" />
+          <span className="font-semibold">Wallet tracker</span>
+          {tracked.data && (
+            <span className="ml-auto text-xs text-muted">
+              {tracked.data.list.length}/{tracked.data.max} on your <b className="text-fg">{tracked.data.tier}</b> plan
+              {tracked.data.delayMin ? ` · alerts ${tracked.data.delayMin} min late` : " · instant alerts"}
+            </span>
+          )}
+        </div>
+        <p className="mb-3 text-xs text-muted">
+          Follow any Solana wallet. Every buy or sell over 0.05 SOL lands in your Telegram, and each buy comes with the CrawlHive verdict and liquidity for that token. Same as /track in the bot.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input placeholder="Solana wallet address" value={trWallet} onChange={(e) => setTrWallet(e.target.value)} className="sm:flex-1" />
+          <Input placeholder="Label (optional)" value={trLabel} onChange={(e) => setTrLabel(e.target.value)} className="sm:w-48" maxLength={40} />
+          <Button onClick={addTracked} disabled={busy || !trWallet.trim() || (!!tracked.data && tracked.data.list.length >= tracked.data.max)}>
+            <Footprints className="size-4" /> Track
+          </Button>
+        </div>
+        {tracked.data && tracked.data.hint && (
+          <p className="mt-2 text-xs text-muted">
+            {tracked.data.list.length >= tracked.data.max ? "Your plan is full. " : ""}
+            {tracked.data.hint.replace(/:\s*crawlhive\.xyz\/pricing$/, ".")}{" "}
+            <Link href="/pricing" className="text-honey underline">See plans</Link>
+          </p>
+        )}
+        {tracked.data && !tracked.data.telegram && <p className="mt-2 text-xs text-honey">Connect Telegram above: tracker alerts are delivered there.</p>}
+        {tracked.data && !tracked.data.live && <p className="mt-2 text-xs text-muted">Live tracking is not switched on yet. Your list is saved and alerts start once it is.</p>}
+        {tracked.error && <p className="mt-2 text-xs text-coral">{tracked.error}</p>}
+        {!!tracked.data?.list.length && (
+          <ul className="mt-3 divide-y divide-line">
+            {tracked.data.list.map((w) => (
+              <li key={w.wallet} className="flex items-center gap-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="num font-medium">
+                    {short(w.wallet)} {w.label && <span className="ml-1 text-muted">{w.label}</span>}
+                  </div>
+                  <div className="text-xs text-muted">{w.active ? `tracking since ${ago(w.at)}` : "paused: over your plan limit"}</div>
+                </div>
+                <button onClick={() => removeTracked(w.wallet)} className="text-muted hover:text-coral" aria-label="Stop tracking">
+                  <Trash2 className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {!!tracked.data?.moves.length && (
+          <ul className="mt-3 space-y-2 text-sm">
+            {tracked.data.moves.map((mv) => (
+              <li key={`${mv.sig}:${mv.mint}`} className="rounded-lg border border-line px-3 py-2">
+                <span className={mv.side === "buy" ? "text-lime" : "text-coral"}>{mv.side === "buy" ? "bought" : "sold"}</span>{" "}
+                <Link href={`/scan/${mv.mint}`} className="num text-honey underline">
+                  {mv.symbol ? `$${mv.symbol}` : short(mv.mint)}
+                </Link>
+                {mv.sol != null ? ` for ${mv.sol} SOL` : mv.usd != null ? ` for $${mv.usd}` : ""}
+                {mv.verdict && <span className="ml-1 text-xs text-muted">· {mv.verdict.replace("_", " ")}{mv.score != null ? ` ${mv.score}` : ""}</span>}
+                <span className="ml-1 text-xs text-muted">· <span className="num">{short(mv.wallet)}</span> · {ago(mv.at)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card className="mt-5 p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
