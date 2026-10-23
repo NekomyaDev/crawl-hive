@@ -142,7 +142,13 @@ async function handleUpdate(u: {
   message?: { chat: { id: number; type: string }; text?: string; message_id: number; from?: { id: number; first_name?: string; username?: string } };
   callback_query?: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } };
   inline_query?: { id: string; query: string };
+  chat_member?: import("./group-watch").ChatMemberUpdate;
+  my_chat_member?: import("./group-watch").ChatMemberUpdate;
 }) {
+  if (u.chat_member || u.my_chat_member) {
+    const gw = await import("./group-watch");
+    return u.chat_member ? gw.onChatMember(u.chat_member) : gw.onMyChatMember(u.my_chat_member!);
+  }
   const pub = await import("./telegram-public");
   if (u.callback_query) return pub.handleCallback(u.callback_query);
   if (u.inline_query) return pub.handleInline(u.inline_query);
@@ -181,7 +187,7 @@ async function poll() {
   let offset = 0;
   for (;;) {
     try {
-      const updates = await call<{ update_id: number }[]>("getUpdates", { offset, timeout: 50, allowed_updates: ["message", "callback_query", "inline_query"] }, 65_000);
+      const updates = await call<{ update_id: number }[]>("getUpdates", { offset, timeout: 50, allowed_updates: ["message", "callback_query", "inline_query", "chat_member", "my_chat_member"] }, 65_000);
       for (const u of updates) {
         offset = u.update_id + 1;
         // Не ждём: скан одного пользователя (до 30 с) не должен задерживать ответы остальным.
