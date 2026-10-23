@@ -27,11 +27,11 @@ const TIER_CLS: Record<TierName, string> = { free: "border-line", holder: "borde
 
 // Строки таблицы: что даёт каждый тариф по всем частям продукта.
 const ROWS: [string, string, string, string, string][] = [
-  ["Site scans", "Unlimited, full report", "+ scan history, since last scan", "+ export and compare two coins (soon)", "Everything"],
+  ["Site scans", "Unlimited: verdict, score, top flags", "+ full analysis: bubble map, first 20 buyers, wallet roles, score breakdown, dev and launch, since last scan", "+ export and compare two coins (soon)", "Everything"],
   ["Telegram bot", "20 scans a day", "60 scans a day, live alerts", "Unlimited scans", "Unlimited, priority queue"],
   ["X bot", "Answers when tagged", "Answers when tagged", "Answers when tagged", "Answers when tagged"],
   ["Extension", "Compact panel", "+ More: bubble map, seen wallets", "+ watchlist alerts in the panel (soon)", "Everything"],
-  ["Launch Radar", "Live feed delayed 5 min", "Live feed", "Live feed + filters and TG alerts (soon)", "Live feed, early access (soon)"],
+  ["Launch Radar", "Live feed delayed 15 min", "Live feed", "Live feed + filters and TG alerts (soon)", "Live feed, early access (soon)"],
   ["Narrative Radar", "Top narratives", "+ new narrative alerts", "+ coins inside each narrative", "Everything"],
   ["Wallet watchlist", "None", "3 wallets", "50 wallets, alert when a known rugger enters a new coin", "500 wallets + watch whole operators (25)"],
   ["Auto-scan your positions", "None", "None", "20 positions (soon)", "100 positions (soon)"],

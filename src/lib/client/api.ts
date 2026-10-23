@@ -5,6 +5,9 @@ export function setApiSession(token: string) {
   session = token;
 }
 
+// Токен сессии как есть: для серверных функций (server actions), которые идут не через api().
+export const apiSession = () => session;
+
 // Заголовок сессии для запросов в обход api(), например потоковых (Ask CrawlHive).
 export const sessionHeaders = (): Record<string, string> => (session ? { Authorization: `Bearer ${session}` } : {});
 

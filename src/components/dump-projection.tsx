@@ -52,3 +52,17 @@ export function DumpProjection({ d, className }: { d?: DumpData; className?: str
     </div>
   );
 }
+
+// Одна строка «Probable dump» для всех тарифов: только итоговое падение, без раскладки по кошелькам.
+export function DumpHeadline({ d, className }: { d?: DumpData; className?: string }) {
+  if (!d?.meaningful) return null;
+  const tone = d.pct >= 50 ? "text-danger" : d.pct >= 20 ? "text-honey" : "text-fg";
+  return (
+    <div className={`flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs ${className ?? ""}`}>
+      <span>
+        <span className="font-semibold">Probable dump</span> <span className="text-muted">if the suspicious wallets sold now</span>
+      </span>
+      <span className={`num text-base font-bold ${tone}`}>-{d.pct}%</span>
+    </div>
+  );
+}

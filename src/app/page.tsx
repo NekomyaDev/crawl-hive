@@ -1,5 +1,6 @@
 "use client";
-// Главная: живая карта роя, метрики сети и поток сигналов.
+// Главная: первым экраном скан токена (Instant Crawl), всё остальное ниже сгиба и компактнее:
+// живой блок, тарифы, карта роя с сигналами, баннеры ботов, токен, готовые краулеры.
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Activity, ArrowRight, Bug, Flame, Plus, Radar, ScrollText, Send, Target, Users, Zap } from "lucide-react";
@@ -67,17 +68,10 @@ export default function Dashboard() {
       {/* Живой блок: свежие сканы, счётчики, лог роя, сжигания, выкатки. */}
       <HomeLive signals={signals} />
 
-      <PricingBanner className="mb-6" />
-      <XBotBanner className="mb-6" />
-      <BrainBanner className="mb-6" />
-      <TelegramCta className="mb-6" />
+      <PricingBanner className="mb-8" />
 
-      <WhatsNew />
-
-      {/* Токен проекта, байбек и награды; сюда же ведёт бейдж фонда байбека из Instant Crawl (#treasury). */}
-      <TokenSection />
-
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      {/* Рой: метрики сети, как это работает, карта и поток сигналов. */}
+      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat tone="honey" icon={<Bug className="size-3.5" />} label="Active crawlers" value={stats ? `${stats.activeCrawlers}` : "-"} hint={stats ? `of ${stats.totalCrawlers} spawned` : ""} />
         <Stat tone="violet" icon={<Users className="size-3.5" />} label="Wallets" value={stats ? stats.wallets : "-"} />
         <Stat tone="teal" icon={<Activity className="size-3.5" />} label="Items / min" value={stats ? fmt(stats.itemsPerMin) : "-"} />
@@ -101,9 +95,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="mb-5 grid gap-3 md:grid-cols-3">
+      <div className="mb-3 grid gap-3 md:grid-cols-3">
         {HOW.map(({ icon: Icon, title, text, tone }, i) => (
-          <Card key={title} className="flex gap-3 p-4">
+          <Card key={title} className="flex gap-3 p-3">
             <div className={cn("grid size-9 shrink-0 place-items-center rounded-lg", tone)}>
               <Icon className="size-4" />
             </div>
@@ -119,7 +113,7 @@ export default function Dashboard() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="relative min-w-0">
-          <SwarmMap onStats={setStats} onSignals={onSignals} />
+          <SwarmMap height={420} onStats={setStats} onSignals={onSignals} />
           {stats && stats.totalCrawlers === 0 && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center">
               <div className="pointer-events-auto rounded-xl border border-line bg-panel/90 p-6 backdrop-blur">
@@ -134,7 +128,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-        <Card className="flex max-h-[680px] flex-col">
+        <Card className="flex max-h-[540px] flex-col">
           <CardHeader
             title={
               <span className="flex items-center gap-2">
@@ -148,6 +142,19 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+
+      <div className="mt-8 grid gap-6">
+        <XBotBanner />
+        <BrainBanner />
+        <TelegramCta />
+      </div>
+
+      <div className="mt-8">
+        <WhatsNew />
+      </div>
+
+      {/* Токен проекта, байбек и награды; сюда же ведёт бейдж фонда байбека из Instant Crawl (#treasury). */}
+      <TokenSection />
 
       <div className="mt-8 mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>

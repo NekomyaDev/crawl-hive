@@ -1,13 +1,15 @@
-// Тарифы CrawlHive — один источник правды для сайта, ботов, расширения и Brain.
-// Holder и Whale — держишь $CRAWLHIVE на сумму от порога в долларах (по текущей цене, чтобы порог не ломался
-// при движении цены). Pro — оплачен сжиганием токенов на ~$10 за 30 дней (grantPro после проверки сжигания).
-// Порядок: free < holder < pro < whale. Whale — только холд от порога Whale; Pro поверх холда Holder остаётся Pro.
+// Тарифы CrawlHive: один источник правды для сайта, ботов, расширения и Brain.
+// Holder и Whale: держишь $CRAWLHIVE на сумму от порога в долларах (по текущей цене, чтобы порог не ломался
+// при движении цены). Pro: оплачен сжиганием токенов на ~$10 за 30 дней (grantPro после проверки сжигания).
+// Порядок: free < holder < pro < whale. Whale: только холд от порога Whale; Pro поверх холда Holder остаётся Pro.
 import "server-only";
 import { getMeta, setMeta } from "./store";
 import { holderMin, tokenBalance } from "./rewards";
+import { DEEP_SCAN_TIER, TIER_NAME, TIER_ORDER, tierAtLeast, type Tier } from "../tier-gate";
 
-export type Tier = "free" | "holder" | "pro" | "whale";
-export const TIER_ORDER: Tier[] = ["free", "holder", "pro", "whale"];
+// Порядок тарифов и какой тариф открывает полный разбор скана лежат в lib/tier-gate.ts: их читает и клиент.
+export { DEEP_SCAN_TIER, TIER_NAME, TIER_ORDER, tierAtLeast };
+export type { Tier };
 
 const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 export const TIER_USD = {
@@ -17,12 +19,16 @@ export const TIER_USD = {
 };
 export const PRO_DAYS = num(process.env.TIER_PRO_DAYS, 30);
 
-// Лимиты по тарифам. Infinity — без лимита. Части продукта берут отсюда, а не держат свои числа.
+// Launch Radar для бесплатного тарифа: лента, /radar и оповещения в Telegram приходят на столько минут позже.
+// Holder и выше видят всё сразу: это и есть их фора по скорости.
+export const FREE_RADAR_DELAY_MIN = 15;
+
+// Лимиты по тарифам. Infinity: без лимита. Части продукта берут отсюда, а не держат свои числа.
 export const TIER_LIMITS: Record<Tier, { watchlist: number; botScansDay: number; brainMult: number; radarDelayMin: number; positions: number; operators: number }> = {
-  free: { watchlist: 0, botScansDay: 20, brainMult: 1, radarDelayMin: 5, positions: 0, operators: 0 },
+  free: { watchlist: 0, botScansDay: 20, brainMult: 1, radarDelayMin: FREE_RADAR_DELAY_MIN, positions: 0, operators: 0 },
   holder: { watchlist: 3, botScansDay: 60, brainMult: 10, radarDelayMin: 0, positions: 0, operators: 0 },
   pro: { watchlist: 50, botScansDay: Infinity, brainMult: 20, radarDelayMin: 0, positions: 20, operators: 0 },
-  // operators — watch операторов целиком (группы связанных кошельков), только Whale.
+  // operators: watch операторов целиком (группы связанных кошельков), только Whale.
   whale: { watchlist: 500, botScansDay: Infinity, brainMult: 50, radarDelayMin: 0, positions: 100, operators: 25 },
 };
 
@@ -37,7 +43,7 @@ export async function tokenPriceUsd(): Promise<number | null> {
 }
 
 // Сколько токенов нужно держать для тарифа сейчас: порог в долларах (Holder $10, Whale $100) по текущей цене,
-// так что количество монет само следует за ценой. Без цены — запасной порог в монетах (HOLDER_MIN, Whale ×10).
+// так что количество монет само следует за ценой. Без цены: запасной порог в монетах (HOLDER_MIN, Whale ×10).
 export async function tierTokens() {
   const p = await tokenPriceUsd();
   const coins = { holder: holderMin(), whale: holderMin() * 10 };
@@ -84,4 +90,3 @@ export async function tierOf(wallet: string | null | undefined): Promise<TierInf
   const tier: Tier = bal >= need.whale ? "whale" : pro ? "pro" : bal >= need.holder ? "holder" : "free";
   return { tier, balance, proUntil: pro ? until : null, need };
 }
-export const tierAtLeast = (t: Tier, min: Tier) => TIER_ORDER.indexOf(t) >= TIER_ORDER.indexOf(min);

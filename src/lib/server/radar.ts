@@ -8,6 +8,7 @@ import { bestPairs, latestBoosts, latestProfiles } from "./crawl/dexscreener";
 import { runScan } from "./scan";
 import { sampleTrack } from "./track";
 import { paperOnSignal, startPaperEngine } from "./paper-engine";
+import { FREE_RADAR_DELAY_MIN } from "./tiers";
 
 const KEY = "radar";
 const MAX = 150;
@@ -19,7 +20,9 @@ const MIN_AGE_H = 0.6; // моложе 30 минут сканер честно �
 const MAX_AGE_H = 24;
 const RECHECK_MS = 45 * 60_000; // TOO_EARLY пересканируем, когда токен подрастёт
 const CHAINS = new Set(["solana", "robinhood", "bsc", "base"]);
-export const RADAR_DELAY_MS = Number(process.env.RADAR_DELAY_MIN ?? 10) * 60_000;
+// Задержка бесплатного тарифа одна на сайт, /radar и оповещения (tiers.ts). Функцией, а не константой модуля:
+// tiers.ts тянет за собой rewards/buyback, и при цикле импортов константа ещё могла бы быть не вычислена.
+export const radarDelayMs = () => FREE_RADAR_DELAY_MIN * 60_000;
 
 export interface RadarEntry {
   id: string;
@@ -147,12 +150,12 @@ export function withNarrative(e: RadarEntry, idx = narrativeIndex()) {
 
 // Публичная лента: только то, что старше задержки. Сколько свежих находок ждёт — показываем числом.
 // live — держателю $CRAWLHIVE лента без задержки.
-// delayMin — задержка для бесплатного тарифа (tiers.ts); без неё старая RADAR_DELAY_MIN.
+// delayMin — задержка для бесплатного тарифа; без неё FREE_RADAR_DELAY_MIN из tiers.ts.
 export function radarFeed(opts: { live?: boolean; delayMin?: number } = {}) {
   const now = Date.now();
   const list = all();
   const idx = narrativeIndex();
-  const freeDelay = opts.delayMin !== undefined ? opts.delayMin * 60_000 : RADAR_DELAY_MS;
+  const freeDelay = opts.delayMin !== undefined ? opts.delayMin * 60_000 : radarDelayMs();
   const delay = opts.live ? 0 : freeDelay;
   const shown = list.filter((e) => now - e.at >= delay).slice(0, 60).map((e) => withNarrative(e, idx));
   const day = list.filter((e) => now - e.at < 24 * 3600_000);

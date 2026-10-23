@@ -57,7 +57,7 @@ function CrawlerLog({ scans, signals }: { scans: RecentScan[] | null; signals: S
       })),
   ]
     .sort((a, b) => b.ts - a.ts)
-    .slice(0, 14);
+    .slice(0, 8);
   return (
     <Card className="flex min-w-0 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5 text-xs text-muted">
@@ -65,7 +65,7 @@ function CrawlerLog({ scans, signals }: { scans: RecentScan[] | null; signals: S
         <span className="num">tail -f crawler.log</span>
         <span className="ml-auto size-1.5 animate-pulse rounded-full bg-lime" />
       </div>
-      <div className="num min-h-[180px] flex-1 space-y-0.5 bg-bg/60 px-3 py-2 text-[11px] leading-5">
+      <div className="num min-h-[140px] flex-1 space-y-0.5 bg-bg/60 px-3 py-2 text-[11px] leading-5">
         {lines.map((l) => (
           <div key={l.key} className="flex min-w-0 gap-2">
             <span className="shrink-0 text-muted">{clock(l.ts)}</span>

@@ -3,14 +3,16 @@
 // - автоскан в группах: кто-то кинул адрес контракта — бот отвечает коротким вердиктом;
 // - список наблюдения с оповещениями (пара пропала, ликвидность вытащили, −50%, вердикт стал DANGER);
 // - «через 24 часа»: бот сам возвращается и говорит, сбылся ли вердикт (данные Track Record);
-// - подписка на Launch Radar с фильтрами; владельцы живых краулеров получают её без задержки;
+// - подписка на Launch Radar с фильтрами; держатели $CRAWLHIVE (Holder и выше) и владельцы живых краулеров
+//   получают её без задержки, бесплатный тариф — через FREE_RADAR_DELAY_MIN (tiers.ts);
+// - /signals: сделки сигнальных стратегий Paper Engine для Holder и выше (tg-signals.ts);
 // - inline-режим (@bot <адрес> в любом чате) и /track — точность сканера.
 import "server-only";
 import { TOKEN } from "@/lib/token";
 import { lookV3, secondLookWhy, secondLookWorse } from "@/lib/second-look";
 import type { ScanResult } from "./scan";
 import { dumpWho, firstBuyersBrief } from "./scan-brief";
-import type { Tier } from "./tiers";
+import { FREE_RADAR_DELAY_MIN, type Tier } from "./tiers";
 import { call, esc, send, sendPhoto, siteUrl, telegramBotName, telegramMainApp, type Keyboard } from "./telegram";
 import { getMeta, listCrawlers, metaEntries, setMeta } from "./store";
 import { addSupport, adminChats, adminStats, isAdmin as isProjectAdmin, markAnswered, rememberAdminChat, seenTgUser, supportList } from "./admin";
@@ -40,6 +42,7 @@ interface ChatPrefs {
   alerts?: { on: boolean; mode: "clean" | "all"; minLiq: number };
   narr?: { on: boolean; mode: "first" | "all" }; // алерты о монетах на нарративах Narrative Radar
   burns?: boolean; // каждое подтверждённое сжигание $CRAWLHIVE
+  signals?: boolean; // сделки сигнальных стратегий Paper Engine (tg-signals.ts), только Holder и выше
   threads?: Partial<Record<Topic, number>>; // в группе с темами: в какую тему слать каждый вид оповещений
   alertDay?: string;
   alertCount?: number;
@@ -57,7 +60,7 @@ function rememberTopic(chat: string, kind: Topic, thread?: number) {
   setPrefs(chat, { threads: { ...prefs(chat).threads, [kind]: thread || undefined } });
 }
 
-function prefsAll(): Record<string, ChatPrefs> {
+export function prefsAll(): Record<string, ChatPrefs> {
   try {
     return JSON.parse(getMeta("tgprefs") ?? "{}");
   } catch {
@@ -489,7 +492,7 @@ async function holderChat(chat: string): Promise<boolean> {
   return (await chatTier(chat)) !== "free";
 }
 // Лучший тариф среди кошельков, привязанных к чату (/start с сайта); без кошелька — free.
-async function chatTier(chat: string): Promise<Tier> {
+export async function chatTier(chat: string): Promise<Tier> {
   const { tierOf, TIER_ORDER } = await import("./tiers");
   let best: Tier = "free";
   for (const [k, c] of metaEntries("tg:")) {
@@ -521,7 +524,8 @@ export async function pushRadar() {
     cur.delayed = cur.live = Date.now();
     return;
   }
-  const { radarAll, RADAR_DELAY_MS, withNarrative, narrativeIndex } = await import("./radar");
+  const { radarAll, radarDelayMs, withNarrative, narrativeIndex } = await import("./radar");
+  const RADAR_DELAY_MS = radarDelayMs();
   const now = Date.now();
   const owners = ownerChats();
   for (const c of await holderChats(subs.map(([chat]) => chat).filter((c) => !owners.has(c)))) owners.add(c);
@@ -561,7 +565,7 @@ function alertsMenu(chat: string) {
   const mark = (b: boolean) => (b ? "● " : "○ ");
   send(
     chat,
-    `📡 <b>Launch Radar alerts</b>: ${a.on ? "on" : "off"}\nFresh launches on Solana, Robinhood Chain, BNB Chain and Base, scanned by the swarm. Up to ${ALERTS_PER_DAY} a day. Crawler owners get them live, everyone else 10 minutes later.`,
+    `📡 <b>Launch Radar alerts</b>: ${a.on ? "on" : "off"}\nFresh launches on Solana, Robinhood Chain, BNB Chain and Base, scanned by the swarm. Up to ${ALERTS_PER_DAY} a day. $${TOKEN.symbol} holders and crawler owners get them live, the free plan ${FREE_RADAR_DELAY_MIN} minutes later.`,
     [
       [{ text: a.on ? "🔕 Turn off" : "🔔 Turn on", callback_data: a.on ? "a:off" : "a:on" }],
       [
@@ -648,12 +652,14 @@ export function setAlerts(chat: string, patch: Partial<NonNullable<ChatPrefs["al
 
 async function radarMessage(chat: string) {
   const { radarFeed } = await import("./radar");
-  const f = radarFeed();
+  // Holder и выше видят ленту без задержки, как на сайте.
+  const { tierAtLeast } = await import("./tiers");
+  const f = radarFeed({ live: tierAtLeast(await chatTier(chat), "holder") });
   if (!f.items.length) return send(chat, "Launch Radar has nothing to show yet. Try again in a few minutes.");
   send(
     chat,
     [
-      `📡 <b>Launch Radar</b> · last ${Math.min(8, f.items.length)} launches (${f.delayMin} min delay)`,
+      `📡 <b>Launch Radar</b> · last ${Math.min(8, f.items.length)} launches (${f.live ? "live" : `${f.delayMin} min delay, live for $${TOKEN.symbol} holders`})`,
       ...f.items.slice(0, 8).map((e) => `${VERDICT_ICON[e.verdict] ?? "⚪️"} <a href="${siteUrl()}/scan/${e.id}">$${esc(e.symbol)}</a> · ${e.score ?? "-"} ${e.verdict.replace("_", " ")} · liq $${fmtUsd(e.liq)} · ${e.chain === "robinhood" ? "RH" : e.chain === "bsc" ? "BNB" : "SOL"}`),
     ].join("\n"),
     [[{ text: "🔔 Get these as alerts", callback_data: "a:menu" }, { text: "🐝 Live with a crawler", url: `${siteUrl()}/spawn` }]],
@@ -757,6 +763,7 @@ export async function handleCallback(q: { id: string; data?: string; from?: { id
     setPrefs(chat, { narr: { ...(prefs(chat).narr ?? { on: false, mode: "first" as const }), mode: d.slice(4) === "all" ? "all" : "first" } });
     return narrMenu(chat);
   }
+  if (d === "s:on" || d === "s:off") return (await import("./tg-signals")).setSignals(chat, d === "s:on");
   if (d === "a:menu") return alertsMenu(chat);
   if (d === "a:on" || d === "a:off") {
     if (d === "a:on") rememberTopic(chat, "radar", q.message?.message_thread_id);
@@ -993,6 +1000,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   if (cmd === "/alerts") return alertsMenu(chat);
   if (cmd === "/narrativealerts") return narrMenu(chat);
   if (cmd === "/burns") return burnsMenu(chat);
+  if (cmd === "/signals") return (await import("./tg-signals")).signalsCommand(chat, arg);
   if (cmd === "/verify") return (await import("./tg-verify")).handleVerify(chat, arg);
   if (cmd === "/unlink") return (await import("./tg-verify")).handleUnlink(chat, arg);
   if (cmd === "/watch") return watchWallet(chat, arg);
@@ -1024,7 +1032,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   }
   if (cmd === "/settings") {
     const p = prefs(chat);
-    return send(chat, `⚙️ <b>Settings</b>\n24h follow-ups: ${p.followups === false ? "off" : "on"}\nRadar alerts: ${p.alerts?.on ? "on" : "off"}\n\n/followups on|off · /alerts`);
+    return send(chat, `⚙️ <b>Settings</b>\n24h follow-ups: ${p.followups === false ? "off" : "on"}\nRadar alerts: ${p.alerts?.on ? "on" : "off"}\nStrategy signals: ${p.signals ? "on" : "off"}\n\n/followups on|off · /alerts · /signals`);
   }
   if (cmd === "/followups") {
     const on = arg.toLowerCase() !== "off";

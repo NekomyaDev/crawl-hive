@@ -10,7 +10,10 @@ import { LarpLine, type LarpLineData } from "@/components/larp-line";
 import { TrustScore, type TrustData } from "@/components/trust-score";
 import { SinceLastScan, type SinceData } from "@/components/since-last-scan";
 import { SecondLook } from "@/components/second-look";
-import { DumpProjection, type DumpData } from "@/components/dump-projection";
+import { DumpHeadline, DumpProjection, type DumpData } from "@/components/dump-projection";
+import { DEEP_SECTIONS, DeepLock } from "@/components/deep-lock";
+import { useViewerTier } from "@/lib/client/use-tier";
+import { DEEP_SCAN_TIER } from "@/lib/tier-gate";
 import { FirstBuyers, type FirstBuyersData } from "@/components/first-buyers";
 import { lookV3, type SecondLookData } from "@/lib/second-look";
 import { APP_URL, TelegramIcon } from "@/components/telegram-cta";
@@ -236,61 +239,47 @@ export function InstantCrawl() {
   const live = running || x === "loading";
 
   return (
-    <section className="mb-6">
-      <div className="ring-gradient relative overflow-hidden rounded-2xl bg-panel/70 p-5 lg:p-7">
-        <div aria-hidden className="pointer-events-none absolute -top-32 left-1/3 size-96 rounded-full bg-gradient-to-br from-honey/20 via-pink/10 to-transparent blur-3xl" />
+    <section className="mb-8">
+      {/* Скан главный на первом экране: крупный заголовок, одно поле и одна кнопка. Пока результата нет, блок
+          занимает почти весь экран, остальное на главной ниже сгиба. */}
+      <div className={cn("ring-gradient relative overflow-hidden rounded-2xl bg-panel/70 px-4 py-8 sm:px-8 lg:py-12", !active && "flex min-h-[calc(100svh-9rem)] flex-col justify-center sm:min-h-[calc(100svh-8rem)]")}>
+        <div aria-hidden className="pointer-events-none absolute -top-32 left-1/2 size-[28rem] -translate-x-1/2 rounded-full bg-gradient-to-br from-honey/20 via-pink/10 to-transparent blur-3xl" />
         <div className="relative">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-line bg-bg/60 px-2.5 py-1 text-[11px] text-muted">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-bg/60 px-3 py-1 text-xs text-muted">
               <span className="size-1.5 animate-pulse rounded-full bg-lime" /> free · no wallet · ~10 seconds
             </div>
-            {treasury?.address && (
-              <a
-                href="#treasury"
-                className="inline-flex items-center gap-1.5 rounded-full border border-honey/40 bg-honey/10 px-2.5 py-1 text-[11px] text-honey hover:bg-honey/20"
-              >
-                <Flame className="size-3" /> <span className="num font-semibold">{treasury.ethAddress && buybackUsd(treasury) !== null ? usdFmt(buybackUsd(treasury)!) : `${solFmt(buybackFund(treasury))} SOL`}</span> in the buyback fund
-              </a>
-            )}
-            <a
-              href={TOKEN.buy}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#ff6b2c]/60 bg-[#ff6b2c]/15 px-2.5 py-1 text-[11px] font-semibold text-[#ff9a5c] hover:bg-[#ff6b2c]/25"
-            >
-              🔥 ${TOKEN.symbol} is live · buy
-            </a>
+            <h1 className={cn("leading-[1.05] font-black tracking-tight", active ? "text-3xl lg:text-5xl" : "text-4xl sm:text-5xl lg:text-7xl")}>
+              Is this token <span className="text-gradient">safe?</span>
+            </h1>
+            <p className="mx-auto mt-3 max-w-xl text-base text-muted lg:text-lg">Paste a contract address or $ticker. The swarm checks it and returns a verdict in seconds.</p>
           </div>
-          <h1 className="max-w-3xl text-3xl leading-tight font-bold tracking-tight lg:text-5xl">
-            Send the <span className="text-gradient">swarm</span> after any memecoin
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted lg:text-base">
-            Paste a contract address or a $ticker, on Solana, Robinhood Chain, BNB Chain or Base. Works for pump.fun, Meteora, Raydium LaunchLab and four.meme launches. Crawlers check the market, the mint, who funded the top wallets, copycat tickers, Telegram and X, then return a verdict.
-          </p>
           <form
-            className="mt-5 flex max-w-3xl flex-col gap-2 sm:flex-row"
+            className="mx-auto mt-7 flex max-w-3xl flex-col gap-2 sm:flex-row"
             onSubmit={(e) => {
               e.preventDefault();
               scan(q);
             }}
           >
-            <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-bg/80 px-3 focus-within:border-honey/60">
-              <span className="num text-xs text-muted">CA</span>
+            <div className="flex flex-1 items-center gap-2 rounded-2xl border-2 border-line bg-bg/80 px-4 focus-within:border-honey/70">
+              <span className="num text-sm font-semibold text-muted">CA</span>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="token address, DexScreener link or $TICKER"
-                className="num h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
+                placeholder="address, link or $TICKER"
+                aria-label="Token address, DexScreener link or ticker"
+                className="num h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted/70 lg:h-16 lg:text-lg"
                 spellCheck={false}
                 autoComplete="off"
+                autoFocus={!active}
               />
             </div>
-            <Button size="lg" className="h-12 px-6" disabled={running || !q.trim()}>
-              <Radar className={cn("size-4", running && "animate-spin")} /> {running ? "crawling…" : "crawl"}
+            <Button size="lg" className="h-14 rounded-2xl px-8 text-base font-black tracking-wide lg:h-16 lg:px-10 lg:text-lg" disabled={running}>
+              <Radar className={cn("size-5", running && "animate-spin")} /> {running ? "SCANNING…" : "SCAN"}
             </Button>
           </form>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <span className="inline-flex items-center gap-1">
+          <div className="mx-auto mt-3 flex max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted">
+            <span className="inline-flex flex-wrap items-center justify-center gap-1">
               $ticker on
               {NETS.map((n) => (
                 <button
@@ -309,19 +298,24 @@ export function InstantCrawl() {
             <span className="inline-flex items-center gap-1">
               <ShieldCheck className="size-3.5 text-lime" /> read-only, nothing to sign
             </span>
-            <a
-              href={APP_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="tg-shine relative inline-flex items-center gap-1.5 overflow-hidden rounded-lg px-2.5 py-1 font-semibold text-white"
-              style={{ background: "linear-gradient(135deg, #2AABEE, #229ED9)" }}
-            >
-              <TelegramIcon className="size-3.5" /> or open the Telegram app
+          </div>
+          {/* Вторичные ссылки одной тихой строкой под полем: фонд байбека, покупка токена, Telegram. */}
+          <div className="mx-auto mt-4 flex max-w-3xl flex-wrap items-center justify-center gap-2 text-[11px]">
+            {treasury?.address && (
+              <a href="#treasury" className="inline-flex items-center gap-1.5 rounded-full border border-honey/30 px-2.5 py-1 text-honey/90 hover:bg-honey/10">
+                <Flame className="size-3" /> <span className="num font-semibold">{treasury.ethAddress && buybackUsd(treasury) !== null ? usdFmt(buybackUsd(treasury)!) : `${solFmt(buybackFund(treasury))} SOL`}</span> buyback fund
+              </a>
+            )}
+            <a href={TOKEN.buy} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-[#ff6b2c]/40 px-2.5 py-1 font-semibold text-[#ff9a5c] hover:bg-[#ff6b2c]/15">
+              ${TOKEN.symbol} is live · buy
+            </a>
+            <a href={APP_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-sky/40 px-2.5 py-1 text-sky hover:bg-sky/10">
+              <TelegramIcon className="size-3" /> Telegram app
             </a>
           </div>
 
           {active && (
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+            <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
               <div className="overflow-hidden rounded-xl border border-line bg-[#05060a]">
                 <div className="flex items-center justify-between border-b border-line px-3 py-2 text-[11px]">
                   <span className="num text-lime">❯ tail -f crawler.log</span>
@@ -386,6 +380,10 @@ function ResultSkeleton({ running }: { running: boolean }) {
 function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => void }) {
   const st = VERDICT_STYLE[r.verdict];
   const toast = useToast();
+  // Полный разбор только от DEEP_SCAN_TIER. Поток /api/scan отдаёт всё (его же читают бот и расширение),
+  // так что здесь замок клиентский: данные в памяти браузера есть, просто не рисуются.
+  const viewer = useViewerTier();
+  const open = viewer.at(DEEP_SCAN_TIER);
   const m = r.market;
   const age = m?.ageHours === undefined ? "-" : m.ageHours < 48 ? `${m.ageHours.toFixed(1)}h` : `${Math.round(m.ageHours / 24)}d`;
   return (
@@ -400,12 +398,12 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </div>
           <div className="truncate text-xs text-muted">{r.name}</div>
           <div className="mt-1 text-sm">{r.reason}</div>
-          <SecondLook v={lookV3(r.v3)} className="mt-1.5" />
+          {open && <SecondLook v={lookV3(r.v3)} className="mt-1.5" />}
         </div>
       </div>
       {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} />}
       {r.trust && <TrustScore t={r.trust} />}
-      <SinceLastScan s={r.since} />
+      {open && <SinceLastScan s={r.since} />}
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         {[
           ["Liquidity", usd(m?.liquidityUsd)],
@@ -439,7 +437,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </>
         )}
         {r.bundles && <BundleFlag b={r.bundles} />}
-        {r.dev && <DevFlag d={r.dev} />}
+        {open && r.dev && <DevFlag d={r.dev} />}
         {r.insiders && <Flag ok={false} label={`${r.insiders.wallets} dev-funded wallet${r.insiders.wallets > 1 ? "s" : ""} · ${r.insiders.pct.toFixed(1)}%`} />}
         {r.lp && r.lp.status !== "curve" && (
           <Flag
@@ -457,14 +455,14 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
             }
           />
         )}
-        {r.operators?.operators[0] && (
+        {open && r.operators?.operators[0] && (
           <Flag
             ok={r.operators.operators[0].roles.length < 2 && r.operators.operators[0].pct < 20}
             label={`${r.operators.operators[0].basis?.length === 1 && r.operators.operators[0].basis[0] === "funder" ? "connection (shared funder)" : "operator"}: ${r.operators.operators[0].wallets} wallets · ${r.operators.operators[0].pct.toFixed(1)}% · ${r.operators.operators[0].roles.join("+")}`}
           />
         )}
-        {!!r.operators?.devSnipers && <Flag ok={false} label={`${r.operators.devSnipers} dev-funded sniper${r.operators.devSnipers > 1 ? "s" : ""}`} />}
-        {r.operators?.history && <Flag ok={r.operators.history.dumped < 3} label={`wallets seen on ${r.operators.history.tokens} other tokens · ${r.operators.history.dumped} dumped`} />}
+        {open && !!r.operators?.devSnipers && <Flag ok={false} label={`${r.operators.devSnipers} dev-funded sniper${r.operators.devSnipers > 1 ? "s" : ""}`} />}
+        {open && r.operators?.history && <Flag ok={r.operators.history.dumped < 3} label={`wallets seen on ${r.operators.history.tokens} other tokens · ${r.operators.history.dumped} dumped`} />}
         {r.snipers && (r.snipers.wallets ? <Flag ok={r.snipers.holdPct < 5} label={`${r.snipers.wallets} sniper${r.snipers.wallets > 1 ? "s" : ""} · hold ${r.snipers.holdPct.toFixed(1)}%${r.snipers.sold ? ` · ${r.snipers.sold} sold` : ""}`} /> : <Flag ok label="no snipers" />)}
         {r.evm && (
           <>
@@ -481,11 +479,23 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           </a>
         ))}
       </div>
-      <DumpProjection d={r.dump} />
-      {r.launch && <LaunchEvidence l={r.launch} chain={r.chain} />}
+      {open ? <DumpProjection d={r.dump} /> : <DumpHeadline d={r.dump} />}
+      <Link
+        href={`/scan/${r.id}#full-analysis`}
+        className="flex items-center justify-center gap-1.5 rounded-lg border border-honey/40 bg-honey/10 py-2 text-sm font-semibold text-honey hover:bg-honey/20"
+      >
+        See full analysis <ArrowRight className="size-4" />
+      </Link>
       <ShareScan id={r.id} text={shareText(r)} />
-      {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} />}
-      <FirstBuyers f={r.firstBuyers} chain={r.chain} />
+      {open ? (
+        <>
+          {r.launch && <LaunchEvidence l={r.launch} chain={r.chain} />}
+          {r.operators?.map && <BubbleMap data={r.operators.map} ops={r.operators.operators} chain={r.chain} />}
+          <FirstBuyers f={r.firstBuyers} chain={r.chain} />
+        </>
+      ) : (
+        <DeepLock sections={DEEP_SECTIONS.slice(0, 4)} />
+      )}
       {r.xray && <XRayPanel x={r.xray} />}
       {x !== undefined && <XPanel x={x} onCheck={onCheckX} />}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">

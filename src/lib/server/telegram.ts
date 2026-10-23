@@ -259,6 +259,8 @@ export function startTelegram() {
   const pub = () => import("./telegram-public");
   setInterval(() => pub().then((p) => p.checkWatches()).catch((e) => console.warn("[telegram] watchlist", (e as Error).message)), 10 * 60_000);
   setInterval(() => pub().then((p) => p.sendFollowups()).catch((e) => console.warn("[telegram] follow-ups", (e as Error).message)), 30 * 60_000);
+  // /signals: сделки сигнальных стратегий Paper Engine держателям (колбэк регистрируется в движке).
+  import("./tg-signals").then((m) => m.startSignalPush()).catch((e) => console.warn("[telegram] signals", (e as Error).message));
   setInterval(() => pub().then((p) => p.pushRadar()).catch((e) => console.warn("[telegram] radar", (e as Error).message)), 60_000);
   // /verify: ищем в сети перевод-доказательство по открытым проверкам.
   setInterval(() => import("./tg-verify").then((v) => v.checkVerifications()).catch((e) => console.warn("[telegram] verify", (e as Error).message)), 30_000);
@@ -269,6 +271,7 @@ export function startTelegram() {
       { command: "start", description: "Check a token: send an address, link or $TICKER" },
       { command: "token", description: "$CRAWLHIVE: contract, buy, buybacks" },
       { command: "verify", description: "Unlock your holder tier: no wallet connect, no signing" },
+      { command: "signals", description: "Live paper strategy signals for $CRAWLHIVE holders" },
       { command: "narratives", description: "Narrative Radar: what is starting to spread on X" },
       { command: "narrativealerts", description: "Alerts when a coin launches on a narrative" },
       { command: "support", description: "Write to the CrawlHive team" },
