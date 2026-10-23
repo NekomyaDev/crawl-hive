@@ -147,6 +147,9 @@ export const STRATEGIES: StrategyConfig[] = [
   // 23.10 ночь: контроль s6 сполз до -5.8%. Хуже него: s11 (17 сделок -9.7%, PF 0.64), s13 (16, -10.2%, PF 0.61) и быстрый s29
   // (17, -10.7%, PF 0.69), выключены. CLEAN через 30 мин (s20) единственный из CLEAN в плюсе (+2.7%, 20 сделок): даём ему частичную фиксацию.
   { id: "s43", label: "CLEAN 30m half at 2x", note: "Like S20: CLEAN, 30 min confirmation, stop -30%, sell half at +100%, then stop at entry and 30% trail on the rest, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { slPct: 30, partial: { atPct: 100, sellPct: 50, breakeven: true }, trailPct: 30, trailArmPct: 100, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  // 23.10 день: два входа держатся и без двух лучших сделок: s19 (v2 CLEAN через 10 мин, +27%, 9 сделок) и s12 (пул от $100k, +21%, 11).
+  // Скрещиваем: v2 CLEAN, подтверждение через 10 мин, пул от $50k, стоп -20% как у s12.
+  { id: "s44", label: "V2 CLEAN 10m 50k+", note: "Score v2 CLEAN, 10 min confirmation, liquidity $50k+, TP100 SL20, 24h", entry: { verdictsV2: ["CLEAN"], minLiqUsd: 50_000, delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
 // ---------- параметры симуляции ----------
