@@ -142,7 +142,7 @@ const VERDICT_ICON: Record<string, string> = { CLEAN: "🟢", OK: "🟢", RISKY:
 // Значок вердикта Larpcheck: зелёный для REAL, красный для LARP и SCAM, жёлтый для остального.
 const larpIcon = (v: string) => (/SCAM|LARP/.test(v) ? "🔴" : /REAL/.test(v) && !/PARTLY/.test(v) ? "🟢" : "🟡");
 
-function replyText(r: { symbol: string; score: number | null; verdict: string; reason: string; id: string; larp?: { verdict: string; score: number | null; headline?: string | null } }, site: string, byTick = false, from?: string) {
+function replyText(r: { symbol: string; score: number | null; verdict: string; reason: string; id: string; larp?: { verdict: string; score: number | null; headline?: string | null }; combined?: { score: number; verdict: string } | null }, site: string, byTick = false, from?: string) {
   // Монету нашли по тикеру или в био автора: пишем, откуда взяли контракт, чтобы человек мог сверить.
   const src = byTick ? `\nMost liquid $${r.symbol}: ${r.id.slice(0, 6)}…${r.id.slice(-4)}` : from ? `\nCA from @${from}'s bio: ${r.id.slice(0, 6)}…${r.id.slice(-4)}` : "";
   const head = `${VERDICT_ICON[r.verdict] ?? "⚪️"} CrawlHive: $${r.symbol} ${r.score != null ? `${r.score}/100 ` : ""}${r.verdict.replace("_", " ")}${src}`;
@@ -152,6 +152,8 @@ function replyText(r: { symbol: string; score: number | null; verdict: string; r
   let larp = "";
   if (r.larp) {
     larp = `\n\n🔍 Larpcheck: ${larpIcon(r.larp.verdict)} ${r.larp.verdict}${r.larp.score != null ? ` ${r.larp.score}/100` : ""}`;
+    // Общий вердикт CrawlHive x Larpcheck (combined-score.ts), есть только когда включён и у скана был Larpcheck.
+    if (r.combined) larp += `\n🤝 Combined: ${VERDICT_ICON[r.combined.verdict] ?? "⚪️"} ${r.combined.verdict} ${r.combined.score}/100`;
     // X считает любую ссылку за 23 символа, поэтому длинный адрес скана места не съедает.
     const linkLen = link.length - `${site}/scan/${r.id}`.length + 23;
     const room = 280 - head.length - 1 - reason.length - larp.length - linkLen - 6;
