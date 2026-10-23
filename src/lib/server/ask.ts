@@ -17,6 +17,7 @@ import { narrativeFeed } from "./narrative-radar";
 import { radarFeed } from "./radar";
 import { paperEngineStats } from "./paper-engine";
 import { withDeadline } from "./x402";
+import { askBonus } from "./referrals";
 
 export const askEnabled = () => !!process.env.ANTHROPIC_API_KEY?.trim();
 const model = () => process.env.ASK_MODEL?.trim() || "claude-opus-5-5";
@@ -80,7 +81,7 @@ const saveUsage = (u: Usage) => setMeta(USAGE_KEY, JSON.stringify(u));
 
 export function askQuota(a: AskAccess) {
   const u = usage();
-  const limit = ASK_PER_DAY[a.tier];
+  const limit = ASK_PER_DAY[a.tier] + askBonus(a.key, a.wallet); // + бонус за приглашения (referrals.ts)
   const used = u.by[a.key] ?? 0;
   return { tier: a.tier, limit, used, remaining: Math.max(0, limit - used) };
 }

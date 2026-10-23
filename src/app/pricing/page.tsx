@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { PricingClient } from "@/components/pricing-client";
 import { BurnLog } from "@/components/burn-log";
+import { InviteCard } from "@/components/invite-card";
 
 export const metadata: Metadata = {
   title: "Pricing · CrawlHive",
@@ -21,6 +22,9 @@ export default function PricingPage() {
         sub="Scanning stays free. Hold $CRAWLHIVE for Holder and Whale perks, or burn it for Pro. Every Pro payment is a public burn."
       />
       <PricingClient />
+      <div className="mt-6">
+        <InviteCard />
+      </div>
       <div className="mt-6">
         <BurnLog />
       </div>

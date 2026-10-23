@@ -10,6 +10,7 @@ import "server-only";
 import { ApiError } from "./store";
 import { memDb } from "./memory-db";
 import { TIER_LIMITS, TIER_USD, tierOf, type Tier } from "./tiers";
+import { bonusFor } from "./referrals";
 
 const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const WSOL = "So11111111111111111111111111111111111111112";
@@ -75,6 +76,9 @@ function changed() {
   import("./wallet-watch").then((m) => m.nudgeWalletWatch()).catch(() => {});
 }
 
+// Лимит кошельков: тариф плюс бонус за приглашения (referrals.ts); у чата без кошелька бонуса нет.
+const maxFor = (owner: string, tier: Tier) => TIER_LIMITS[tier].trackedWallets + bonusFor(owner).trackedWallets;
+
 // Тариф владельца: у чата без кошелька всегда free.
 async function tierFor(owner: string): Promise<Tier> {
   if (isChatOwner(owner)) return "free";
@@ -99,7 +103,7 @@ export function upgradeHint(tier: Tier): string {
 export async function trackedState(owner: string) {
   const d = need();
   const tier = await tierFor(owner);
-  const max = TIER_LIMITS[tier].trackedWallets;
+  const max = maxFor(owner, tier);
   const rows = listOf(d, owner);
   const { walletWatchEnabled } = await import("./wallet-watch");
   return {
@@ -120,7 +124,7 @@ export async function addTracked(owner: string, rawWallet: unknown, rawLabel?: u
   const wallet = String(rawWallet ?? "").trim();
   if (!SOL_RE.test(wallet)) throw new ApiError("Not a Solana wallet address. The tracker follows Solana wallets for now", 400);
   const tier = await tierFor(owner);
-  const max = TIER_LIMITS[tier].trackedWallets;
+  const max = maxFor(owner, tier);
   const rows = listOf(d, owner);
   const already = rows.some((r) => r.wallet === wallet);
   if (!already && rows.length >= max) {
@@ -149,7 +153,7 @@ export async function adoptChatList(chat: string, wallet: string) {
   if (!d) return;
   const from = listOf(d, chatOwner(chat));
   if (!from.length) return;
-  const max = TIER_LIMITS[await tierFor(wallet)].trackedWallets;
+  const max = maxFor(wallet, await tierFor(wallet));
   const have = new Set(listOf(d, wallet).map((r) => r.wallet));
   let n = have.size;
   for (const r of from) {
@@ -284,7 +288,7 @@ export async function ingestTracked(body: unknown) {
 // или с задержкой free.
 async function route(d: Db, row: TrackedRow, t: TrackedTrade) {
   const tier = await tierFor(row.owner);
-  const max = TIER_LIMITS[tier].trackedWallets;
+  const max = maxFor(row.owner, tier);
   const pos = listOf(d, row.owner).findIndex((r) => r.wallet === row.wallet);
   if (pos < 0 || pos >= max) return;
   const fresh =

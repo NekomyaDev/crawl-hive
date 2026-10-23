@@ -47,19 +47,20 @@ interface ChatPrefs {
   narr?: { on: boolean; mode: "first" | "all" }; // алерты о монетах на нарративах Narrative Radar
   burns?: boolean; // каждое подтверждённое сжигание $CRAWLHIVE
   signals?: boolean; // сделки сигнальных стратегий Paper Engine (tg-signals.ts), только Holder и выше
+  digest?: boolean; // ежедневный дайджест (tg-digest.ts); не задано: личка Holder+ включена, остальные выключены
   threads?: Partial<Record<Topic, number>>; // в группе с темами: в какую тему слать каждый вид оповещений
   alertDay?: string;
   alertCount?: number;
   fuDay?: string;
   fuCount?: number;
 }
-type Topic = "radar" | "narr" | "burns";
+type Topic = "radar" | "narr" | "burns" | "digest";
 // Тема форума запоминается там, где админ включил оповещения: Launch Radar — в 📡, нарративы — в 🔮, сжигания — в 🔥.
-const inTopic = (chat: string, kind: Topic) => {
+export const inTopic = (chat: string, kind: Topic) => {
   const t = prefs(chat).threads?.[kind];
   return t ? { message_thread_id: t } : {};
 };
-function rememberTopic(chat: string, kind: Topic, thread?: number) {
+export function rememberTopic(chat: string, kind: Topic, thread?: number) {
   if (!chat.startsWith("-")) return;
   setPrefs(chat, { threads: { ...prefs(chat).threads, [kind]: thread || undefined } });
 }
@@ -318,7 +319,7 @@ async function groupAutoscan(chat: string, msgId: number, q: string) {
   }
 }
 
-async function isAdmin(chat: string, userId?: number) {
+export async function isAdmin(chat: string, userId?: number) {
   if (!userId) return false;
   const m = await call<{ status: string }>("getChatMember", { chat_id: chat, user_id: userId }).catch(() => null);
   return m?.status === "creator" || m?.status === "administrator";
@@ -1091,8 +1092,9 @@ export async function handlePublic(m: TgMessage) {
       rememberTopic(chat, kind, m.message_thread_id);
       return kind === "radar" ? alertsMenu(chat) : kind === "narr" ? narrMenu(chat) : burnsMenu(chat);
     }
+    if (cmd === "/digest") return (await import("./tg-digest")).digestCommand(chat, arg, { userId: m.from?.id, thread: m.message_thread_id });
     if (cmd === "/start" || cmd === "/help")
-      return send(chat, "🐝 Post any Solana, Robinhood Chain, BNB Chain or Base contract address and I reply with a quick verdict.\n💬 Questions: /ask &lt;question&gt;, or tag me or reply to me with a question.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track\nAlerts into this topic: /alerts (Launch Radar) · /narrativealerts · /burns ($CRAWLHIVE burns)");
+      return send(chat, "🐝 Post any Solana, Robinhood Chain, BNB Chain or Base contract address and I reply with a quick verdict.\n💬 Questions: /ask &lt;question&gt;, or tag me or reply to me with a question.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track\nAlerts into this topic: /alerts (Launch Radar) · /narrativealerts · /burns ($CRAWLHIVE burns) · /digest (daily digest)");
     if (!cmd) {
       // Позвали бота (@бот или ответ на его сообщение) с вопросом, а не просто с адресом: отвечает Ask.
       const bot = (telegramBotName() ?? "crawlhivebot").toLowerCase();
@@ -1155,7 +1157,9 @@ export async function handlePublic(m: TgMessage) {
   if (cmd === "/narrativealerts") return narrMenu(chat);
   if (cmd === "/burns") return burnsMenu(chat);
   if (cmd === "/signals") return (await import("./tg-signals")).signalsCommand(chat, arg);
+  if (cmd === "/digest") return (await import("./tg-digest")).digestCommand(chat, arg);
   if (cmd === "/verify") return (await import("./tg-verify")).handleVerify(chat, arg);
+  if (cmd === "/invite") return (await import("./referrals")).tgInvite(chat);
   if (cmd === "/unlink") return (await import("./tg-verify")).handleUnlink(chat, arg);
   if (cmd === "/watch") return watchWallet(chat, arg);
   if (cmd === "/watchop") return watchOperator(chat, arg);
@@ -1193,6 +1197,8 @@ export async function handlePublic(m: TgMessage) {
     setPrefs(chat, { followups: on });
     return send(chat, on ? "✅ I will tell you 24 hours later whether a verdict came true." : "Follow-ups are off.");
   }
+  // Приглашение: /start ref_<код> запоминаем за чатом, дальше обычное приветствие.
+  if (cmd === "/start" && arg.startsWith("ref_")) await (await import("./referrals")).tgStart(chat, arg.slice(4));
   if (cmd === "/start" || cmd === "/help") return welcome(chat);
   const q = scanQuery(m.text);
   if (q) return doScan(chat, q);

@@ -109,6 +109,7 @@ function init(): State {
   setTimeout(() => import("./narrative-radar").then((m) => m.startNarrativeRadar()).catch((e) => console.error(e)), 3000);
   setTimeout(() => import("./x-bot").then((m) => m.startXBot()).catch((e) => console.error(e)), 5000);
   setTimeout(() => import("./wallet-watch").then((m) => m.startWalletWatch()).catch((e) => console.error(e)), 3500);
+  setTimeout(() => import("./referrals").then((m) => m.startReferrals()).catch((e) => console.error(e)), 4000);
 
   return {
     crawlers,

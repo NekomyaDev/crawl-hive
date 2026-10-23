@@ -196,6 +196,7 @@ async function checkOne(c: Challenge): Promise<boolean> {
   }
   list.splice(i, 1);
   save(list);
+  (await import("./referrals")).claimFromChat(c.chat, c.wallet); // до привязки: ref_<код> из /start этого чата
   const old = getMeta(`tg:${c.wallet}`);
   if (old && old !== c.chat) send(old, `Wallet <code>${esc(short(c.wallet))}</code> was verified by another Telegram account and is no longer linked here.`);
   setMeta(`tg:${c.wallet}`, c.chat);

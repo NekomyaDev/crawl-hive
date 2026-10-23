@@ -82,6 +82,12 @@ export function sendPhoto(chatId: string, photo: string, html: string, keyboard?
   );
 }
 
+// Подписчики на «чат заблокировал бота» (403): дайджест и прочие рассылки выключают себя для этого чата.
+const gb = globalThis as unknown as { __crawlhiveTgBlocked?: ((chat: string) => void)[] };
+export function onChatBlocked(cb: (chat: string) => void) {
+  (gb.__crawlhiveTgBlocked ??= []).push(cb);
+}
+
 function enqueue(chatId: string, job: () => Promise<unknown>) {
   const st = tg();
   st.queue = st.queue
@@ -90,6 +96,7 @@ function enqueue(chatId: string, job: () => Promise<unknown>) {
       // Пользователь заблокировал бота — отвязываем его кошельки, чтобы не долбиться впустую.
       if (e.code === 403) {
         for (const [k, v] of metaEntries("tg:")) if (v === chatId) setMeta(k, undefined);
+        for (const cb of gb.__crawlhiveTgBlocked ?? []) cb(chatId);
       } else console.error(e.message);
     })
     .then(() => new Promise((r) => setTimeout(r, 60)));
@@ -164,7 +171,7 @@ async function handleUpdate(u: {
   const chatId = String(m.chat.id);
   const [cmd0, arg] = m.text.trim().split(/\s+/, 2);
   const cmd = cmd0.replace(/@\w+$/, "");
-  if (m.chat.type === "private" && cmd === "/start" && arg && !["inline", "scan", "app"].includes(arg)) {
+  if (m.chat.type === "private" && cmd === "/start" && arg && !["inline", "scan", "app"].includes(arg) && !arg.startsWith("ref_")) {
     const st = tg();
     const link = st.codes.get(arg);
     if (!link || link.exp < Date.now()) {
@@ -172,6 +179,7 @@ async function handleUpdate(u: {
       return;
     }
     st.codes.delete(arg);
+    (await import("./referrals")).claimFromChat(chatId, link.wallet); // до привязки: ref_<код> из /start этого чата
     setMeta(`tg:${link.wallet}`, chatId);
     send(chatId, `✅ Linked wallet <code>${short(link.wallet)}</code>.\nEvery signal your crawlers find will arrive here. Send /stop to unlink.`);
     return;
@@ -271,6 +279,8 @@ export function startTelegram() {
   setInterval(() => pub().then((p) => p.pushRadar()).catch((e) => console.warn("[telegram] radar", (e as Error).message)), 60_000);
   // /verify: ищем в сети перевод-доказательство по открытым проверкам.
   setInterval(() => import("./tg-verify").then((v) => v.checkVerifications()).catch((e) => console.warn("[telegram] verify", (e as Error).message)), 30_000);
+  // /digest: ежедневный дайджест в DIGEST_HOUR_UTC (tg-digest.ts).
+  import("./tg-digest").then((m) => m.startDigest()).catch((e) => console.warn("[telegram] digest", (e as Error).message));
   setInterval(() => pub().then((p) => p.buybackReminder()).catch((e) => console.warn("[telegram] buyback", (e as Error).message)), 60_000);
   // В меню только главное: проверка токена и поддержка. Остальные команды работают, просто не мешают.
   call("setMyCommands", {
@@ -280,11 +290,13 @@ export function startTelegram() {
       { command: "token", description: "$CRAWLHIVE: contract, buy, buybacks" },
       { command: "verify", description: "Unlock your holder tier: no wallet connect, no signing" },
       { command: "signals", description: "Live paper strategy signals for $CRAWLHIVE holders" },
+      { command: "digest", description: "Daily digest: rugs caught, best signals, narratives" },
       { command: "narratives", description: "Narrative Radar: what is starting to spread on X" },
       { command: "narrativealerts", description: "Alerts when a coin launches on a narrative" },
       { command: "track", description: "Track a wallet: buy and sell alerts with a verdict. No address: Track Record" },
       { command: "untrack", description: "Stop tracking a wallet" },
       { command: "tracked", description: "Wallets you track and your plan limit" },
+      { command: "invite", description: "Invite friends: more Ask questions and tracked wallets" },
       { command: "support", description: "Write to the CrawlHive team" },
     ],
   }).catch(() => {});
