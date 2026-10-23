@@ -73,7 +73,8 @@ function notify(c: ChatMemberUpdate["chat"], lines: string[]) {
   const head = `🛡 <b>${esc(c.title ?? "group")}</b>`;
   const text = [head, ...lines].join("\n");
   for (const chat of adminRecipients()) send(chat, text);
-  console.log(`[group-watch] ${c.title ?? c.id}: ${lines[0].replace(/<[^>]+>/g, "")}`);
+  // В лог пишем всё событие, включая «кто сделал»: по логу потом разбираемся, кто кого назначил.
+  console.log(`[group-watch] ${c.title ?? c.id}: ${lines.map((l) => l.replace(/<[^>]+>/g, "")).join(" | ")}`);
 }
 
 export function onChatMember(u: ChatMemberUpdate) {
