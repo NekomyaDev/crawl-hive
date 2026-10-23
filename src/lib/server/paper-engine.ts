@@ -80,7 +80,7 @@ export interface StrategyConfig {
 const H = 60;
 const CONFIRM: EntryConfirm = { minLiqKeepPct: 80, maxDropPct: 15, maxRisePct: 60 };
 export const STRATEGIES: StrategyConfig[] = [
-  { id: "s1", label: "CLEAN hold 24h", note: "Baseline like the old page: CLEAN, no stops, sold after 24h", entry: { verdicts: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s1", label: "CLEAN hold 24h", note: "Baseline like the old page: CLEAN, no stops, sold after 24h", entry: { verdicts: ["CLEAN"] }, exits: { maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   { id: "s2", label: "CLEAN TP50 SL30", note: "CLEAN, take +50%, stop -30%, max 6h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 6 * H }, sizeUsd: 100, enabled: true },
   { id: "s3", label: "CLEAN runner", note: "CLEAN, take +100%, stop -40%, 30% trail once up 30%, max 12h", entry: { verdicts: ["CLEAN"] }, exits: { tpPct: 100, slPct: 40, trailPct: 30, trailArmPct: 30, maxHoldMin: 12 * H }, sizeUsd: 100, enabled: false },
   { id: "s4", label: "CLEAN+OK scalp", note: "CLEAN or OK, take +30%, stop -20%, max 2h", entry: { verdicts: ["CLEAN", "OK"] }, exits: { tpPct: 30, slPct: 20, maxHoldMin: 2 * H }, sizeUsd: 100, enabled: false },
@@ -149,6 +149,8 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s43", label: "CLEAN 30m half at 2x", note: "Like S20: CLEAN, 30 min confirmation, stop -30%, sell half at +100%, then stop at entry and 30% trail on the rest, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { slPct: 30, partial: { atPct: 100, sellPct: 50, breakeven: true }, trailPct: 30, trailArmPct: 100, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // 23.10 день: два входа держатся и без двух лучших сделок: s19 (v2 CLEAN через 10 мин, +27%, 9 сделок) и s12 (пул от $100k, +21%, 11).
   // Скрещиваем: v2 CLEAN, подтверждение через 10 мин, пул от $50k, стоп -20% как у s12.
+  // 23.10 день: базовый s1 (CLEAN без стопов, 24 ч) 17 сделок -61.5% (5 рагов, остальные по времени) против -5.6% у s6:
+  // урок усвоен, без стопов нельзя; выключен, его 36 открытых позиций доживут свои сутки.
   { id: "s44", label: "V2 CLEAN 10m 50k+", note: "Score v2 CLEAN, 10 min confirmation, liquidity $50k+, TP100 SL20, 24h", entry: { verdictsV2: ["CLEAN"], minLiqUsd: 50_000, delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
