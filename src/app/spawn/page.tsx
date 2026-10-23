@@ -16,7 +16,8 @@ import { useConfig } from "@/lib/client/use-config";
 import { SpecEditor } from "@/components/crawler/spec-editor";
 import { defaultSpec, normalizeSpec } from "@/lib/spec";
 import { TEMPLATES } from "@/lib/templates";
-import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
+import { spawnWithBurn, spawnWithTokenBurn, type BurnStep, type SpawnBurnQuote } from "@/lib/client/burn";
+import { useApi } from "@/lib/client/use-api";
 import { TIERS, TIER_ORDER, TIER_PRICE_SOL, CREDITS } from "@/lib/economy";
 import { computeReputation } from "@/lib/reputation";
 import { CHAINS, NARRATIVES, SOURCES, type Chain, type Narrative, type PublicCrawler, type Source, type Tier, type CrawlerSpec } from "@/lib/types";
@@ -68,6 +69,7 @@ export default function SpawnPage() {
   const [step, setStep] = useState<BurnStep | null>(null);
   const [dripping, setDripping] = useState(false);
   const [template, setTemplate] = useState<string | undefined>();
+  const [payWith, setPayWith] = useState<"sol" | "burn">("sol");
   const cfg = useConfig();
 
   // ?template=<id> с маркетплейса: подставляем настройки готового краулера, дальше их можно менять.
@@ -89,7 +91,11 @@ export default function SpawnPage() {
   // Кошелёк EVM платит в ETH на Robinhood Chain, Phantom — в SOL.
   const eth = mode === "evm" && !!cfg?.eth;
   const onchain = payment !== "simulated" || eth;
-  const paying = eth || payment === "sol"; // перевод (SOL или ETH), а не сжигание
+  // Вместо SOL можно сжечь $CRAWLHIVE со скидкой: только Phantom и только если сервер включил (cfg.spawnBurn).
+  const burnOption = !eth && payment === "sol" && !!cfg?.spawnBurn && mode !== "evm" && mode !== "demo";
+  const tokenBurn = burnOption && payWith === "burn";
+  const { data: bq, error: bqError } = useApi<SpawnBurnQuote>(tokenBurn ? `/api/spawn/burn?tier=${tier}` : null, 60_000);
+  const paying = eth || payment === "sol"; // основной путь — перевод (SOL или ETH), а не сжигание
   // Кошелёк Robinhood Chain: по умолчанию и краулер смотрит туда же (если не выбран шаблон).
   useEffect(() => {
     if (eth && !template) setChain((c) => (c === "solana" ? "robinhood" : c));
@@ -111,7 +117,10 @@ export default function SpawnPage() {
   const price = priceOf(tier);
   // Демо-кошелёк платить не может; кошелёк EVM — только если оплата в ETH включена.
   const needPhantom = onchain && !!address && (mode === "demo" || (mode === "evm" && !cfg?.eth));
-  const enough = balance >= price + (eth ? 0.00005 : payment === "sol" ? 0.00002 : 0);
+  // При сжигании $CRAWLHIVE баланс токена проверяет сервер при сборке транзакции; здесь только SOL на комиссию.
+  const enough = tokenBurn
+    ? (info?.onchain?.sol ?? 0) >= 0.00002
+    : balance >= price + (eth ? 0.00005 : payment === "sol" ? 0.00002 : 0);
   // Стартовая репутация: точность ещё нейтральная, uptime 100%, данных ноль, плюс вклад сожжённого.
   const startRep = computeReputation({
     burned: t.burn,
@@ -148,9 +157,15 @@ export default function SpawnPage() {
     const payload = { name, source, chain, narratives, targets, frequencyMin: effFreq, tier, spec, template };
     setBusy(true);
     try {
-      const c = onchain ? await spawnWithBurn(payload, setStep) : await post<PublicCrawler>("/api/crawlers", payload);
+      const c = tokenBurn
+        ? await spawnWithTokenBurn(payload, setStep)
+        : onchain
+          ? await spawnWithBurn(payload, setStep)
+          : await post<PublicCrawler>("/api/crawlers", payload);
       toast(
-        paying
+        tokenBurn
+          ? `🔥 Burned ${fmt(bq?.tokens ?? 0)} $CRAWLHIVE on-chain. ${c.name} joined the swarm.`
+          : paying
           ? `Paid ${price} ${unit} on-chain. ${c.name} joined the swarm.`
           : `🔥 Burned ${fmt(price)} ${unit}${onchain ? " on-chain" : ""}. ${c.name} joined the swarm.`,
       );
@@ -181,7 +196,7 @@ export default function SpawnPage() {
   const STEP_LABEL: Record<BurnStep, string> = {
     prepare: "Preparing transaction…",
     sign: eth ? "Confirm in your wallet…" : "Confirm in Phantom…",
-    confirm: paying ? "Verifying payment on-chain…" : "Verifying burn on-chain…",
+    confirm: paying && !tokenBurn ? "Verifying payment on-chain…" : "Verifying burn on-chain…",
   };
 
   return (
@@ -381,6 +396,36 @@ export default function SpawnPage() {
                 <Row k="Starting rep" v={`${startRep}`} />
               </dl>
 
+              {burnOption && (
+                <div className="mt-4">
+                  <Segmented
+                    options={["sol", "burn"] as const}
+                    value={payWith}
+                    onChange={setPayWith}
+                    render={(o) => (o === "sol" ? "Pay with SOL" : `Burn $CRAWLHIVE (${cfg?.spawnBurn?.discountPct ?? 20}% off)`)}
+                  />
+                </div>
+              )}
+
+              {tokenBurn ? (
+                <div className="mt-4 rounded-lg border border-coral/30 bg-coral/5 p-3">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm">You burn</span>
+                    <span className="num text-xl font-bold text-coral">
+                      {bq?.enabled && bq.tokens ? fmt(bq.tokens) : "…"} <span className="text-xs">$CRAWLHIVE</span>
+                    </span>
+                  </div>
+                  {bq?.enabled && (
+                    <div className="num mt-1 text-right text-[11px] text-muted">
+                      about ${bq.usd?.toFixed(2)} instead of ${bq.usdFull?.toFixed(2)} ({fmtPrice(price)} SOL)
+                    </div>
+                  )}
+                  {bqError && <div className="mt-1 text-right text-[11px] text-danger">{bqError}</div>}
+                  <p className="mt-2 text-[11px] text-muted">
+                    The tokens are burned forever from your wallet: nobody receives them, not even the project. The exact amount is fixed for 10 minutes when you press the button.
+                  </p>
+                </div>
+              ) : (
               <div className="mt-4 rounded-lg border border-honey/30 bg-honey/5 p-3">
                 <div className="flex items-baseline justify-between">
                   <span className="text-sm">{paying ? "You pay" : "You burn"}</span>
@@ -400,6 +445,7 @@ export default function SpawnPage() {
                   </button>
                 )}
               </div>
+              )}
 
               {problems.length > 0 && address && (
                 <ul className="mt-3 space-y-0.5 text-[11px] text-muted">
@@ -413,7 +459,7 @@ export default function SpawnPage() {
                 size="lg"
                 className="mt-4 w-full"
                 onClick={spawn}
-                disabled={busy || (!!address && (problems.length > 0 || !enough || needPhantom))}
+                disabled={busy || (!!address && (problems.length > 0 || !enough || needPhantom || (tokenBurn && !bq?.enabled)))}
               >
                 <Flame className="size-4" />
                 {!address
@@ -424,7 +470,9 @@ export default function SpawnPage() {
                       ? STEP_LABEL[step]
                       : busy
                         ? "Burning…"
-                        : paying
+                        : tokenBurn
+                          ? `Burn ${bq?.tokens ? fmt(bq.tokens) : "…"} $CRAWLHIVE & spawn`
+                          : paying
                           ? `Pay ${price} ${unit} & spawn`
                           : `Burn ${fmt(price)} & spawn`}
               </Button>
@@ -443,7 +491,16 @@ export default function SpawnPage() {
                       .
                     </>
                   )}
-                  {!eth && payment === "sol" && (
+                  {tokenBurn && (
+                    <>
+                      Real SPL burn of $CRAWLHIVE on <span className="text-fg">{cfg.cluster}</span> from your own wallet, signed in Phantom. 100% of it is burned, it shows in the public burn log. Buys {cfg.termDays} days of crawling; renew any time. Burns are final, signals are not financial advice:{" "}
+                      <Link href="/terms" className="underline hover:text-fg">
+                        terms
+                      </Link>
+                      .
+                    </>
+                  )}
+                  {!eth && !tokenBurn && payment === "sol" && (
                     <>
                       Real SOL payment on <span className="text-fg">{cfg.cluster}</span>
                       {cfg.solBurned ? (

@@ -31,6 +31,7 @@ import type { PaymentMode, PublicConfig, Tier } from "../types";
 import { ApiError, demoNetwork, isSigUsed, markSigUsed, termDays, type SpawnInput } from "./store";
 import { telegramBotName } from "./telegram";
 import { ethConfig } from "./robinhood";
+import { SPAWN_BURN_DISCOUNT_PCT } from "../burn-math";
 
 export const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const INTENT_TTL_MS = 10 * 60_000;
@@ -77,6 +78,13 @@ function solPrices(): Record<Tier, number> {
   return { larva: v[0], worker: v[1], soldier: v[2], queen: v[3] };
 }
 
+// Спавн и продление можно оплатить сжиганием $CRAWLHIVE со скидкой: только когда основной путь платит реальным SOL
+// (PAYMENT_TOKEN=sol), токен запущен (TOKEN_MINT) и сеть mainnet, где у токена есть рыночная цена.
+export function spawnBurnEnabled() {
+  const e = env();
+  return e.payment === "sol" && !!e.mint && e.cluster === "mainnet-beta";
+}
+
 export function isOnchain() {
   return env().payment !== "simulated";
 }
@@ -102,6 +110,7 @@ export function publicConfig(): PublicConfig {
     demoNetwork: demoNetwork(),
     telegramBot: telegramBotName(),
     eth: ethConfig(),
+    spawnBurn: spawnBurnEnabled() ? { discountPct: SPAWN_BURN_DISCOUNT_PCT, mint: e.mint! } : null,
   };
 }
 

@@ -77,3 +77,61 @@ export function spawnWithBurn(payload: SpawnPayload, onStep: (s: BurnStep) => vo
 export function renewWithPayment(crawlerId: string, onStep: (s: BurnStep) => void): Promise<PublicCrawler> {
   return payOnchain(`/api/crawlers/${crawlerId}/renew`, {}, `/api/crawlers/${crawlerId}/renew/confirm`, onStep);
 }
+
+// ---------- оплата сжиганием $CRAWLHIVE со скидкой (вместо SOL) ----------
+// Сервер собирает versioned-транзакцию burnChecked + memo котировки, Phantom подписывает и отправляет, сервер проверяет.
+// Токены сжигаются из кошелька пользователя целиком, никому не переводятся.
+
+export interface SpawnBurnQuote {
+  enabled: boolean;
+  tokens?: number;
+  usd?: number;
+  usdFull?: number;
+  sol?: number;
+  discountPct?: number;
+}
+
+interface BurnBuilt {
+  quoteId: string;
+  transaction: string;
+  tokens: number;
+  usd: number;
+}
+
+async function payWithTokenBurn<T>(url: string, payload: Record<string, unknown>, onStep: (s: BurnStep) => void): Promise<T> {
+  const provider = phantom();
+  if (!provider) throw new Error("Burning needs Phantom: open the site in a browser with Phantom");
+  onStep("prepare");
+  const b = await post<BurnBuilt>(url, { ...payload, action: "build" });
+  onStep("sign");
+  const { VersionedTransaction } = await import("@solana/web3.js");
+  const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(b.transaction), (c) => c.charCodeAt(0)));
+  let signature: string;
+  try {
+    signature = (await provider.signAndSendTransaction(tx)).signature;
+  } catch (e) {
+    const msg = (e as Error).message ?? "";
+    throw new Error(cancelled(msg) ? "You cancelled in Phantom. Nothing was burned." : `Phantom: ${msg}`);
+  }
+  onStep("confirm");
+  // Транзакция доходит до RPC сервера не сразу: пробуем засчитать несколько раз.
+  let last: Error | null = null;
+  for (let i = 0; i < 6; i++) {
+    try {
+      return await post<T>(url, { action: "confirm", quoteId: b.quoteId, signature });
+    } catch (e) {
+      last = e as Error;
+      if (!/not found yet/i.test(last.message)) break;
+      await new Promise((r) => setTimeout(r, 4000));
+    }
+  }
+  throw last ?? new Error("Could not confirm the burn");
+}
+
+export function spawnWithTokenBurn(payload: SpawnPayload, onStep: (s: BurnStep) => void): Promise<PublicCrawler> {
+  return payWithTokenBurn("/api/spawn/burn", { ...payload }, onStep);
+}
+
+export function renewWithTokenBurn(crawlerId: string, onStep: (s: BurnStep) => void): Promise<PublicCrawler> {
+  return payWithTokenBurn(`/api/crawlers/${crawlerId}/renew/burn`, {}, onStep);
+}

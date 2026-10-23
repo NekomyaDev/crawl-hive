@@ -1,10 +1,16 @@
 "use client";
-// Публичный журнал сжиганий за Pro и вызовы Brain: кто, сколько, зачем, ссылка на транзакцию.
+// Публичный журнал сжиганий за Pro, вызовы Brain, спавн и продление краулеров: кто, сколько, зачем, ссылка на транзакцию.
 import { useApi } from "@/lib/client/use-api";
 import { fmt, short } from "@/lib/utils";
 import { Card } from "./ui/card";
 
-type Log = { count: number; total: number; items: { sig: string; wallet: string; purpose: "pro" | "brain"; tokens: number; calls?: number; at: number }[] };
+type Log = { count: number; total: number; items: { sig: string; wallet: string; purpose: "pro" | "brain" | "spawn" | "renew"; tokens: number; calls?: number; crawlerId?: string; tier?: string; at: number }[] };
+
+function What({ b }: { b: Log["items"][number] }) {
+  if (b.purpose === "pro") return <span className="font-bold text-pink">Pro</span>;
+  if (b.purpose === "brain") return <span className="font-bold text-teal">{fmt(b.calls ?? 0)} Brain calls</span>;
+  return <span className="font-bold text-honey">{b.purpose === "spawn" ? "a crawler spawn" : "a crawler renewal"}</span>;
+}
 
 const ago = (t: number) => {
   const m = Math.round((Date.now() - t) / 60000);
@@ -16,7 +22,7 @@ export function BurnLog({ limit = 12, compact = false }: { limit?: number; compa
   return (
     <Card className="p-5 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="text-lg font-bold">🔥 Burned for Pro &amp; Brain</div>
+        <div className="text-lg font-bold">🔥 Burned for Pro, Brain &amp; crawlers</div>
         <div className="text-muted">
           {data ? (
             <>
@@ -33,7 +39,7 @@ export function BurnLog({ limit = 12, compact = false }: { limit?: number; compa
           <div key={b.sig} className="flex items-center gap-3 py-2">
             <span className="num w-24 shrink-0 text-xs text-muted">{short(b.wallet)}</span>
             <span className="flex-1">
-              <span className="num font-semibold">{fmt(Math.round(b.tokens))}</span> <span className="text-muted">for</span> {b.purpose === "pro" ? <span className="font-bold text-pink">Pro</span> : <span className="font-bold text-teal">{fmt(b.calls ?? 0)} Brain calls</span>}
+              <span className="num font-semibold">{fmt(Math.round(b.tokens))}</span> <span className="text-muted">for</span> <What b={b} />
             </span>
             <a href={`https://solscan.io/tx/${b.sig}`} target="_blank" rel="noreferrer" className="text-xs text-honey hover:underline">
               tx

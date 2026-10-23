@@ -241,6 +241,7 @@ export interface PublicConfig {
   demoNetwork: boolean; // показывается ли симулированная демо-сеть рядом с живыми краулерами
   telegramBot: string | null; // username бота для доставки сигналов, если настроен
   eth: EthConfig | null; // оплата в ETH на Robinhood Chain кошельком EVM, если включена
+  spawnBurn: { discountPct: number; mint: string } | null; // спавн и продление сжиганием $CRAWLHIVE со скидкой, если включено
 }
 
 // Оплата в ETH на Robinhood Chain: куда и сколько, плюс параметры сети для wallet_addEthereumChain.

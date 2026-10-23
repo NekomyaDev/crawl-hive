@@ -1,5 +1,5 @@
 // Оплата сжиганием: человек сам сжигает $CRAWLHIVE из своего кошелька (подписывает в Phantom), а мы засчитываем
-// Pro на PRO_DAYS дней или вызовы Brain. Ключа и токенов у сервера нет: он только собирает неподписанную транзакцию
+// Pro на PRO_DAYS дней или вызовы Brain. Спавн и продление краулера сжиганием живут в spawn-burn.ts и пишут в тот же журнал. Ключа и токенов у сервера нет: он только собирает неподписанную транзакцию
 // (burnChecked + memo с номером котировки) и потом проверяет её в сети. Публичный журнал — meta "userBurns",
 // котировки — meta "burnQuotes" (переживают перезапуск: сжёг, а сервер перезагрузился, засчитать всё равно можно),
 // кредиты Brain — meta "brainCredits".
@@ -9,10 +9,11 @@ import { ComputeBudgetProgram, PublicKey, TransactionInstruction, TransactionMes
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, createBurnCheckedInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { readMint, type MintInfo } from "./buyback-tx";
 import { publicConfig, rpcConnection } from "./solana";
-import { ApiError, getMeta, setMeta } from "./store";
+import { ApiError, getMeta, isSigUsed, markSigUsed, setMeta } from "./store";
+import { scanBurn } from "../burn-math";
 import { PRO_DAYS, TIER_USD, grantPro, tokenPriceUsd, usedBurnSig } from "./tiers";
 
-export type BurnPurpose = "pro" | "brain";
+export type BurnPurpose = "pro" | "brain" | "spawn" | "renew";
 const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const QUOTE_TTL = 10 * 60_000;
 const SLIP = 0.97; // принимаем сжигание от 97% котировки
@@ -28,9 +29,21 @@ const read = <T,>(key: string, d: T): T => {
 };
 
 // ---------- журнал ----------
-export interface UserBurn { sig: string; wallet: string; purpose: BurnPurpose; tokens: number; calls?: number; days?: number; at: number }
+export interface UserBurn { sig: string; wallet: string; purpose: BurnPurpose; tokens: number; calls?: number; days?: number; crawlerId?: string; tier?: string; at: number }
 interface Ledger { items: UserBurn[]; totalRaw: string; count: number }
 const ledger = () => read<Ledger>("userBurns", { items: [], totalRaw: "0", count: 0 });
+// Сигнатура уже засчитана где угодно: журнал, подписки Pro или общий список оплат (store.usedSigs).
+export const burnSigCounted = (sig: string) => isSigUsed(sig) || usedBurnSig(sig) || ledger().items.some((x) => x.sig === sig);
+// Запись в публичный журнал и в общий список использованных подписей. Проверку сжигания делает вызывающий.
+export function recordUserBurn(rec: UserBurn, raw: bigint) {
+  const l = ledger();
+  l.items = [rec, ...l.items].slice(0, 300);
+  l.totalRaw = (BigInt(l.totalRaw) + raw).toString();
+  l.count += 1;
+  setMeta("userBurns", JSON.stringify(l));
+  // Журнал хранит только последние 300 записей, поэтому подпись ещё и в бессрочный список store.usedSigs.
+  markSigUsed(rec.sig);
+}
 export function userBurnStats() {
   const l = ledger();
   return { count: l.count, total: Number(BigInt(l.totalRaw)) / 1e6, items: l.items.slice(0, 30) };
@@ -48,7 +61,7 @@ export function spendBrainCredit(wallet: string) {
 }
 
 // ---------- котировки ----------
-interface Quote { id: string; wallet: string; purpose: BurnPurpose; raw: string; calls?: number; exp: number }
+interface Quote { id: string; wallet: string; purpose: "pro" | "brain"; raw: string; calls?: number; exp: number }
 const quotes = () => read<Record<string, Quote>>("burnQuotes", {});
 function saveQuote(q: Quote) {
   const all = quotes();
@@ -58,7 +71,7 @@ function saveQuote(q: Quote) {
 }
 
 let mintCache: { at: number; m: MintInfo } | undefined;
-async function mint() {
+export async function burnMint() {
   const addr = process.env.TOKEN_MINT?.trim();
   if (!addr) throw new ApiError("$CRAWLHIVE is not launched yet", 400);
   if (publicConfig().cluster !== "mainnet-beta") throw new ApiError("Burn payments work on mainnet only", 400);
@@ -67,7 +80,7 @@ async function mint() {
 }
 
 // Сколько токенов сжечь за покупку по текущей цене.
-export async function burnPrice(purpose: BurnPurpose, calls?: number) {
+export async function burnPrice(purpose: "pro" | "brain", calls?: number) {
   const p = await tokenPriceUsd();
   if (!p) throw new ApiError("Token price is unavailable right now, try again in a minute", 503);
   const usd = purpose === "pro" ? TIER_USD.pro : ((calls ?? 0) / 1000) * brainUsdPer1k();
@@ -79,7 +92,7 @@ export async function buildUserBurn(wallet: string, purpose: unknown, callsRaw?:
   if (purpose !== "pro" && purpose !== "brain") throw new ApiError("Unknown purchase");
   const calls = purpose === "brain" ? Number(callsRaw) : undefined;
   if (purpose === "brain" && !BRAIN_PACKS.includes(calls as (typeof BRAIN_PACKS)[number])) throw new ApiError(`Pick a pack: ${BRAIN_PACKS.join(", ")} calls`);
-  const { addr, m } = await mint();
+  const { addr, m } = await burnMint();
   const { tokens, usd, priceUsd } = await burnPrice(purpose, calls);
   const raw = BigInt(tokens) * BigInt(10) ** BigInt(m.decimals);
   const conn = rpcConnection();
@@ -106,36 +119,27 @@ export async function buildUserBurn(wallet: string, purpose: unknown, callsRaw?:
 
 // Проверка по самой транзакции: успех, подпись кошелька, burn/burnChecked нашего минта программой токена от его имени.
 export function burnedBy(tx: ParsedTransactionWithMeta, wallet: string, mintAddr: string, program: string): bigint {
-  if (tx.meta?.err) throw new ApiError("Transaction failed on-chain");
-  const keys = tx.transaction.message.accountKeys;
-  const k = keys.find((x) => x.pubkey.toBase58() === wallet);
-  if (!k?.signer) throw new ApiError("Transaction was not signed by your wallet", 403);
-  const all = [...tx.transaction.message.instructions, ...(tx.meta?.innerInstructions ?? []).flatMap((x) => x.instructions)];
-  let raw = BigInt(0);
-  for (const ix of all) {
-    if (!("parsed" in ix) || ix.programId.toBase58() !== program) continue;
-    const p = ix.parsed as { type?: string; info?: { mint?: string; authority?: string; multisigAuthority?: string; amount?: string; tokenAmount?: { amount?: string } } };
-    const info = p.info;
-    if ((p.type === "burn" || p.type === "burnChecked") && info?.mint === mintAddr && (info.authority ?? info.multisigAuthority) === wallet)
-      raw += BigInt(info.tokenAmount?.amount ?? info.amount ?? "0");
-  }
+  const { failed, signer, raw } = scanBurn(tx, wallet, mintAddr, program);
+  if (failed) throw new ApiError("Transaction failed on-chain");
+  if (!signer) throw new ApiError("Transaction was not signed by your wallet", 403);
   if (raw <= BigInt(0)) throw new ApiError("Transaction does not burn $CRAWLHIVE from your wallet");
   return raw;
 }
 
-const ALLOWED_PROGRAMS = [TOKEN_2022_PROGRAM_ID.toBase58(), TOKEN_PROGRAM_ID.toBase58()];
-const inflight = new Set<string>();
+export const ALLOWED_PROGRAMS = [TOKEN_2022_PROGRAM_ID.toBase58(), TOKEN_PROGRAM_ID.toBase58()];
+// Подписи, которые сейчас проверяются (общий для Pro, Brain, спавна и продления).
+export const inflight = new Set<string>();
 
 export async function confirmUserBurn(wallet: string, quoteId: unknown, signature: unknown) {
   const sig = String(signature ?? "");
   if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(sig)) throw new ApiError("Bad signature");
   const q = quotes()[String(quoteId ?? "")];
   if (!q || q.wallet !== wallet) throw new ApiError("Quote not found, start again", 404);
-  if (usedBurnSig(sig) || ledger().items.some((x) => x.sig === sig)) throw new ApiError("This burn was already counted", 409);
+  if (burnSigCounted(sig)) throw new ApiError("This burn was already counted", 409);
   if (inflight.has(sig)) throw new ApiError("Already checking this burn, wait a moment", 429);
   inflight.add(sig);
   try {
-    const { addr, m } = await mint();
+    const { addr, m } = await burnMint();
     if (!ALLOWED_PROGRAMS.includes(m.program.toBase58())) throw new ApiError("Unexpected token program", 500);
     const conn = rpcConnection();
     let tx: ParsedTransactionWithMeta | null = null;
@@ -151,7 +155,7 @@ export async function confirmUserBurn(wallet: string, quoteId: unknown, signatur
     const need = (BigInt(q.raw) * BigInt(Math.round(SLIP * 1000))) / BigInt(1000);
     if (raw < need) throw new ApiError("Burned less than the quote");
     // перечитываем: параллельный confirm той же подписи не должен засчитать дважды
-    if (usedBurnSig(sig) || ledger().items.some((x) => x.sig === sig)) throw new ApiError("This burn was already counted", 409);
+    if (burnSigCounted(sig)) throw new ApiError("This burn was already counted", 409);
     const tokens = Number(raw) / 10 ** m.decimals;
     const rec: UserBurn = { sig, wallet, purpose: q.purpose, tokens, at };
     let until: number | undefined;
@@ -164,11 +168,7 @@ export async function confirmUserBurn(wallet: string, quoteId: unknown, signatur
       setMeta("brainCredits", JSON.stringify(c));
       rec.calls = q.calls;
     }
-    const l = ledger();
-    l.items = [rec, ...l.items].slice(0, 300);
-    l.totalRaw = (BigInt(l.totalRaw) + raw).toString();
-    l.count += 1;
-    setMeta("userBurns", JSON.stringify(l));
+    recordUserBurn(rec, raw);
     const all = quotes();
     delete all[q.id];
     setMeta("burnQuotes", JSON.stringify(all));

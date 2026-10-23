@@ -18,7 +18,7 @@ import { useApi } from "@/lib/client/use-api";
 import { usePay } from "@/lib/client/use-pay";
 import { useConfig, explorerTx } from "@/lib/client/use-config";
 import { patch, post } from "@/lib/client/api";
-import { renewWithPayment, type BurnStep } from "@/lib/client/burn";
+import { renewWithPayment, renewWithTokenBurn, type BurnStep, type SpawnBurnQuote } from "@/lib/client/burn";
 import { TIERS, CREDITS } from "@/lib/economy";
 import type { CrawlerSpec, PublicCrawler, Signal } from "@/lib/types";
 import { cn, fmt, short, timeAgo, timeLeft } from "@/lib/utils";
@@ -171,9 +171,13 @@ export function CrawlerView() {
 
 // Оплаченный срок: сколько осталось и продление ещё на один срок по цене спавна тира.
 function TermCard({ c, isOwner, onRenewed }: { c: Detail; isOwner: boolean; onRenewed: () => void }) {
-  const { cfg, unit, simulated, price: priceOf, fmtPrice, signLabel } = usePay();
+  const { cfg, eth, unit, simulated, price: priceOf, fmtPrice, signLabel } = usePay();
+  const { mode } = useWallet();
   const toast = useToast();
   const [step, setStep] = useState<BurnStep | null>(null);
+  // Продление сжиганием $CRAWLHIVE со скидкой: только Phantom и только если сервер это включил.
+  const canBurn = isOwner && !!cfg?.spawnBurn && !eth && mode === "phantom";
+  const { data: bq } = useApi<SpawnBurnQuote>(canBurn ? `/api/spawn/burn?tier=${c.tier}` : null, 60_000);
   const STEP_LABEL: Record<BurnStep, string> = { prepare: "Preparing transaction…", sign: signLabel, confirm: "Checking payment on-chain…" };
   const expired = c.expiresAt! <= Date.now();
   const soon = !expired && c.expiresAt! - Date.now() < 3 * 86400_000;
@@ -184,6 +188,18 @@ function TermCard({ c, isOwner, onRenewed }: { c: Detail; isOwner: boolean; onRe
       if (simulated) await post(`/api/crawlers/${c.id}/renew`, {});
       else await renewWithPayment(c.id, setStep);
       toast(`Renewed for ${cfg?.termDays ?? 30} more days`);
+      onRenewed();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setStep(null);
+    }
+  };
+
+  const renewBurn = async () => {
+    try {
+      await renewWithTokenBurn(c.id, setStep);
+      toast(`🔥 Burned. Renewed for ${cfg?.termDays ?? 30} more days`);
       onRenewed();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -212,6 +228,16 @@ function TermCard({ c, isOwner, onRenewed }: { c: Detail; isOwner: boolean; onRe
             <RefreshCw className={cn("size-4", step && "animate-spin")} />
             {step ? STEP_LABEL[step] : `Renew ${cfg?.termDays ?? 30} days${price !== undefined ? ` · ${fmtPrice(price)} ${unit}` : ""}`}
           </Button>
+        )}
+        {canBurn && bq?.enabled && (
+          <>
+            <Button className="w-full" variant="outline" onClick={renewBurn} disabled={!!step}>
+              🔥 Burn {fmt(bq.tokens ?? 0)} $CRAWLHIVE ({bq.discountPct}% off)
+            </Button>
+            <p className="text-[11px] text-muted">
+              About ${bq.usd?.toFixed(2)} instead of ${bq.usdFull?.toFixed(2)}. The tokens are burned forever, nobody receives them. The exact amount is fixed when you press the button.
+            </p>
+          </>
         )}
         {!!c.renewals?.length && <div className="text-xs text-muted">Renewed {c.renewals.length}×</div>}
       </div>
