@@ -48,8 +48,9 @@ const TRUSTED: Record<string, string> = {
   shieldy_bot: "Shieldy",
   grouphelpbot: "GroupHelp",
   crawlhivebot: "CrawlHive",
+  raidar: "Raidar",
 };
-const BRANDS = ["safeguard", "safe guard", "rose", "combot", "shieldy", "grouphelp", "crawlhive", "crawl hive", "trending", "verify", "captcha"];
+const BRANDS = ["safeguard", "safe guard", "saveguard", "save guard", "rose", "combot", "shieldy", "grouphelp", "crawlhive", "crawl hive", "raidar", "trending", "verify", "captcha"];
 const trusted = () => {
   const extra = (process.env.GROUP_WATCH_TRUSTED_BOTS ?? "").split(",").map((x) => x.trim().toLowerCase().replace(/^@/, "")).filter(Boolean);
   return new Set([...Object.keys(TRUSTED), ...extra]);
