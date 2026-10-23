@@ -9,6 +9,7 @@ import { bestPairs, type PairInfo } from "./crawl/dexscreener";
 import { kvGet, kvSet, memDb } from "./memory-db";
 import type { ScanResult, Verdict } from "./scan";
 import type { VerdictV2 } from "./score-v2";
+import { normalizeUserConfig, USER_FAST_SLIP_PCT, USER_SIZE_USD } from "../user-strategy-config";
 
 // ---------- стратегии ----------
 
@@ -168,6 +169,10 @@ const REENTRY_MS = 24 * 3600_000; // тот же токен той же стра
 const BUNDLE_PCT = 5;
 const CACHE_MS = 30_000;
 const PENDING_GRACE_MS = 10 * 60_000; // ожидание старше delayMin + 10 мин (не было цены) выкидываем
+// Личные стратегии холдеров (Strategy builder): id вида u<число>, у стратегий проекта s<число>, не пересекаются.
+// Общий потолок открытых позиций и ожиданий всех личных стратегий вместе, чтобы пользователи не раздули движок.
+const USER_MAX_OPEN_TOTAL = 400;
+const USER_CACHE_MS = 60_000;
 
 export const paperEnabled = () => process.env.PAPER_ENGINE !== "0";
 
@@ -363,6 +368,11 @@ function db() {
         symbol TEXT NOT NULL, verdict TEXT NOT NULL, score INTEGER, reason TEXT NOT NULL, signal_at INTEGER NOT NULL, at INTEGER NOT NULL,
         signal_price REAL NOT NULL, price REAL, signal_liq REAL NOT NULL, liq REAL);
       CREATE INDEX IF NOT EXISTS paper_skips_st ON paper_skips (strategy, token, signal_at);
+      -- Личные стратегии холдеров: config это JSON UserStrategyConfig (user-strategy-config.ts). AUTOINCREMENT:
+      -- id удалённой стратегии не достанется новой, иначе её сделки приклеились бы к чужой.
+      CREATE TABLE IF NOT EXISTS user_strategies (id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, name TEXT NOT NULL,
+        config TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS user_strategies_owner ON user_strategies (owner);
     `);
     // Минимум цены и время пика/минимума: по истории (замер раз в 10 мин) не видно, что было раньше, тейк или стоп.
     for (const sql of [
@@ -386,7 +396,7 @@ function db() {
 }
 
 const slip = (size: number, liq: number) => Math.min(SLIP_CAP, liq > 0 ? size / liq : SLIP_CAP);
-const extraSlip = (strategy: string) => (STRATEGIES.find((x) => x.id === strategy)?.fast?.extraSlipPct ?? 0) / 100;
+const extraSlip = (strategy: string) => (strategyOf(strategy)?.fast?.extraSlipPct ?? 0) / 100;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const startedAt = () => {
   const d = memDb();
@@ -417,7 +427,91 @@ function emitPaper(e: PaperEvent) {
       }
     });
 }
-const labelOf = (id: string) => STRATEGIES.find((x) => x.id === id)?.label ?? id;
+const labelOf = (id: string) => strategyOf(id)?.label ?? id;
+
+// ---------- личные стратегии холдеров (Strategy builder) ----------
+// Строки user_strategies превращаются в обычные StrategyConfig и идут через те же matches/exitFor, что и стратегии
+// проекта. Размер фиксированный ($100), подтверждение стандартное CONFIRM, быстрые +3% на сторону. Только бумага.
+
+export const isUserStrategy = (id: string) => /^u\d+$/.test(id);
+export const userStrategyId = (rowId: number) => `u${rowId}`;
+export interface UserStrategyRow {
+  id: number;
+  owner: string;
+  name: string;
+  config: string;
+  enabled: number;
+  created_at: number;
+}
+export interface UserStrategy extends StrategyConfig {
+  owner: string;
+  createdAt: number;
+}
+
+function toUserStrategy(r: UserStrategyRow): UserStrategy {
+  let raw: unknown = {};
+  try {
+    raw = JSON.parse(r.config);
+  } catch {
+    // битый JSON: нормализация даст безопасный конфиг, а без вердиктов стратегия всё равно выключена ниже
+  }
+  const c = normalizeUserConfig(raw);
+  const delay = c.delayMin || undefined;
+  return {
+    id: userStrategyId(r.id),
+    label: r.name,
+    note: "",
+    owner: r.owner,
+    createdAt: r.created_at,
+    entry: { verdicts: c.verdicts, verdictsV2: c.verdictsV2, verdictsV3: c.verdictsV3, minLiqUsd: c.minLiqUsd, maxLiqUsd: c.maxLiqUsd, noPumpFun: c.noPumpFun, delayMin: delay, confirm: delay ? CONFIRM : undefined },
+    exits: { tpPct: c.tpPct, slPct: c.slPct, trailPct: c.trailPct, trailArmPct: c.trailArmPct, partial: c.partial, maxHoldMin: c.maxHoldMin },
+    sizeUsd: USER_SIZE_USD,
+    // Без фильтра по вердикту стратегия купила бы всё подряд: такую не включаем, даже если в базе enabled.
+    enabled: !!r.enabled && !!(c.verdicts || c.verdictsV2 || c.verdictsV3),
+    fast: c.fast ? { extraSlipPct: USER_FAST_SLIP_PCT } : undefined,
+  };
+}
+
+// Кэш на USER_CACHE_MS, сброс при каждой правке из API. ok=false: последняя загрузка упала, тогда тик не закрывает
+// позиции личных стратегий как «removed» только из-за того, что их не оказалось в списке.
+const uhost = globalThis as unknown as { __crawlhiveUserStrats?: { at: number; list: UserStrategy[]; ok: boolean } };
+function loadUserStrategies() {
+  const c = uhost.__crawlhiveUserStrats;
+  if (c && Date.now() - c.at < USER_CACHE_MS) return c;
+  const d = db();
+  let next: { at: number; list: UserStrategy[]; ok: boolean };
+  try {
+    const rows = d ? (d.prepare("SELECT * FROM user_strategies ORDER BY id").all() as unknown as UserStrategyRow[]) : [];
+    next = { at: Date.now(), list: rows.map(toUserStrategy), ok: !!d };
+  } catch (e) {
+    console.warn("[paper] user strategies", (e as Error).message);
+    next = { at: Date.now(), list: c?.list ?? [], ok: false };
+  }
+  uhost.__crawlhiveUserStrats = next;
+  // Тариф мог упасть (продал токены, кончился Pro): лишние стратегии выключает user-strategies.ts, не чаще раза в 10 мин.
+  if (next.list.some((x) => x.enabled))
+    import("./user-strategies")
+      .then((m) => m.enforceStrategyTierLimits())
+      .catch((e) => console.warn("[paper] user tier check", (e as Error).message));
+  return next;
+}
+// Включённые личные стратегии (all=true: и выключенные, их открытые позиции доживают по своим правилам).
+export function userStrategies(all = false): UserStrategy[] {
+  const { list } = loadUserStrategies();
+  return all ? list : list.filter((x) => x.enabled);
+}
+export function invalidateUserStrategies() {
+  uhost.__crawlhiveUserStrats = undefined;
+}
+// База движка для user-strategies.ts: та же brain.db, таблицы уже созданы.
+export const paperDb = () => db();
+function strategyOf(id: string): StrategyConfig | undefined {
+  return isUserStrategy(id) ? userStrategies(true).find((x) => x.id === id) : STRATEGIES.find((x) => x.id === id);
+}
+// Сколько сейчас занято личными стратегиями всех пользователей: позиции плюс ожидающие входы.
+function userBusyTotal(d: NonNullable<ReturnType<typeof db>>) {
+  return (d.prepare("SELECT (SELECT COUNT(*) FROM paper_positions WHERE strategy LIKE 'u%') + (SELECT COUNT(*) FROM paper_pending WHERE strategy LIKE 'u%') AS n").get() as { n: number }).n;
+}
 
 // ---------- вход: зовётся из radar.ts, когда вердикт готов ----------
 
@@ -431,8 +525,12 @@ export function paperOnSignal(r: ScanResult) {
   if (!d) return;
   const now = Date.now();
   const fj = JSON.stringify(f);
-  for (const s of STRATEGIES) {
+  const users = userStrategies();
+  let userBusy = users.length ? userBusyTotal(d) : 0;
+  for (const s of [...STRATEGIES, ...users]) {
     if (!s.enabled || !matches(s.entry, f, r.chain, r.id)) continue;
+    const user = isUserStrategy(s.id);
+    if (user && userBusy >= USER_MAX_OPEN_TOTAL) continue;
     // Лимит считаем вместе с ожидающими: иначе к моменту входа у стратегии окажется больше MAX_OPEN.
     const busy = d.prepare("SELECT (SELECT COUNT(*) FROM paper_positions WHERE strategy = ?) + (SELECT COUNT(*) FROM paper_pending WHERE strategy = ?) AS n").get(s.id, s.id) as { n: number };
     if (busy.n >= MAX_OPEN) continue;
@@ -447,10 +545,12 @@ export function paperOnSignal(r: ScanResult) {
       ).run(s.id, r.id, r.chain, r.symbol, f.verdict, f.score, now, price, liq, fj);
       console.log(`[paper] wait ${s.id} $${r.symbol} ${r.chain} ${f.verdict} ${s.entry.delayMin}m, scan $${price} liq $${Math.round(liq)}`);
       cache = null;
+      if (user) userBusy++;
       continue;
     }
     // В сделке пишем v1, как и в признаках: стратегии заведены на нём.
     openPosition(s, { token: r.id, chain: r.chain, symbol: r.symbol, verdict: f.verdict, score: f.score }, price, liq, fj, now);
+    if (user) userBusy++;
   }
 }
 
@@ -464,7 +564,8 @@ function openPosition(s: StrategyConfig, c: { token: string; chain: string; symb
   ).run(s.id, c.token, c.chain, c.symbol, c.verdict, c.score, now, price, s.sizeUsd, units, liq, price, now, price, liq, now, features);
   cache = null;
   console.log(`[paper] open ${s.id} $${c.symbol} ${c.chain} ${c.verdict}${c.score != null ? ` ${c.score}` : ""} at $${price} liq $${Math.round(liq)}`);
-  emitPaper({ kind: "open", strategy: s.id, label: s.label, token: c.token, chain: c.chain, symbol: c.symbol, verdict: c.verdict, score: c.score, price, liq, features, at: now });
+  // Личные стратегии наружу (Telegram и прочие подписчики) не уходят: это не сигналы проекта.
+  if (!isUserStrategy(s.id)) emitPaper({ kind: "open", strategy: s.id, label: s.label, token: c.token, chain: c.chain, symbol: c.symbol, verdict: c.verdict, score: c.score, price, liq, features, at: now });
 }
 
 // ---------- подтверждение отложенного входа ----------
@@ -516,6 +617,8 @@ function resolvePending(q: PendingRow, s: StrategyConfig | undefined, pair: Pair
   const d = db()!;
   const open = d.prepare("SELECT COUNT(*) AS n FROM paper_positions WHERE strategy = ?").get(s.id) as { n: number };
   if (open.n >= MAX_OPEN) return skipPending(q, "full", now, price, liq);
+  if (isUserStrategy(s.id) && (d.prepare("SELECT COUNT(*) AS n FROM paper_positions WHERE strategy LIKE 'u%'").get() as { n: number }).n >= USER_MAX_OPEN_TOTAL)
+    return skipPending(q, "full", now, price, liq);
   let f: Features | null = null;
   try {
     f = JSON.parse(q.features) as Features;
@@ -562,7 +665,7 @@ function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: n
     throw e;
   }
   console.log(`[paper] close ${p.strategy} $${p.symbol} ${reason} ${t.net >= 0 ? "+" : ""}${t.net.toFixed(1)}% ($${pnl.toFixed(2)}) after ${Math.round((now - p.entry_at) / 60_000)}m`);
-  emitPaper({ kind: "close", strategy: p.strategy, label: labelOf(p.strategy), token: p.token, chain: p.chain, symbol: p.symbol, reason, netPct: r2(t.net), pnl: r2(pnl), at: now });
+  if (!isUserStrategy(p.strategy)) emitPaper({ kind: "close", strategy: p.strategy, label: labelOf(p.strategy), token: p.token, chain: p.chain, symbol: p.symbol, reason, netPct: r2(t.net), pnl: r2(pnl), at: now });
 }
 
 // Частичная продажа по текущему замеру с теми же издержками, что и полный выход; позиция остаётся открытой.
@@ -601,10 +704,14 @@ export async function paperTick(fastOnly = false) {
   s.busy = true;
   try {
     const now = Date.now();
-    const byId = new Map(STRATEGIES.map((x) => [x.id, x]));
-    const open = (d.prepare("SELECT * FROM paper_positions").all() as unknown as PosRow[]).filter((p) => !fastOnly || byId.get(p.strategy)?.fast);
+    const users = loadUserStrategies();
+    const byId = new Map<string, StrategyConfig>([...STRATEGIES, ...users.list].map((x) => [x.id, x]));
+    // Список личных стратегий не загрузился: их позиции и ожидания в этот тик не трогаем, а не закрываем как «removed».
+    const known = (id: string) => users.ok || !isUserStrategy(id) || byId.has(id);
+    const open = (d.prepare("SELECT * FROM paper_positions").all() as unknown as PosRow[]).filter((p) => known(p.strategy) && (!fastOnly || byId.get(p.strategy)?.fast));
     // Ожидающие входы, чьё время пришло (или стратегию убрали): цены для них берём тем же запросом, что и для позиций.
     const pending = (fastOnly ? [] : (d.prepare("SELECT * FROM paper_pending").all() as unknown as PendingRow[])).filter((q) => {
+      if (!known(q.strategy)) return false;
       const s = byId.get(q.strategy);
       return !s?.enabled || !s.entry.delayMin || now >= q.signal_at + s.entry.delayMin * 60_000;
     });
@@ -687,14 +794,15 @@ export function startPaperEngine() {
   // Один таймер на оба тика: два setInterval совпадают по фазе, и занятый быстрый тик съедал бы минутный.
   // Полный тик раз в SAMPLE_MS, между ними быстрые; полный, попавший на занятый движок, переносится на следующий шаг.
   const every = SAMPLE_MS / FAST_MS;
-  const fast = STRATEGIES.some((x) => x.enabled && x.fast);
+  // Быстрые стратегии проекта постоянны, а личные появляются и пропадают: проверяем на каждом шаге (список в кэше).
+  const fastProject = STRATEGIES.some((x) => x.enabled && x.fast);
   let step = 0;
   let fullDue = true;
   setInterval(() => {
     if (++step % every === 0) fullDue = true;
     if (st().busy) return;
     const full = fullDue;
-    if (!full && !fast) return;
+    if (!full && !fastProject && !userStrategies().some((x) => x.fast)) return;
     fullDue = false;
     paperTick(!full).catch((e) => console.warn(full ? "[paper]" : "[paper] fast", (e as Error).message));
   }, FAST_MS);
@@ -714,120 +822,163 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 // Нереализованный итог открытой позиции: как если бы продали по последнему замеру прямо сейчас.
 const markPnl = (p: PosRow) => (p.banked ?? 0) + p.units * p.last_price * Math.max(0, 1 - slip(p.size, p.last_liq) - extraSlip(p.strategy)) * (1 - FEE) - p.size;
 
+type SkipCount = { strategy: string; reason: SkipReason; n: number };
+
+// Сводка одной стратегии: общая для таблицы лидеров проекта и для личных стратегий (userStrategyStats).
+function strategyStats(id: string, cfg: StrategyConfig | undefined, ts: TradeRow[], op: PosRow[], pending: number, skipRows: SkipCount[]) {
+  const rets = ts.map((t) => t.net_pct);
+  const wins = ts.filter((t) => t.pnl > 0);
+  const gain = wins.reduce((a, t) => a + t.pnl, 0);
+  const loss = -ts.filter((t) => t.pnl < 0).reduce((a, t) => a + t.pnl, 0);
+  // Кривая и просадка по реализованному P&L в порядке закрытия.
+  let eq = 0;
+  let peak = 0;
+  let dd = 0;
+  const curve: [number, number][] = [];
+  for (const t of ts) {
+    eq += t.pnl;
+    peak = Math.max(peak, eq);
+    dd = Math.max(dd, peak - eq);
+    curve.push([t.exit_at, r2(eq)]);
+  }
+  const step = Math.ceil(curve.length / 200) || 1;
+  const reasons: Partial<Record<ExitReason, number>> = {};
+  for (const t of ts) reasons[t.reason] = (reasons[t.reason] ?? 0) + 1;
+  // Устойчивость: на мемах итог часто делает одна монета. Итог без лучшей и без двух лучших сделок, доля лучшей
+  // сделки в прибыли и 95% интервал среднего показывают, преимущество это или везение.
+  const byPnl = ts.map((t) => t.pnl).sort((a, b) => b - a);
+  const mean = rets.length ? rets.reduce((a, b) => a + b, 0) / rets.length : 0;
+  const sd = rets.length > 1 ? Math.sqrt(rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length - 1)) : 0;
+  const half = rets.length >= 5 ? (1.96 * sd) / Math.sqrt(rets.length) : null;
+  return {
+    id,
+    label: cfg?.label ?? id,
+    note: cfg?.note ?? "Removed strategy, old trades kept",
+    enabled: !!cfg?.enabled,
+    entry: cfg?.entry ?? null,
+    exits: cfg?.exits ?? null,
+    sizeUsd: cfg?.sizeUsd ?? 100,
+    trades: ts.length,
+    open: op.length,
+    delayMin: cfg?.entry.delayMin ?? null,
+    pending,
+    // Сколько сигналов подтверждение отсеяло, по причинам (liq: пул вытащили, drop: упала, ran: убежала вверх).
+    skipped: Object.fromEntries(skipRows.filter((x) => x.strategy === id).map((x) => [x.reason, x.n])) as Partial<Record<SkipReason, number>>,
+    wins: wins.length,
+    winRate: ts.length ? r1((wins.length / ts.length) * 100) : null,
+    pnl: r2(eq),
+    openPnl: r2(op.reduce((a, p) => a + markPnl(p), 0)),
+    invested: r2(ts.reduce((a, t) => a + t.size, 0)),
+    avgRet: rets.length ? r1(rets.reduce((a, b) => a + b, 0) / rets.length) : null,
+    medianRet: rets.length ? r1(median(rets)!) : null,
+    profitFactor: loss > 0 ? Math.round((gain / loss) * 100) / 100 : null, // null: убыточных сделок нет (или сделок нет)
+    maxDrawdown: r2(dd),
+    avgHoldMin: ts.length ? Math.round(ts.reduce((a, t) => a + (t.exit_at - t.entry_at), 0) / ts.length / 60_000) : null,
+    reasons,
+    partials: ts.filter((t) => (t as TradeRow & { partial_at?: number | null }).partial_at).length,
+    pnlExBest: ts.length >= 2 ? r2(eq - byPnl[0]) : null,
+    pnlExTop2: ts.length >= 3 ? r2(eq - byPnl[0] - byPnl[1]) : null,
+    bestShare: gain > 0 && byPnl[0] > 0 ? r1((byPnl[0] / gain) * 100) : null,
+    avgRetLo: half == null ? null : r1(mean - half),
+    avgRetHi: half == null ? null : r1(mean + half),
+    curve: curve.filter((_, i) => i % step === 0 || i === curve.length - 1),
+  };
+}
+
+const openView = (p: PosRow) => ({
+  id: p.id,
+  strategy: p.strategy,
+  token: p.token,
+  chain: p.chain,
+  symbol: p.symbol,
+  verdict: p.verdict,
+  score: p.score,
+  entryAt: p.entry_at,
+  entryPrice: p.entry_price,
+  lastPrice: p.last_price,
+  lastAt: p.last_at,
+  liq: Math.round(p.last_liq),
+  retPct: r1(((p.last_price - p.entry_price) / p.entry_price) * 100),
+  peakPct: r1(((p.peak_price - p.entry_price) / p.entry_price) * 100),
+  pnl: r2(markPnl(p)),
+  missing: p.missing,
+  closesAt: p.entry_at + (strategyOf(p.strategy)?.exits.maxHoldMin ?? 0) * 60_000,
+});
+const tradeView = (t: TradeRow) => ({
+  id: t.id,
+  strategy: t.strategy,
+  token: t.token,
+  chain: t.chain,
+  symbol: t.symbol,
+  verdict: t.verdict,
+  score: t.score,
+  entryAt: t.entry_at,
+  exitAt: t.exit_at,
+  grossPct: t.gross_pct,
+  netPct: t.net_pct,
+  peakPct: t.peak_pct,
+  pnl: t.pnl,
+  reason: t.reason,
+});
+
+// Таблица лидеров проекта: личные стратегии (u<число>) сюда не попадают, у них свой API (userStrategyStats).
 function compute() {
   const d = db();
   const now = Date.now();
   const base = { enabled: paperEnabled(), startedAt: startedAt(), lastTick: st().lastTick || null, fee: FEE, maxOpen: MAX_OPEN, sampleSec: SAMPLE_MS / 1000, updatedAt: now };
   if (!d) return { ...base, strategies: [], open: [], trades: [] };
-  const trades = d.prepare("SELECT * FROM paper_trades ORDER BY exit_at").all() as unknown as TradeRow[];
-  const open = d.prepare("SELECT * FROM paper_positions ORDER BY entry_at DESC").all() as unknown as PosRow[];
+  const trades = d.prepare("SELECT * FROM paper_trades WHERE strategy NOT LIKE 'u%' ORDER BY exit_at").all() as unknown as TradeRow[];
+  const open = d.prepare("SELECT * FROM paper_positions WHERE strategy NOT LIKE 'u%' ORDER BY entry_at DESC").all() as unknown as PosRow[];
   const pendingN = new Map(
-    (d.prepare("SELECT strategy, COUNT(*) AS n FROM paper_pending GROUP BY strategy").all() as unknown as { strategy: string; n: number }[]).map((x) => [x.strategy, x.n]),
+    (d.prepare("SELECT strategy, COUNT(*) AS n FROM paper_pending WHERE strategy NOT LIKE 'u%' GROUP BY strategy").all() as unknown as { strategy: string; n: number }[]).map((x) => [x.strategy, x.n]),
   );
-  const skipRows = d.prepare("SELECT strategy, reason, COUNT(*) AS n FROM paper_skips GROUP BY strategy, reason").all() as unknown as { strategy: string; reason: SkipReason; n: number }[];
+  const skipRows = d.prepare("SELECT strategy, reason, COUNT(*) AS n FROM paper_skips WHERE strategy NOT LIKE 'u%' GROUP BY strategy, reason").all() as unknown as SkipCount[];
   const ids = [...new Set([...STRATEGIES.map((s) => s.id), ...trades.map((t) => t.strategy)])];
-  const strategies = ids.map((id) => {
-    const cfg = STRATEGIES.find((s) => s.id === id);
-    const ts = trades.filter((t) => t.strategy === id);
-    const op = open.filter((p) => p.strategy === id);
-    const rets = ts.map((t) => t.net_pct);
-    const wins = ts.filter((t) => t.pnl > 0);
-    const gain = wins.reduce((a, t) => a + t.pnl, 0);
-    const loss = -ts.filter((t) => t.pnl < 0).reduce((a, t) => a + t.pnl, 0);
-    // Кривая и просадка по реализованному P&L в порядке закрытия.
-    let eq = 0;
-    let peak = 0;
-    let dd = 0;
-    const curve: [number, number][] = [];
-    for (const t of ts) {
-      eq += t.pnl;
-      peak = Math.max(peak, eq);
-      dd = Math.max(dd, peak - eq);
-      curve.push([t.exit_at, r2(eq)]);
-    }
-    const step = Math.ceil(curve.length / 200) || 1;
-    const reasons: Partial<Record<ExitReason, number>> = {};
-    for (const t of ts) reasons[t.reason] = (reasons[t.reason] ?? 0) + 1;
-    // Устойчивость: на мемах итог часто делает одна монета. Итог без лучшей и без двух лучших сделок, доля лучшей
-    // сделки в прибыли и 95% интервал среднего показывают, преимущество это или везение.
-    const byPnl = ts.map((t) => t.pnl).sort((a, b) => b - a);
-    const mean = rets.length ? rets.reduce((a, b) => a + b, 0) / rets.length : 0;
-    const sd = rets.length > 1 ? Math.sqrt(rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length - 1)) : 0;
-    const half = rets.length >= 5 ? (1.96 * sd) / Math.sqrt(rets.length) : null;
-    return {
+  const strategies = ids.map((id) =>
+    strategyStats(
       id,
-      label: cfg?.label ?? id,
-      note: cfg?.note ?? "Removed strategy, old trades kept",
-      enabled: !!cfg?.enabled,
-      entry: cfg?.entry ?? null,
-      exits: cfg?.exits ?? null,
-      sizeUsd: cfg?.sizeUsd ?? 100,
-      trades: ts.length,
-      open: op.length,
-      delayMin: cfg?.entry.delayMin ?? null,
-      pending: pendingN.get(id) ?? 0,
-      // Сколько сигналов подтверждение отсеяло, по причинам (liq: пул вытащили, drop: упала, ran: убежала вверх).
-      skipped: Object.fromEntries(skipRows.filter((x) => x.strategy === id).map((x) => [x.reason, x.n])) as Partial<Record<SkipReason, number>>,
-      wins: wins.length,
-      winRate: ts.length ? r1((wins.length / ts.length) * 100) : null,
-      pnl: r2(eq),
-      openPnl: r2(op.reduce((a, p) => a + markPnl(p), 0)),
-      invested: r2(ts.reduce((a, t) => a + t.size, 0)),
-      avgRet: rets.length ? r1(rets.reduce((a, b) => a + b, 0) / rets.length) : null,
-      medianRet: rets.length ? r1(median(rets)!) : null,
-      profitFactor: loss > 0 ? Math.round((gain / loss) * 100) / 100 : null, // null: убыточных сделок нет (или сделок нет)
-      maxDrawdown: r2(dd),
-      avgHoldMin: ts.length ? Math.round(ts.reduce((a, t) => a + (t.exit_at - t.entry_at), 0) / ts.length / 60_000) : null,
-      reasons,
-      partials: ts.filter((t) => (t as TradeRow & { partial_at?: number | null }).partial_at).length,
-      pnlExBest: ts.length >= 2 ? r2(eq - byPnl[0]) : null,
-      pnlExTop2: ts.length >= 3 ? r2(eq - byPnl[0] - byPnl[1]) : null,
-      bestShare: gain > 0 && byPnl[0] > 0 ? r1((byPnl[0] / gain) * 100) : null,
-      avgRetLo: half == null ? null : r1(mean - half),
-      avgRetHi: half == null ? null : r1(mean + half),
-      curve: curve.filter((_, i) => i % step === 0 || i === curve.length - 1),
-    };
-  });
+      STRATEGIES.find((s) => s.id === id),
+      trades.filter((t) => t.strategy === id),
+      open.filter((p) => p.strategy === id),
+      pendingN.get(id) ?? 0,
+      skipRows,
+    ),
+  );
+  return { ...base, strategies, open: open.map(openView), trades: trades.slice(-100).reverse().map(tradeView) };
+}
+
+// Личные стратегии одного владельца: та же сводка, что у проекта, плюс открытые позиции и последние сделки каждой.
+// Удалённые стратегии не показываются (их строки в user_strategies нет), старые сделки остаются в базе.
+export function userStrategyStats(owner: string) {
+  const d = db();
+  const now = Date.now();
+  const base = { enabled: paperEnabled(), lastTick: st().lastTick || null, fee: FEE, maxOpen: MAX_OPEN, userMaxOpenTotal: USER_MAX_OPEN_TOTAL, sampleSec: SAMPLE_MS / 1000, updatedAt: now };
+  const mine = userStrategies(true).filter((x) => x.owner === owner);
+  if (!d || !mine.length) return { ...base, strategies: [] };
+  const ids = mine.map((x) => x.id);
+  const q = ids.map(() => "?").join(",");
+  const trades = d.prepare(`SELECT * FROM paper_trades WHERE strategy IN (${q}) ORDER BY exit_at`).all(...ids) as unknown as TradeRow[];
+  const open = d.prepare(`SELECT * FROM paper_positions WHERE strategy IN (${q}) ORDER BY entry_at DESC`).all(...ids) as unknown as PosRow[];
+  const pendingN = new Map(
+    (d.prepare(`SELECT strategy, COUNT(*) AS n FROM paper_pending WHERE strategy IN (${q}) GROUP BY strategy`).all(...ids) as unknown as { strategy: string; n: number }[]).map((x) => [x.strategy, x.n]),
+  );
+  const skipRows = d.prepare(`SELECT strategy, reason, COUNT(*) AS n FROM paper_skips WHERE strategy IN (${q}) GROUP BY strategy, reason`).all(...ids) as unknown as SkipCount[];
   return {
     ...base,
-    strategies,
-    open: open.map((p) => ({
-      id: p.id,
-      strategy: p.strategy,
-      token: p.token,
-      chain: p.chain,
-      symbol: p.symbol,
-      verdict: p.verdict,
-      score: p.score,
-      entryAt: p.entry_at,
-      entryPrice: p.entry_price,
-      lastPrice: p.last_price,
-      lastAt: p.last_at,
-      liq: Math.round(p.last_liq),
-      retPct: r1(((p.last_price - p.entry_price) / p.entry_price) * 100),
-      peakPct: r1(((p.peak_price - p.entry_price) / p.entry_price) * 100),
-      pnl: r2(markPnl(p)),
-      missing: p.missing,
-      closesAt: p.entry_at + (STRATEGIES.find((s) => s.id === p.strategy)?.exits.maxHoldMin ?? 0) * 60_000,
-    })),
-    trades: trades.slice(-100).reverse().map((t) => ({
-      id: t.id,
-      strategy: t.strategy,
-      token: t.token,
-      chain: t.chain,
-      symbol: t.symbol,
-      verdict: t.verdict,
-      score: t.score,
-      entryAt: t.entry_at,
-      exitAt: t.exit_at,
-      grossPct: t.gross_pct,
-      netPct: t.net_pct,
-      peakPct: t.peak_pct,
-      pnl: t.pnl,
-      reason: t.reason,
-    })),
+    strategies: mine.map((cfg) => {
+      const ts = trades.filter((t) => t.strategy === cfg.id);
+      const op = open.filter((p) => p.strategy === cfg.id);
+      return {
+        ...strategyStats(cfg.id, cfg, ts, op, pendingN.get(cfg.id) ?? 0, skipRows),
+        createdAt: cfg.createdAt,
+        fast: !!cfg.fast,
+        openPositions: op.map(openView),
+        lastTrades: ts.slice(-20).reverse().map(tradeView),
+      };
+    }),
   };
 }
+export type UserStrategyStats = ReturnType<typeof userStrategyStats>;
 
 export type PaperEngineData = ReturnType<typeof compute>;
 
@@ -849,10 +1000,11 @@ export function paperExport(since = 0) {
     }
   };
   if (!d) return { enabled: paperEnabled(), startedAt: null, strategies: STRATEGIES, trades: [], open: [], pending: [], skips: [] };
-  const trades = d.prepare("SELECT * FROM paper_trades WHERE exit_at >= ? ORDER BY exit_at").all(since) as unknown as TradeRow[];
-  const open = d.prepare("SELECT * FROM paper_positions ORDER BY entry_at").all() as unknown as PosRow[];
-  const pending = d.prepare("SELECT * FROM paper_pending ORDER BY signal_at").all() as unknown as PendingRow[];
-  const skips = d.prepare("SELECT * FROM paper_skips WHERE at >= ? ORDER BY at").all(since) as unknown as Record<string, unknown>[];
+  // Только стратегии проекта: личные (u<число>) принадлежат холдерам и в публичный экспорт не идут.
+  const trades = d.prepare("SELECT * FROM paper_trades WHERE exit_at >= ? AND strategy NOT LIKE 'u%' ORDER BY exit_at").all(since) as unknown as TradeRow[];
+  const open = d.prepare("SELECT * FROM paper_positions WHERE strategy NOT LIKE 'u%' ORDER BY entry_at").all() as unknown as PosRow[];
+  const pending = d.prepare("SELECT * FROM paper_pending WHERE strategy NOT LIKE 'u%' ORDER BY signal_at").all() as unknown as PendingRow[];
+  const skips = d.prepare("SELECT * FROM paper_skips WHERE at >= ? AND strategy NOT LIKE 'u%' ORDER BY at").all(since) as unknown as Record<string, unknown>[];
   return {
     enabled: paperEnabled(),
     startedAt: startedAt(),

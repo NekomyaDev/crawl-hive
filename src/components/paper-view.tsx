@@ -225,6 +225,11 @@ export function PaperView() {
     <>
       <PageHeader
         title="Auto Trading · paper"
+        action={
+          <Link href="/paper/builder" className="inline-flex h-9 items-center rounded-lg bg-honey px-4 text-sm font-semibold text-black hover:bg-[#ffc24d]">
+            Build your own strategy
+          </Link>
+        }
         sub={`The swarm trades its own Launch Radar calls automatically with fake money, live. ${e ? e.strategies.filter((x) => x.enabled).length : "Several"} strategies run side by side, each with its own entry filter, take profit, stop loss, trailing stop and time limit. Prices are checked every ${e?.sampleSec ?? 60}s (fast strategies every 10s with extra slippage), fees and slippage are in, a rug counts as -100%. Losing strategies get switched off, new ones get added, every trade stays on the page.`}
       />
       <p className="-mt-3 mb-2 text-xs text-coral">Paper money only. No real trades are made. Not financial advice.</p>
