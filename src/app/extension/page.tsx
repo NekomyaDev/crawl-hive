@@ -37,12 +37,16 @@ export default function ExtensionPage() {
             </div>
             <div className="mt-4 text-lg font-bold">What the panel shows</div>
             <ul className="mt-2 space-y-1 text-fg/85">
+              <li>• The combined CrawlHive x Larpcheck verdict on top</li>
               <li>• Score and verdict: CLEAN, OK, RISKY or DANGER</li>
+              <li>• A red &quot;Rugged after scan&quot; banner for coins in the Rug Feed</li>
+              <li>• The dev&apos;s track record: serial rugger, mixed, clean record or new dev</li>
               <li>• The worst red flags with one-line reasons</li>
               <li>• Snipers, linked operators and dev-funded wallets</li>
               <li>• LP: burned, locked until when, or unlocked</li>
               <li>• The dev&apos;s earlier coins, one tap away</li>
               <li>• A second opinion from Larpcheck on the project</li>
+              <li>• One tap to the token&apos;s history and to Ask CrawlHive</li>
             </ul>
           </Card>
           <Card className="p-5 text-sm">

@@ -60,7 +60,7 @@ function Linked({ text, open }: { text: string; open?: (url: string) => void }) 
   return <>{parts}</>;
 }
 
-export function AskChat({ headers, openLink, compact = false, refreshKey }: { headers?: () => Record<string, string>; openLink?: (url: string) => void; compact?: boolean; refreshKey?: unknown }) {
+export function AskChat({ headers, openLink, compact = false, refreshKey, prefillFromUrl = false }: { headers?: () => Record<string, string>; openLink?: (url: string) => void; compact?: boolean; refreshKey?: unknown; prefillFromUrl?: boolean }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [q, setQ] = useState("");
@@ -82,6 +82,13 @@ export function AskChat({ headers, openLink, compact = false, refreshKey }: { he
       off = true;
     };
   }, [hdrs, refreshKey]);
+
+  // /ask?q=... (ссылка из расширения): вопрос только подставляем в поле, отправляет человек сам.
+  useEffect(() => {
+    if (!prefillFromUrl) return;
+    const v = new URLSearchParams(window.location.search).get("q")?.trim();
+    if (v) setQ(v.slice(0, MAX_CHARS));
+  }, [prefillFromUrl]);
 
   // Фигурные скобки обязательны: в новом Chrome scrollIntoView возвращает Promise, а эффект не должен ничего возвращать.
   useEffect(() => {
@@ -264,7 +271,7 @@ export function AskView() {
         }
         sub="Ask in plain words. The answer uses only CrawlHive data: token scans, Brain memory of wallets and devs, Track Record, Narrative Radar and Launch Radar. Free: 3 questions a day, Holder 20, Pro 40, Whale 60."
       />
-      <AskChat refreshKey={`${address}:${signedIn}`} />
+      <AskChat refreshKey={`${address}:${signedIn}`} prefillFromUrl />
     </>
   );
 }

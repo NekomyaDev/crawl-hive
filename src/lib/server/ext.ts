@@ -3,6 +3,7 @@
 // DexScreener — и отдаём короткий вердикт для плашки. Скан общий с сайтом: тот же кэш, тот же лимит по IP.
 import "server-only";
 import { runScan, type ScanResult } from "./scan";
+import { safeCombinedScore } from "./combined-score";
 import { ApiError } from "./store";
 
 const CHAIN_HINT: [RegExp, string][] = [
@@ -75,6 +76,8 @@ export async function extVerdict(input: { url?: string; q?: string; chain?: stri
     history: r.operators?.history ?? null,
     trust: r.trust ?? null,
     larp: r.larp ? { verdict: r.larp.verdict, score: r.larp.score, url: r.larp.url } : null,
+    // «CrawlHive x Larpcheck» для верха плашки (расширение 1.2); старые сканы без поля досчитываем, как scan-brief.ts.
+    combined: r.combined ?? safeCombinedScore(r, r.larp) ?? null,
     lp: r.lp ? { status: r.lp.status, lockedPct: r.lp.lockedPct, unlockAt: r.lp.unlockAt ?? null, locker: r.lp.locker ?? null } : null,
     dev: r.dev ? { creator: r.dev.creator, launched: r.dev.launched, graduated: r.dev.graduated } : null,
     url: `https://crawlhive.xyz/scan/${r.id}`,

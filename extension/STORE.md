@@ -12,15 +12,18 @@ Stop switching tabs to check a memecoin. CrawlHive puts the swarm's safety verdi
 
 Open a token page and a small panel shows up in the corner:
 
+• The combined CrawlHive x Larpcheck verdict on top: on-chain risk plus a check for fake projects
 • Score and verdict: CLEAN, OK, RISKY or DANGER
+• A red "Rugged after scan" banner when the token rugged or dumped after our scan
+• The dev's track record: serial rugger, mixed, clean record or new dev, with how many of their coins rugged
 • The worst red flags, each with a one-line reason
 • Snipers: who bought in the first seconds and what they still hold
 • Operators: holders, snipers and dev-funded wallets that share a funder, merged into one owner
 • LP: burned, locked until a date, or unlocked
 • The dev's earlier coins and how they ended, one tap away
 • Compact by default: score, verdict and the worst red flags, the rest one tap away
-• What changed since the last scan and a mini map of who holds the token
-• One click to the full scan on crawlhive.xyz
+• What changed since the last scan
+• One click to the full scan, the token's history and Ask CrawlHive on crawlhive.xyz (holders get the full analysis there: bubble map, first buyers, full dev history)
 
 Works for tokens on Solana, BNB Chain, Robinhood Chain and Base. The list of supported sites is on crawlhive.xyz/extension.
 
@@ -34,10 +37,10 @@ Not financial advice. Memecoins are extremely risky.
 
 **Permission justifications:**
 - `storage`: remembers whether the panel is collapsed.
-- Host permission `https://crawlhive.xyz/*`: fetches the verdict for the token in the page URL.
+- Host permission `https://crawlhive.xyz/*`: fetches the verdict for the token in the page URL, the dev's track record and the public rug feed.
 - Content scripts on the listed sites: read the page URL to find the token address and draw the panel.
 
-**Data usage:** Does not collect personally identifiable information, health, financial, authentication, personal communications, location, web history or user activity. The page URL of supported token pages is sent to crawlhive.xyz only to return the verdict.
+**Data usage:** Does not collect personally identifiable information, health, financial, authentication, personal communications, location, web history or user activity. The page URL of supported token pages is sent to crawlhive.xyz only to return the verdict. The dev address from that verdict is sent to crawlhive.xyz to look up the dev's track record. The public rug feed is downloaded as is, nothing is sent with it.
 
 **Privacy policy URL:** https://crawlhive.xyz/extension/privacy
 
@@ -45,6 +48,10 @@ Not financial advice. Memecoins are extremely risky.
 
 
 **Note (Oct 19, rejection Yellow Argon, keyword spam):** do not list third-party site names in the description, summary, popup or promo images. Keep the list of supported sites on crawlhive.xyz/extension only.
+
+## What's new in 1.2.0 (paste into the store "What's new" / version notes if asked)
+
+Combined CrawlHive x Larpcheck verdict at the top of the panel. A red "Rugged after scan" banner when the token shows up in the CrawlHive Rug Feed. The dev's track record right in the panel: serial rugger, mixed, clean record or new dev, with a line like "3 of 4 coins rugged". New links to the token's history and to Ask CrawlHive with the token already filled in. The bubble map, first buyers and full dev history now live in the full analysis for holders on crawlhive.xyz, one tap away from the panel.
 
 ## What's new in 1.1.0 (paste into the store "What's new" / version notes if asked)
 
