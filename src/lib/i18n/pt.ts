@@ -12,6 +12,7 @@ export const pt: Dict = {
   "nav.track": "Histórico",
   "nav.rugs": "Feed de rugs",
   "nav.paper": "Trading automático",
+  "nav.arena": "Arena de crawlers",
   "nav.hunt": "Caçador de gemas",
   "nav.replay": "Replay de gemas e rugs",
   "nav.extension": "Extensão",

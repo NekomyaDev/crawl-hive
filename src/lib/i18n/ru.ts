@@ -12,6 +12,7 @@ export const ru: Dict = {
   "nav.track": "Точность",
   "nav.rugs": "Лента рагов",
   "nav.paper": "Автотрейдинг",
+  "nav.arena": "Арена краулеров",
   "nav.hunt": "Охота за гемами",
   "nav.replay": "Реплей гемов и рагов",
   "nav.extension": "Расширение",

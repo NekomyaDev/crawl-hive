@@ -216,3 +216,21 @@ body:has([data-tg-app]) main { padding: 0 !important; }
 @keyframes bm-flow { to { stroke-dashoffset: -24; } }
 .bm-flow { animation: bm-flow 1.2s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .bm-node, .bm-flow { animation: none; } }
+
+/* Crawler Arena: краулер покачивается на дорожке, искры при прибыльном закрытии, череп при руге, кольцо при покупке.
+   Для reduced motion анимаций и движения по дорожке нет; на телефоне без покачивания. */
+@keyframes arena-bob { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-2px) rotate(4deg); } }
+@keyframes arena-spark { from { transform: translate(0, 0) scale(1); opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(0.3); opacity: 0; } }
+@keyframes arena-puff { 0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(-50%, -36px) scale(1.5); opacity: 0; } }
+@keyframes arena-ping { from { transform: scale(0.6); opacity: 0.8; } to { transform: scale(2.4); opacity: 0; } }
+.arena-bob { animation: arena-bob 1.3s ease-in-out infinite; transform-origin: 50% 60%; }
+.arena-spark { animation: arena-spark 0.9s ease-out forwards; }
+.arena-puff { animation: arena-puff 1.4s ease-out forwards; }
+.arena-ping { animation: arena-ping 0.9s ease-out forwards; }
+.arena-run { transition: left 1.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (max-width: 639px) { .arena-bob { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .arena-bob, .arena-spark, .arena-puff, .arena-ping { animation: none; }
+  .arena-spark, .arena-ping { display: none; }
+  .arena-run { transition: none; }
+}

@@ -40,6 +40,8 @@ function db(): Db | null {
       CREATE INDEX IF NOT EXISTS referrals_pending ON referrals (qualified_at, checked_at);
       CREATE TABLE IF NOT EXISTS ref_seen (wallet TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID;
       CREATE TABLE IF NOT EXISTS ref_tg (chat TEXT PRIMARY KEY, code TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID;
+      -- Перк чемпиона Crawler Arena (arena.ts): строка на выигранный раунд, действует до until.
+      CREATE TABLE IF NOT EXISTS arena_perks (wallet TEXT NOT NULL, round TEXT NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (wallet, round)) WITHOUT ROWID;
     `);
     ready = true;
   }
@@ -236,13 +238,42 @@ export function bonusFor(wallet: string | null | undefined): { ask: number; trac
   }
 }
 
+// ---------- перк чемпиона Crawler Arena ----------
+// Победитель раунда арены получает +ARENA_ASK вопросов Ask в сутки на ARENA_DAYS дней. Тот же принцип, что у
+// приглашений: только лимиты продукта, без денег. Несколько побед подряд не складываются, срок идёт от последней.
+export const ARENA_ASK = 10;
+export const ARENA_DAYS = 7;
+
+// Зовёт arena.ts при подведении итогов. Повторный вызов за тот же раунд ничего не меняет.
+export function grantArenaPerk(wallet: string, round: string, from = Date.now()) {
+  const d = db();
+  if (!d) return null;
+  const until = from + ARENA_DAYS * 86400_000;
+  d.db.prepare("INSERT OR IGNORE INTO arena_perks (wallet, round, until) VALUES (?, ?, ?)").run(wallet, round, until);
+  return until;
+}
+
+// Перк активен до этого момента (null: нет активного). Синхронно и без сети.
+export function arenaPerkUntil(wallet: string | null | undefined): number | null {
+  if (!wallet || wallet.startsWith("chat:")) return null;
+  try {
+    const row = db()?.db.prepare("SELECT MAX(until) AS u FROM arena_perks WHERE wallet = ?").get(wallet) as { u: number | null } | undefined;
+    return row?.u && row.u > Date.now() ? row.u : null;
+  } catch {
+    return null;
+  }
+}
+export const arenaBonus = (wallet: string | null | undefined) => (arenaPerkUntil(wallet) ? ARENA_ASK : 0);
+
 // Надбавка Ask по ключу счётчика: кошелёк, а для бота (tg:<id> без кошелька) лучшая среди кошельков его лички.
+// Приглашения (bonusFor) плюс перк чемпиона арены (arenaBonus).
+const askFor = (wallet: string) => bonusFor(wallet).ask + arenaBonus(wallet);
 export function askBonus(key: string, wallet: string | null): number {
-  if (wallet) return bonusFor(wallet).ask;
+  if (wallet) return askFor(wallet);
   if (!key.startsWith("tg:")) return 0;
   const chat = key.slice(3);
   let best = 0;
-  for (const [k, c] of metaEntries("tg:")) if (c === chat) best = Math.max(best, bonusFor(k.slice(3)).ask);
+  for (const [k, c] of metaEntries("tg:")) if (c === chat) best = Math.max(best, askFor(k.slice(3)));
   return best;
 }
 

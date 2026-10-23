@@ -12,6 +12,7 @@ export const tr: Dict = {
   "nav.track": "Başarı Geçmişi",
   "nav.rugs": "Rug Akışı",
   "nav.paper": "Otomatik Trading",
+  "nav.arena": "Crawler Arenası",
   "nav.hunt": "Gem Avcısı",
   "nav.replay": "Gem ve Rug Tekrarı",
   "nav.extension": "Eklenti",

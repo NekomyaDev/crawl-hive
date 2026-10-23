@@ -128,6 +128,22 @@ export function describeUserConfig(c: UserStrategyConfig): string {
   return parts.filter(Boolean).join(" · ");
 }
 
+// Короткое описание без чисел: для Crawler Arena, пока раунд идёт. Видно, на какой оценке и каким типом выходов
+// играет стратегия, но не пороги, тейки и стопы (их arena.ts раскрывает после конца раунда).
+export function teaseUserConfig(c: UserStrategyConfig): string {
+  const scores = [c.verdicts && "v1", c.verdictsV2 && "v2", c.verdictsV3 && "v3"].filter(Boolean).join("+");
+  const exits = [c.tpPct !== undefined && "take profit", c.slPct !== undefined && "stop loss", c.partial && "partial exit", c.trailPct !== undefined && "trailing stop"].filter(Boolean);
+  const parts = [
+    `score ${scores || "v1"}`,
+    (c.minLiqUsd || c.maxLiqUsd) && "liquidity filter",
+    c.noPumpFun && "no pump.fun",
+    c.delayMin && "confirmed entry",
+    exits.length ? exits.join(", ") : "time exit only",
+    c.fast && "fast fills",
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
 // Пресеты формы: повторяют лучшие на сегодня стратегии проекта (s12, s19, скальп на CLEAN и OK).
 export const USER_PRESETS: { id: string; name: string; note: string; config: UserStrategyConfig }[] = [
   {

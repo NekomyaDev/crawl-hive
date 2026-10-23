@@ -375,6 +375,13 @@ function db() {
       CREATE TABLE IF NOT EXISTS user_strategies (id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, name TEXT NOT NULL,
         config TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS user_strategies_owner ON user_strategies (owner);
+      -- Crawler Arena (arena.ts): заявка на раунд = замороженная копия личной стратегии. config это снимок JSON
+      -- UserStrategyConfig на момент входа, движок гоняет его под id a<число> до end_at и до подведения итогов.
+      CREATE TABLE IF NOT EXISTS arena_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, round TEXT NOT NULL, owner TEXT NOT NULL, source TEXT NOT NULL,
+        name TEXT NOT NULL, config TEXT NOT NULL, color TEXT NOT NULL, start_at INTEGER NOT NULL, end_at INTEGER NOT NULL, created_at INTEGER NOT NULL,
+        settled_at INTEGER, final_pnl REAL, final_trades INTEGER, final_open INTEGER, rank INTEGER);
+      CREATE UNIQUE INDEX IF NOT EXISTS arena_entries_round_owner ON arena_entries (round, owner);
+      CREATE INDEX IF NOT EXISTS arena_entries_live ON arena_entries (settled_at);
     `);
     // Минимум цены и время пика/минимума: по истории (замер раз в 10 мин) не видно, что было раньше, тейк или стоп.
     for (const sql of [
@@ -419,8 +426,8 @@ export function onPaperEvent(cb: (e: PaperEvent) => void) {
   paperHooks().add(cb);
   return () => void paperHooks().delete(cb);
 }
-function emitPaper(e: PaperEvent) {
-  for (const cb of paperHooks())
+function emitTo(set: Set<(e: PaperEvent) => void>, e: PaperEvent) {
+  for (const cb of set)
     queueMicrotask(() => {
       try {
         cb(e);
@@ -428,6 +435,20 @@ function emitPaper(e: PaperEvent) {
         console.warn("[paper] hook failed", (err as Error).message);
       }
     });
+}
+const emitPaper = (e: PaperEvent) => emitTo(paperHooks(), e);
+// Стратегии арены (a<число>) шлют события только сюда: их слушает arena.ts (лента и SSE /api/arena/stream).
+// Публичные подписчики onPaperEvent (tg-signals, дайджест) их не видят.
+const arenaHooks = globalThis as unknown as { __crawlhiveArenaPaperHooks?: Set<(e: PaperEvent) => void> };
+const arenaPaperHooks = () => (arenaHooks.__crawlhiveArenaPaperHooks ??= new Set());
+export function onArenaPaperEvent(cb: (e: PaperEvent) => void) {
+  arenaPaperHooks().add(cb);
+  return () => void arenaPaperHooks().delete(cb);
+}
+// Куда уходит событие позиции: проект наружу, арена только в arena.ts, личные стратегии никуда.
+function emitFor(id: string, e: PaperEvent) {
+  if (isArenaStrategy(id)) emitTo(arenaPaperHooks(), e);
+  else if (!isUserStrategy(id)) emitPaper(e);
 }
 const labelOf = (id: string) => strategyOf(id)?.label ?? id;
 
@@ -448,46 +469,87 @@ export interface UserStrategyRow {
 export interface UserStrategy extends StrategyConfig {
   owner: string;
   createdAt: number;
+  endAt?: number; // только у копий арены: после этого момента новых входов нет
 }
 
-function toUserStrategy(r: UserStrategyRow): UserStrategy {
+// Конфиг из базы (JSON UserStrategyConfig) в StrategyConfig движка: общий для личных стратегий и копий арены.
+function fromUserConfig(json: string): { c: ReturnType<typeof normalizeUserConfig>; part: Pick<StrategyConfig, "entry" | "exits" | "sizeUsd" | "fast">; valid: boolean } {
   let raw: unknown = {};
   try {
-    raw = JSON.parse(r.config);
+    raw = JSON.parse(json);
   } catch {
     // битый JSON: нормализация даст безопасный конфиг, а без вердиктов стратегия всё равно выключена ниже
   }
   const c = normalizeUserConfig(raw);
   const delay = c.delayMin || undefined;
   return {
-    id: userStrategyId(r.id),
-    label: r.name,
-    note: "",
-    owner: r.owner,
-    createdAt: r.created_at,
-    entry: { verdicts: c.verdicts, verdictsV2: c.verdictsV2, verdictsV3: c.verdictsV3, minLiqUsd: c.minLiqUsd, maxLiqUsd: c.maxLiqUsd, noPumpFun: c.noPumpFun, delayMin: delay, confirm: delay ? CONFIRM : undefined },
-    exits: { tpPct: c.tpPct, slPct: c.slPct, trailPct: c.trailPct, trailArmPct: c.trailArmPct, partial: c.partial, maxHoldMin: c.maxHoldMin },
-    sizeUsd: USER_SIZE_USD,
+    c,
+    part: {
+      entry: { verdicts: c.verdicts, verdictsV2: c.verdictsV2, verdictsV3: c.verdictsV3, minLiqUsd: c.minLiqUsd, maxLiqUsd: c.maxLiqUsd, noPumpFun: c.noPumpFun, delayMin: delay, confirm: delay ? CONFIRM : undefined },
+      exits: { tpPct: c.tpPct, slPct: c.slPct, trailPct: c.trailPct, trailArmPct: c.trailArmPct, partial: c.partial, maxHoldMin: c.maxHoldMin },
+      sizeUsd: USER_SIZE_USD,
+      fast: c.fast ? { extraSlipPct: USER_FAST_SLIP_PCT } : undefined,
+    },
     // Без фильтра по вердикту стратегия купила бы всё подряд: такую не включаем, даже если в базе enabled.
-    enabled: !!r.enabled && !!(c.verdicts || c.verdictsV2 || c.verdictsV3),
-    fast: c.fast ? { extraSlipPct: USER_FAST_SLIP_PCT } : undefined,
+    valid: !!(c.verdicts || c.verdictsV2 || c.verdictsV3),
   };
 }
 
+function toUserStrategy(r: UserStrategyRow): UserStrategy {
+  const { part, valid } = fromUserConfig(r.config);
+  return { id: userStrategyId(r.id), label: r.name, note: "", owner: r.owner, createdAt: r.created_at, ...part, enabled: !!r.enabled && valid };
+}
+
+// ---------- копии стратегий для Crawler Arena (arena.ts) ----------
+// Заявка на раунд хранит снимок конфига: правка или удаление исходной u-стратегии её не трогают. Движок гоняет
+// снимок под id a<число> с теми же правилами, размером и издержками, что у личных стратегий. Пока итоги раунда не
+// подведены, копия в списке: до end_at входит в сделки, после ждёт подведения. Подвели (settled_at): копии в списке
+// нет, и её оставшиеся позиции закрываются по рынку с причиной «removed», как у удалённой личной стратегии.
+export const isArenaStrategy = (id: string) => /^a\d+$/.test(id);
+export const arenaStrategyId = (rowId: number) => `a${rowId}`;
+// Личные (u) и копии арены (a): не входят в публичную таблицу, экспорт и сигналы, считаются в общий потолок позиций.
+export const isPrivateStrategy = (id: string) => isUserStrategy(id) || isArenaStrategy(id);
+const PRIVATE_SQL = "(strategy LIKE 'u%' OR strategy LIKE 'a%')";
+const PROJECT_SQL = "strategy NOT LIKE 'u%' AND strategy NOT LIKE 'a%'";
+export interface ArenaEntryRow {
+  id: number;
+  round: string;
+  owner: string;
+  source: string;
+  name: string;
+  config: string;
+  color: string;
+  start_at: number;
+  end_at: number;
+  created_at: number;
+  settled_at: number | null;
+  final_pnl: number | null;
+  final_trades: number | null;
+  final_open: number | null;
+  rank: number | null;
+}
+function toArenaStrategy(r: ArenaEntryRow, now: number): UserStrategy {
+  const { part, valid } = fromUserConfig(r.config);
+  return { id: arenaStrategyId(r.id), label: r.name, note: "", owner: r.owner, createdAt: r.created_at, endAt: r.end_at, ...part, enabled: valid && now < r.end_at };
+}
+const arenaOpen = (s: StrategyConfig, now: number) => !isArenaStrategy(s.id) || now < ((s as UserStrategy).endAt ?? 0);
+
 // Кэш на USER_CACHE_MS, сброс при каждой правке из API. ok=false: последняя загрузка упала, тогда тик не закрывает
 // позиции личных стратегий как «removed» только из-за того, что их не оказалось в списке.
-const uhost = globalThis as unknown as { __crawlhiveUserStrats?: { at: number; list: UserStrategy[]; ok: boolean } };
+const uhost = globalThis as unknown as { __crawlhiveUserStrats?: { at: number; list: UserStrategy[]; arena: UserStrategy[]; ok: boolean } };
 function loadUserStrategies() {
   const c = uhost.__crawlhiveUserStrats;
   if (c && Date.now() - c.at < USER_CACHE_MS) return c;
   const d = db();
-  let next: { at: number; list: UserStrategy[]; ok: boolean };
+  let next: { at: number; list: UserStrategy[]; arena: UserStrategy[]; ok: boolean };
   try {
+    const now = Date.now();
     const rows = d ? (d.prepare("SELECT * FROM user_strategies ORDER BY id").all() as unknown as UserStrategyRow[]) : [];
-    next = { at: Date.now(), list: rows.map(toUserStrategy), ok: !!d };
+    const arena = d ? (d.prepare("SELECT * FROM arena_entries WHERE settled_at IS NULL ORDER BY id").all() as unknown as ArenaEntryRow[]) : [];
+    next = { at: now, list: rows.map(toUserStrategy), arena: arena.map((r) => toArenaStrategy(r, now)), ok: !!d };
   } catch (e) {
     console.warn("[paper] user strategies", (e as Error).message);
-    next = { at: Date.now(), list: c?.list ?? [], ok: false };
+    next = { at: Date.now(), list: c?.list ?? [], arena: c?.arena ?? [], ok: false };
   }
   uhost.__crawlhiveUserStrats = next;
   // Тариф мог упасть (продал токены, кончился Pro): лишние стратегии выключает user-strategies.ts, не чаще раза в 10 мин.
@@ -502,17 +564,27 @@ export function userStrategies(all = false): UserStrategy[] {
   const { list } = loadUserStrategies();
   return all ? list : list.filter((x) => x.enabled);
 }
+// Копии арены, чьи итоги ещё не подведены (open=true: только те, что сейчас могут входить в сделки).
+export function arenaStrategies(open = false): UserStrategy[] {
+  const { arena } = loadUserStrategies();
+  if (!open) return arena;
+  const now = Date.now();
+  return arena.filter((x) => x.enabled && arenaOpen(x, now));
+}
 export function invalidateUserStrategies() {
   uhost.__crawlhiveUserStrats = undefined;
 }
-// База движка для user-strategies.ts: та же brain.db, таблицы уже созданы.
+// База движка для user-strategies.ts и arena.ts: та же brain.db, таблицы уже созданы.
 export const paperDb = () => db();
 function strategyOf(id: string): StrategyConfig | undefined {
-  return isUserStrategy(id) ? userStrategies(true).find((x) => x.id === id) : STRATEGIES.find((x) => x.id === id);
+  if (isUserStrategy(id)) return userStrategies(true).find((x) => x.id === id);
+  if (isArenaStrategy(id)) return arenaStrategies().find((x) => x.id === id);
+  return STRATEGIES.find((x) => x.id === id);
 }
-// Сколько сейчас занято личными стратегиями всех пользователей: позиции плюс ожидающие входы.
+// Сколько сейчас занято личными стратегиями всех пользователей и копиями арены: позиции плюс ожидающие входы.
+// Потолок USER_MAX_OPEN_TOTAL общий для обоих: арена не раздувает движок сверх него.
 function userBusyTotal(d: NonNullable<ReturnType<typeof db>>) {
-  return (d.prepare("SELECT (SELECT COUNT(*) FROM paper_positions WHERE strategy LIKE 'u%') + (SELECT COUNT(*) FROM paper_pending WHERE strategy LIKE 'u%') AS n").get() as { n: number }).n;
+  return (d.prepare(`SELECT (SELECT COUNT(*) FROM paper_positions WHERE ${PRIVATE_SQL}) + (SELECT COUNT(*) FROM paper_pending WHERE ${PRIVATE_SQL}) AS n`).get() as { n: number }).n;
 }
 
 // ---------- вход: зовётся из radar.ts, когда вердикт готов ----------
@@ -527,11 +599,11 @@ export function paperOnSignal(r: ScanResult) {
   if (!d) return;
   const now = Date.now();
   const fj = JSON.stringify(f);
-  const users = userStrategies();
+  const users = [...userStrategies(), ...arenaStrategies(true)];
   let userBusy = users.length ? userBusyTotal(d) : 0;
   for (const s of [...STRATEGIES, ...users]) {
-    if (!s.enabled || !matches(s.entry, f, r.chain, r.id)) continue;
-    const user = isUserStrategy(s.id);
+    if (!s.enabled || !arenaOpen(s, now) || !matches(s.entry, f, r.chain, r.id)) continue;
+    const user = isPrivateStrategy(s.id);
     if (user && userBusy >= USER_MAX_OPEN_TOTAL) continue;
     // Лимит считаем вместе с ожидающими: иначе к моменту входа у стратегии окажется больше MAX_OPEN.
     const busy = d.prepare("SELECT (SELECT COUNT(*) FROM paper_positions WHERE strategy = ?) + (SELECT COUNT(*) FROM paper_pending WHERE strategy = ?) AS n").get(s.id, s.id) as { n: number };
@@ -566,8 +638,8 @@ function openPosition(s: StrategyConfig, c: { token: string; chain: string; symb
   ).run(s.id, c.token, c.chain, c.symbol, c.verdict, c.score, now, price, s.sizeUsd, units, liq, price, now, price, liq, now, features);
   cache = null;
   console.log(`[paper] open ${s.id} $${c.symbol} ${c.chain} ${c.verdict}${c.score != null ? ` ${c.score}` : ""} at $${price} liq $${Math.round(liq)}`);
-  // Личные стратегии наружу (Telegram и прочие подписчики) не уходят: это не сигналы проекта.
-  if (!isUserStrategy(s.id)) emitPaper({ kind: "open", strategy: s.id, label: s.label, token: c.token, chain: c.chain, symbol: c.symbol, verdict: c.verdict, score: c.score, price, liq, features, at: now });
+  // Личные стратегии наружу (Telegram и прочие подписчики) не уходят: это не сигналы проекта. Арена только в arena.ts.
+  emitFor(s.id, { kind: "open", strategy: s.id, label: s.label, token: c.token, chain: c.chain, symbol: c.symbol, verdict: c.verdict, score: c.score, price, liq, features, at: now });
 }
 
 // ---------- подтверждение отложенного входа ----------
@@ -594,7 +666,8 @@ const pct1 = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
 // Ожидающий вход в этот тик: либо ждём дальше, либо решение (позиция открыта или пропуск записан).
 // pair === undefined: замера по сети не было (сбой API), это не повод считать пул вытащенным.
 function resolvePending(q: PendingRow, s: StrategyConfig | undefined, pair: PairInfo | null | undefined, now: number) {
-  if (!s || !s.enabled || !s.entry.delayMin) return skipPending(q, "removed", now, null, null);
+  // Копия арены после конца раунда не входит: ожидание к этому моменту снимаем.
+  if (!s || !s.enabled || !s.entry.delayMin || !arenaOpen(s, now)) return skipPending(q, "removed", now, null, null);
   const dueAt = q.signal_at + s.entry.delayMin * 60_000;
   if (now < dueAt) return;
   if (pair === undefined) {
@@ -619,7 +692,7 @@ function resolvePending(q: PendingRow, s: StrategyConfig | undefined, pair: Pair
   const d = db()!;
   const open = d.prepare("SELECT COUNT(*) AS n FROM paper_positions WHERE strategy = ?").get(s.id) as { n: number };
   if (open.n >= MAX_OPEN) return skipPending(q, "full", now, price, liq);
-  if (isUserStrategy(s.id) && (d.prepare("SELECT COUNT(*) AS n FROM paper_positions WHERE strategy LIKE 'u%'").get() as { n: number }).n >= USER_MAX_OPEN_TOTAL)
+  if (isPrivateStrategy(s.id) && (d.prepare(`SELECT COUNT(*) AS n FROM paper_positions WHERE ${PRIVATE_SQL}`).get() as { n: number }).n >= USER_MAX_OPEN_TOTAL)
     return skipPending(q, "full", now, price, liq);
   let f: Features | null = null;
   try {
@@ -667,7 +740,7 @@ function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: n
     throw e;
   }
   console.log(`[paper] close ${p.strategy} $${p.symbol} ${reason} ${t.net >= 0 ? "+" : ""}${t.net.toFixed(1)}% ($${pnl.toFixed(2)}) after ${Math.round((now - p.entry_at) / 60_000)}m`);
-  if (!isUserStrategy(p.strategy)) emitPaper({ kind: "close", strategy: p.strategy, label: labelOf(p.strategy), token: p.token, chain: p.chain, symbol: p.symbol, reason, netPct: r2(t.net), pnl: r2(pnl), at: now });
+  emitFor(p.strategy, { kind: "close", strategy: p.strategy, label: labelOf(p.strategy), token: p.token, chain: p.chain, symbol: p.symbol, reason, netPct: r2(t.net), pnl: r2(pnl), at: now });
 }
 
 // Частичная продажа по текущему замеру с теми же издержками, что и полный выход; позиция остаётся открытой.
@@ -707,9 +780,9 @@ export async function paperTick(fastOnly = false) {
   try {
     const now = Date.now();
     const users = loadUserStrategies();
-    const byId = new Map<string, StrategyConfig>([...STRATEGIES, ...users.list].map((x) => [x.id, x]));
+    const byId = new Map<string, StrategyConfig>([...STRATEGIES, ...users.list, ...users.arena].map((x) => [x.id, x]));
     // Список личных стратегий не загрузился: их позиции и ожидания в этот тик не трогаем, а не закрываем как «removed».
-    const known = (id: string) => users.ok || !isUserStrategy(id) || byId.has(id);
+    const known = (id: string) => users.ok || !isPrivateStrategy(id) || byId.has(id);
     const open = (d.prepare("SELECT * FROM paper_positions").all() as unknown as PosRow[]).filter((p) => known(p.strategy) && (!fastOnly || byId.get(p.strategy)?.fast));
     // Ожидающие входы, чьё время пришло (или стратегию убрали): цены для них берём тем же запросом, что и для позиций.
     const pending = (fastOnly ? [] : (d.prepare("SELECT * FROM paper_pending").all() as unknown as PendingRow[])).filter((q) => {
@@ -804,11 +877,15 @@ export function startPaperEngine() {
     if (++step % every === 0) fullDue = true;
     if (st().busy) return;
     const full = fullDue;
-    if (!full && !fastProject && !userStrategies().some((x) => x.fast)) return;
+    if (!full && !fastProject && !userStrategies().some((x) => x.fast) && !arenaStrategies().some((x) => x.fast)) return;
     fullDue = false;
     paperTick(!full).catch((e) => console.warn(full ? "[paper]" : "[paper] fast", (e as Error).message));
   }, FAST_MS);
   console.log(`[paper] engine started, ${STRATEGIES.filter((x) => x.enabled).length} strategies, ${n} open positions and ${w} pending entries resumed`);
+  // Crawler Arena: слушатель событий копий и подведение итогов раундов по таймеру (arena.ts).
+  import("./arena")
+    .then((m) => m.startArena())
+    .catch((e) => console.warn("[paper] arena", (e as Error).message));
 }
 
 // ---------- статистика для страницы ----------
@@ -923,18 +1000,18 @@ const tradeView = (t: TradeRow) => ({
   reason: t.reason,
 });
 
-// Таблица лидеров проекта: личные стратегии (u<число>) сюда не попадают, у них свой API (userStrategyStats).
+// Таблица лидеров проекта: личные стратегии (u<число>) и копии арены (a<число>) сюда не попадают, у них свои API (userStrategyStats, arenaLive).
 function compute() {
   const d = db();
   const now = Date.now();
   const base = { enabled: paperEnabled(), startedAt: startedAt(), lastTick: st().lastTick || null, fee: FEE, maxOpen: MAX_OPEN, sampleSec: SAMPLE_MS / 1000, updatedAt: now };
   if (!d) return { ...base, strategies: [], open: [], trades: [] };
-  const trades = d.prepare("SELECT * FROM paper_trades WHERE strategy NOT LIKE 'u%' ORDER BY exit_at").all() as unknown as TradeRow[];
-  const open = d.prepare("SELECT * FROM paper_positions WHERE strategy NOT LIKE 'u%' ORDER BY entry_at DESC").all() as unknown as PosRow[];
+  const trades = d.prepare(`SELECT * FROM paper_trades WHERE ${PROJECT_SQL} ORDER BY exit_at`).all() as unknown as TradeRow[];
+  const open = d.prepare(`SELECT * FROM paper_positions WHERE ${PROJECT_SQL} ORDER BY entry_at DESC`).all() as unknown as PosRow[];
   const pendingN = new Map(
-    (d.prepare("SELECT strategy, COUNT(*) AS n FROM paper_pending WHERE strategy NOT LIKE 'u%' GROUP BY strategy").all() as unknown as { strategy: string; n: number }[]).map((x) => [x.strategy, x.n]),
+    (d.prepare(`SELECT strategy, COUNT(*) AS n FROM paper_pending WHERE ${PROJECT_SQL} GROUP BY strategy`).all() as unknown as { strategy: string; n: number }[]).map((x) => [x.strategy, x.n]),
   );
-  const skipRows = d.prepare("SELECT strategy, reason, COUNT(*) AS n FROM paper_skips WHERE strategy NOT LIKE 'u%' GROUP BY strategy, reason").all() as unknown as SkipCount[];
+  const skipRows = d.prepare(`SELECT strategy, reason, COUNT(*) AS n FROM paper_skips WHERE ${PROJECT_SQL} GROUP BY strategy, reason`).all() as unknown as SkipCount[];
   const ids = [...new Set([...STRATEGIES.map((s) => s.id), ...trades.map((t) => t.strategy)])];
   const strategies = ids.map((id) =>
     strategyStats(
@@ -982,6 +1059,51 @@ export function userStrategyStats(owner: string) {
 }
 export type UserStrategyStats = ReturnType<typeof userStrategyStats>;
 
+// Счёт копий арены (a<число>): реализованный P&L закрытых сделок плюс нереализованный по открытым позициям
+// по последнему замеру (markPnl, как продажа прямо сейчас с комиссией и проскальзыванием). Последняя сделка:
+// самое свежее открытие или закрытие. Все сделки копии открыты внутри раунда: после end_at копия не входит.
+export interface ArenaLive {
+  realized: number;
+  unrealized: number;
+  pnl: number;
+  closed: number;
+  wins: number;
+  open: number;
+  pending: number;
+  last: { kind: "open" | "close"; symbol: string; token: string; chain: string; at: number; netPct: number | null; reason: ExitReason | null } | null;
+}
+export function arenaLive(ids: string[]): Map<string, ArenaLive> {
+  const out = new Map<string, ArenaLive>();
+  const d = db();
+  const list = ids.filter(isArenaStrategy);
+  for (const id of list) out.set(id, { realized: 0, unrealized: 0, pnl: 0, closed: 0, wins: 0, open: 0, pending: 0, last: null });
+  if (!d || !list.length) return out;
+  const q = list.map(() => "?").join(",");
+  const trades = d.prepare(`SELECT strategy, token, chain, symbol, exit_at, net_pct, pnl, reason FROM paper_trades WHERE strategy IN (${q}) ORDER BY exit_at`).all(...list) as unknown as Pick<TradeRow, "strategy" | "token" | "chain" | "symbol" | "exit_at" | "net_pct" | "pnl" | "reason">[];
+  const open = d.prepare(`SELECT * FROM paper_positions WHERE strategy IN (${q})`).all(...list) as unknown as PosRow[];
+  const pend = d.prepare(`SELECT strategy, COUNT(*) AS n FROM paper_pending WHERE strategy IN (${q}) GROUP BY strategy`).all(...list) as unknown as { strategy: string; n: number }[];
+  for (const t of trades) {
+    const a = out.get(t.strategy)!;
+    a.realized += t.pnl;
+    a.closed++;
+    if (t.pnl > 0) a.wins++;
+    if (!a.last || t.exit_at >= a.last.at) a.last = { kind: "close", symbol: t.symbol, token: t.token, chain: t.chain, at: t.exit_at, netPct: t.net_pct, reason: t.reason };
+  }
+  for (const p of open) {
+    const a = out.get(p.strategy)!;
+    a.unrealized += markPnl(p);
+    a.open++;
+    if (!a.last || p.entry_at > a.last.at) a.last = { kind: "open", symbol: p.symbol, token: p.token, chain: p.chain, at: p.entry_at, netPct: null, reason: null };
+  }
+  for (const x of pend) out.get(x.strategy)!.pending = x.n;
+  for (const a of out.values()) {
+    a.realized = r2(a.realized);
+    a.unrealized = r2(a.unrealized);
+    a.pnl = r2(a.realized + a.unrealized);
+  }
+  return out;
+}
+
 export type PaperEngineData = ReturnType<typeof compute>;
 
 let cache: { at: number; data: PaperEngineData } | null = null;
@@ -1002,11 +1124,11 @@ export function paperExport(since = 0) {
     }
   };
   if (!d) return { enabled: paperEnabled(), startedAt: null, strategies: STRATEGIES, trades: [], open: [], pending: [], skips: [] };
-  // Только стратегии проекта: личные (u<число>) принадлежат холдерам и в публичный экспорт не идут.
-  const trades = d.prepare("SELECT * FROM paper_trades WHERE exit_at >= ? AND strategy NOT LIKE 'u%' ORDER BY exit_at").all(since) as unknown as TradeRow[];
-  const open = d.prepare("SELECT * FROM paper_positions WHERE strategy NOT LIKE 'u%' ORDER BY entry_at").all() as unknown as PosRow[];
-  const pending = d.prepare("SELECT * FROM paper_pending WHERE strategy NOT LIKE 'u%' ORDER BY signal_at").all() as unknown as PendingRow[];
-  const skips = d.prepare("SELECT * FROM paper_skips WHERE at >= ? AND strategy NOT LIKE 'u%' ORDER BY at").all(since) as unknown as Record<string, unknown>[];
+  // Только стратегии проекта: личные (u<число>) и копии арены (a<число>) принадлежат холдерам и в публичный экспорт не идут.
+  const trades = d.prepare(`SELECT * FROM paper_trades WHERE exit_at >= ? AND ${PROJECT_SQL} ORDER BY exit_at`).all(since) as unknown as TradeRow[];
+  const open = d.prepare(`SELECT * FROM paper_positions WHERE ${PROJECT_SQL} ORDER BY entry_at`).all() as unknown as PosRow[];
+  const pending = d.prepare(`SELECT * FROM paper_pending WHERE ${PROJECT_SQL} ORDER BY signal_at`).all() as unknown as PendingRow[];
+  const skips = d.prepare(`SELECT * FROM paper_skips WHERE at >= ? AND ${PROJECT_SQL} ORDER BY at`).all(since) as unknown as Record<string, unknown>[];
   return {
     enabled: paperEnabled(),
     startedAt: startedAt(),

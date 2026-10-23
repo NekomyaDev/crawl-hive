@@ -1221,6 +1221,7 @@ export async function handlePublic(m: TgMessage) {
   if (cmd === "/digest") return (await import("./tg-digest")).digestCommand(chat, arg);
   if (cmd === "/verify") return (await import("./tg-verify")).handleVerify(chat, arg);
   if (cmd === "/invite") return (await import("./referrals")).tgInvite(chat);
+  if (cmd === "/arena") return (await import("./arena")).tgArena(chat);
   if (cmd === "/unlink") return (await import("./tg-verify")).handleUnlink(chat, arg);
   if (cmd === "/watch") return watchWallet(chat, arg);
   if (cmd === "/watchop") return watchOperator(chat, arg);
