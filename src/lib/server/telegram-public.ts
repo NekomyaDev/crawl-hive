@@ -6,13 +6,15 @@
 // - подписка на Launch Radar с фильтрами; держатели $CRAWLHIVE (Holder и выше) и владельцы живых краулеров
 //   получают её без задержки, бесплатный тариф — через FREE_RADAR_DELAY_MIN (tiers.ts);
 // - /signals: сделки сигнальных стратегий Paper Engine для Holder и выше (tg-signals.ts);
-// - inline-режим (@bot <адрес> в любом чате) и /track — точность сканера.
+// - inline-режим (@bot <адрес> в любом чате) и /track — точность сканера;
+// - Ask CrawlHive (ask.ts): /ask <вопрос> в личке и в группах, в группе ещё вопрос с @ботом или ответом на его сообщение.
 import "server-only";
 import { TOKEN } from "@/lib/token";
 import { lookV3, secondLookWhy, secondLookWorse } from "@/lib/second-look";
 import type { ScanResult } from "./scan";
 import { dumpWho, firstBuyersBrief } from "./scan-brief";
 import { FREE_RADAR_DELAY_MIN, type Tier } from "./tiers";
+import { looksLikeQuestion as looksLikeQ, type AskTurn } from "./ask";
 import { call, esc, send, sendPhoto, siteUrl, telegramBotName, telegramMainApp, type Keyboard } from "./telegram";
 import { getMeta, listCrawlers, metaEntries, setMeta } from "./store";
 import { addSupport, adminChats, adminStats, isAdmin as isProjectAdmin, markAnswered, rememberAdminChat, seenTgUser, supportList } from "./admin";
@@ -867,6 +869,7 @@ function welcome(chat: string) {
       "",
       "👛 <b>/watch</b> &lt;wallet&gt;: I DM you when a wallet you follow shows up on a new coin ($CRAWLHIVE holders and Pro).",
       "🕸 <b>/watchop</b> &lt;wallet or op id&gt;: watch a whole operator, every linked wallet (Whale).",
+      "💬 <b>/ask</b> &lt;question&gt;: ask CrawlHive about a token, wallet or dev. Answers come only from CrawlHive data.",
       `🔐 <b>/verify</b> &lt;wallet&gt;: unlock your Holder, Pro or Whale tier here. No wallet connect, no signing: a tiny transfer to yourself proves the wallet is yours. /unlink removes it.`,
       "",
       `🔥 <b>$${TOKEN.symbol}</b> is live: the treasury buys back and burns it every 12 hours.`,
@@ -919,7 +922,84 @@ async function adminMessage(chat: string) {
   );
 }
 
-export async function handlePublic(m: { chat: { id: number; type: string }; text: string; message_id: number; message_thread_id?: number; from?: { id: number; first_name?: string; username?: string } }) {
+type TgMessage = {
+  chat: { id: number; type: string };
+  text: string;
+  message_id: number;
+  message_thread_id?: number;
+  from?: { id: number; first_name?: string; username?: string };
+  reply_to_message?: { text?: string; caption?: string; from?: { is_bot?: boolean; username?: string } };
+};
+
+// ---------- Ask CrawlHive ----------
+
+const ASK_TG_MAX = 3500;
+const ASK_MEMORY_MS = 30 * 60_000;
+const ASK_STYLE_TG =
+  "You are answering inside a Telegram chat. Keep the answer under 1200 characters. Plain text only, write links as full https:// URLs.";
+// Последние вопросы и ответы человека в чате (чат:пользователь), 30 минут: чтобы «а дев?» понимался в контексте.
+const askMemory = new Map<string, { at: number; turns: AskTurn[] }>();
+
+// Ответ модели (обычный текст) → HTML Telegram: экранируем по кускам, ссылки кликабельные, длина до ASK_TG_MAX.
+const LINK_RE = /(https?:\/\/[^\s"'<>]+|\bcrawlhive\.xyz(?:\/[^\s"'<>]*)?)/g;
+function askHtml(text: string, max = ASK_TG_MAX): string {
+  const t = text.length > max ? `${text.slice(0, max - 1).replace(/\s+\S*$/, "")}…` : text;
+  const html = t
+    .split(LINK_RE)
+    .map((p, i) => {
+      if (i % 2 === 0) return esc(p);
+      const tail = p.match(/[.,;:!?)\]]+$/)?.[0] ?? "";
+      const url = tail ? p.slice(0, -tail.length) : p;
+      return `<a href="${esc(url.startsWith("http") ? url : `https://${url}`)}">${esc(url)}</a>${esc(tail)}`;
+    })
+    .join("");
+  // Разметка ссылок удлиняет текст: Telegram режет на 4096, поэтому при переборе ужимаем исходник.
+  return html.length > 4000 && max > 500 ? askHtml(text, max - 500) : html;
+}
+
+// Текст для проверки «это вопрос?»: без упоминаний, ссылок, адресов и тикеров.
+const bareText = (t: string) => t.replace(/@\w+/g, " ").replace(/https?:\/\/\S+/g, " ").replace(new RegExp(ADDR_RE.source, "g"), " ").replace(/\$[A-Za-z]\w*/g, " ").replace(/\s+/g, " ").trim();
+
+async function askTg(m: TgMessage, question: string, context?: string) {
+  const chat = String(m.chat.id);
+  const group = m.chat.type !== "private";
+  const thread = m.message_thread_id ? { message_thread_id: m.message_thread_id } : {};
+  // В группе отвечаем на сообщение человека, чтобы было видно, кому ответ.
+  const extra = { ...thread, ...(group ? { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } } : {}) };
+  const { askEnabled, askOnce, botAccess } = await import("./ask");
+  if (!askEnabled()) return send(chat, "Ask is coming soon.", undefined, extra);
+  const q = question.trim();
+  if (!q) return send(chat, "💬 Send /ask followed by your question, for example:\n/ask is &lt;token address&gt; safe?\n/ask what did this dev launch before? &lt;wallet&gt;\n/ask how accurate are your verdicts?", undefined, extra);
+  if (!m.from) return;
+  // Лимит и тариф: по пользователю Telegram, тариф по кошелькам, привязанным к его личке (/verify, /start с сайта).
+  const user = String(m.from.id);
+  const tier = await chatTier(user);
+  const memKey = `${chat}:${user}`;
+  const mem = askMemory.get(memKey);
+  let history: AskTurn[] = mem && Date.now() - mem.at < ASK_MEMORY_MS ? mem.turns : [];
+  // Ответ на сообщение бота без своей переписки: само сообщение бота даём модели как контекст.
+  if (!history.length && context?.trim()) history = [{ role: "user", text: "(earlier in this chat)" }, { role: "assistant", text: context.slice(0, 2000) }];
+  const typing = () => call("sendChatAction", { chat_id: chat, action: "typing", ...thread }).catch(() => {});
+  void typing();
+  const timer = setInterval(typing, 4500); // «печатает» держится 5 секунд, ответ с инструментами идёт дольше
+  let r: Awaited<ReturnType<typeof askOnce>>;
+  try {
+    r = await askOnce({ question: q, history, access: botAccess(`tg:${user}`, tier), via: group ? "tg-group" : "tg", style: ASK_STYLE_TG });
+  } finally {
+    clearInterval(timer);
+  }
+  if (!r.ok) {
+    // Вопросы кончились: на платных тарифах тоже показываем, где взять больше.
+    const more = r.limited && r.remaining <= 0 && !/pricing/.test(r.error) ? `\nMore questions on a higher tier: <a href="${siteUrl()}/pricing">${esc(siteUrl().replace(/^https?:\/\//, ""))}/pricing</a>` : "";
+    return send(chat, `${askHtml(r.error)}${more}`, undefined, extra);
+  }
+  askMemory.set(memKey, { at: Date.now(), turns: [...history.filter((t) => t.text !== "(earlier in this chat)"), { role: "user" as const, text: q }, { role: "assistant" as const, text: r.text }].slice(-8) });
+  if (askMemory.size > 5_000) askMemory.delete(askMemory.keys().next().value!);
+  const left = r.remaining <= 2 ? `\n\n<i>${r.remaining} question${r.remaining === 1 ? "" : "s"} left today · <a href="${siteUrl()}/pricing">more</a></i>` : "";
+  send(chat, `${askHtml(r.text || "I could not find an answer in CrawlHive data for that.")}${left}`, undefined, extra);
+}
+
+export async function handlePublic(m: TgMessage) {
   const chat = String(m.chat.id);
   if (m.from) seenTgUser(m.from);
   const [cmd0, ...rest] = m.text.trim().split(/\s+/);
@@ -927,6 +1007,7 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   const arg = rest.join(" ");
   const group = m.chat.type !== "private";
 
+  if (cmd === "/ask") return askTg(m, m.text.trim().slice(cmd0.length));
   if (cmd === "/scan") return arg ? doScan(chat, scanQuery(arg) ?? arg) : send(chat, "Send /scan followed by a token address, link or $TICKER.");
   if (cmd === "/radar") return radarMessage(chat);
   if (cmd === "/narratives") return narrativesMessage(chat);
@@ -946,8 +1027,16 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
       return kind === "radar" ? alertsMenu(chat) : kind === "narr" ? narrMenu(chat) : burnsMenu(chat);
     }
     if (cmd === "/start" || cmd === "/help")
-      return send(chat, "🐝 Post any Solana, Robinhood Chain, BNB Chain or Base contract address and I reply with a quick verdict.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track\nAlerts into this topic: /alerts (Launch Radar) · /narrativealerts · /burns ($CRAWLHIVE burns)");
+      return send(chat, "🐝 Post any Solana, Robinhood Chain, BNB Chain or Base contract address and I reply with a quick verdict.\n💬 Questions: /ask &lt;question&gt;, or tag me or reply to me with a question.\nAdmins: /autoscan off to stop · /scan &lt;address&gt; · /radar · /track\nAlerts into this topic: /alerts (Launch Radar) · /narrativealerts · /burns ($CRAWLHIVE burns)");
     if (!cmd) {
+      // Позвали бота (@бот или ответ на его сообщение) с вопросом, а не просто с адресом: отвечает Ask.
+      const bot = (telegramBotName() ?? "crawlhivebot").toLowerCase();
+      const mentioned = new RegExp(`@${bot}\\b`, "i").test(m.text);
+      const toBot = !!m.reply_to_message?.from?.is_bot && m.reply_to_message.from.username?.toLowerCase() === bot;
+      if ((mentioned || toBot) && looksLikeQ(bareText(m.text))) {
+        const question = m.text.replace(new RegExp(`@${bot}\\b`, "gi"), " ").replace(/\s+/g, " ").trim();
+        return askTg(m, question, toBot ? (m.reply_to_message?.text ?? m.reply_to_message?.caption) : undefined);
+      }
       const q = m.text.match(ADDR_RE)?.[1] ?? scanQuery(m.text);
       if (q && !q.startsWith("$")) return groupAutoscan(chat, m.message_id, q);
     }
@@ -1042,7 +1131,9 @@ export async function handlePublic(m: { chat: { id: number; type: string }; text
   if (cmd === "/start" || cmd === "/help") return welcome(chat);
   const q = scanQuery(m.text);
   if (q) return doScan(chat, q);
-  send(chat, "Send me a token address, a DexScreener / pump.fun link or a $TICKER and I'll check it. Need help? /support");
+  // В личке вопрос без адреса тоже уходит в Ask, чтобы не отвечать заглушкой.
+  if (looksLikeQ(bareText(m.text))) return askTg(m, m.text, m.reply_to_message?.from?.is_bot ? (m.reply_to_message.text ?? m.reply_to_message.caption) : undefined);
+  send(chat, "Send me a token address, a DexScreener / pump.fun link or a $TICKER and I'll check it. Questions: /ask &lt;question&gt;. Need help? /support");
 }
 
 // Напоминание команде: каждые 12 часов (00:00 и 12:00 UTC) — пора выкупить и сжечь токен на деньги казны.

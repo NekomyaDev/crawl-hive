@@ -366,7 +366,9 @@ export type AskEvent = { type: "text"; text: string } | { type: "tool"; name: st
 
 // Агентный цикл: модель вызывает инструменты (до MAX_ROUNDS раундов), текст сразу уходит в поток.
 // Все результаты одного раунда возвращаются одним сообщением пользователя; у упавшего инструмента is_error.
-export async function runAsk(opts: { question: string; history: AskTurn[]; access: AskAccess; signal?: AbortSignal }, emit: (e: AskEvent) => void) {
+// via: откуда вопрос (web, tg, x), только для лога; style: добавка к системному промпту под канал (длина, формат),
+// идёт отдельным блоком после кэшируемого, так что кэш инструментов и SYSTEM не ломается.
+export async function runAsk(opts: { question: string; history: AskTurn[]; access: AskAccess; signal?: AbortSignal; via?: string; style?: string }, emit: (e: AskEvent) => void) {
   const messages: Anthropic.MessageParam[] = [
     ...opts.history.map((t): Anthropic.MessageParam => ({ role: t.role, content: t.text })),
     { role: "user", content: opts.question },
@@ -381,7 +383,7 @@ export async function runAsk(opts: { question: string; history: AskTurn[]; acces
         model: model(),
         max_tokens: MAX_TOKENS,
         // Кэш: явная метка на конце постоянного префикса (инструменты + system) и автоматическая для хвоста переписки.
-        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }, ...(opts.style ? [{ type: "text" as const, text: opts.style }] : [])],
         cache_control: { type: "ephemeral" },
         tools: TOOLS,
         // Последний раунд без вызовов: модель обязана ответить тем, что уже собрала. auto/none работают на всех моделях.
@@ -409,7 +411,7 @@ export async function runAsk(opts: { question: string; history: AskTurn[]; acces
     }
     const uses = msg.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     const u = msg.usage;
-    console.log(`[ask] model=${msg.model} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens ?? 0} cache_write=${u.cache_creation_input_tokens ?? 0} stop=${msg.stop_reason} tools=${uses.map((b) => b.name).join(",") || "-"}`);
+    console.log(`[ask] via=${opts.via ?? "web"} model=${msg.model} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens ?? 0} cache_write=${u.cache_creation_input_tokens ?? 0} stop=${msg.stop_reason} tools=${uses.map((b) => b.name).join(",") || "-"}`);
 
     if (msg.stop_reason === "refusal") {
       emit({ type: "text", text: (wrote ? "\n\n" : "") + "Sorry, I can't help with that one." });
@@ -450,4 +452,47 @@ export function askApiFailed(e: unknown): string {
   }
   console.error("[ask]", e);
   return "Ask CrawlHive could not answer right now. Try again later.";
+}
+
+// ---------- без потока: для ботов (Telegram, X) ----------
+
+// Похоже ли сообщение бота на вопрос, а не на просьбу просто проверить контракт: знак вопроса или вопросительное
+// слово в начале. Адрес без слов, «check this <CA>» и подобное уходят в обычный скан.
+const Q_WORDS = /^(what|whats|what's|why|how|who|whos|who's|is|are|was|were|does|do|did|can|could|should|would|will|which|when|where|tell|explain|compare|any)\b/i;
+export function looksLikeQuestion(text: string) {
+  const t = text.trim();
+  return t.length >= 4 && /[a-z\u00c0-\uffff]{2}/i.test(t) && (t.includes("?") || Q_WORDS.test(t));
+}
+
+// Кто спрашивает из бота: ключ счётчика (tg:<id>, x:<id>) и тариф. ip здесь тот же ключ: по нему allowScan
+// считает сканы инструмента, чтобы один пользователь бота не делил лимит с другими.
+export const botAccess = (key: string, tier: Tier = "free", wallet: string | null = null): AskAccess => ({ key, tier, wallet, ip: key });
+
+export type AskOnceResult = { ok: true; text: string; remaining: number } | { ok: false; error: string; limited: boolean; remaining: number };
+
+// Один вопрос целиком: те же инструменты, системный промпт, лимиты и лог, что у сайта, ответ одной строкой.
+// Вопрос списывается до вызова модели и возвращается, если ответа не вышло. Ошибки не бросает: всё в результате.
+export async function askOnce(opts: { question: string; history?: AskTurn[]; access: AskAccess; via: string; style?: string; timeoutMs?: number }): Promise<AskOnceResult> {
+  const left = () => askQuota(opts.access).remaining;
+  if (!askEnabled()) return { ok: false, error: "Ask is coming soon", limited: false, remaining: 0 };
+  let input: ReturnType<typeof parseAsk>;
+  let remaining: number;
+  try {
+    input = parseAsk({ question: opts.question, history: opts.history ?? [] });
+    remaining = takeQuestion(opts.access);
+  } catch (e) {
+    if (e instanceof ApiError) return { ok: false, error: e.message, limited: e.status === 429, remaining: left() };
+    console.error("[ask]", e);
+    return { ok: false, error: "Ask CrawlHive could not answer right now. Try again later.", limited: false, remaining: left() };
+  }
+  let text = "";
+  try {
+    await runAsk({ ...input, access: opts.access, via: opts.via, style: opts.style, signal: AbortSignal.timeout(opts.timeoutMs ?? 150_000) }, (e) => {
+      if (e.type === "text") text += e.text;
+    });
+    return { ok: true, text: text.trim(), remaining };
+  } catch (e) {
+    refundQuestion(opts.access);
+    return { ok: false, error: askApiFailed(e), limited: false, remaining: left() };
+  }
 }

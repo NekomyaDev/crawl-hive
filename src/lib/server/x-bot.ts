@@ -5,6 +5,8 @@
 // X_BOT_DAILY в сутки, одну монету в одном треде не повторяем.
 // Упоминания основного аккаунта (@crawlhivexyz) читаем реже (X_BOT_MAIN_POLL_SEC) и отвечаем от его имени,
 // если заданы X_MAIN_ACCESS_TOKEN и X_MAIN_ACCESS_SECRET; иначе пробуем от бота. X_BOT_MAIN_OFF=1 выключает.
+// Вопрос боту без монеты в треде («how accurate are you?») отвечает Ask CrawlHive (ask.ts) коротким ответом со
+// ссылкой; те же лимиты ответов, плюс дневной лимит вопросов Ask бесплатного тарифа на автора. X_BOT_ASK_OFF=1 выключает.
 import "server-only";
 import { createHmac, randomBytes } from "node:crypto";
 import { getMeta, setMeta } from "./store";
@@ -159,6 +161,54 @@ function replyText(r: { symbol: string; score: number | null; verdict: string; r
   return `${head}\n${reason}${larp}${link}`;
 }
 
+// ---------- вопросы: Ask CrawlHive ----------
+
+const ASK_STYLE_X =
+  "You are replying to a post on X. Answer in at most 200 characters: one or two plain sentences, no lists, no line breaks, no links (a link is added after your answer). If a token is involved, end with \"Not financial advice.\"";
+const REPLY_MAX = 270;
+
+// Длина поста по правилам X: ссылка считается за 23 символа, широкие символы (эмодзи, CJK) за два.
+const xLen = (s: string) => [...s.replace(/https?:\/\/\S+/g, "x".repeat(23))].reduce((n, c) => n + (c.codePointAt(0)! >= 0x1100 ? 2 : 1), 0);
+
+function askReplyText(answer: string, site: string) {
+  const link = `\n\n${site}/ask`;
+  const room = REPLY_MAX - xLen(link);
+  let a = answer.replace(/\s+/g, " ").trim();
+  if (xLen(a) > room) {
+    while (a && xLen(a) > room - 1) a = a.replace(/\s*\S+$/, "");
+    a = `${a}…`;
+  }
+  return `${a}${link}`;
+}
+
+// Вопрос из упоминания: отвечает Ask. Отвеченный твит помечаем до вызова модели, чтобы при сбое не платить дважды.
+async function askReply(t: Tweet, s: State, site: string, allowHit: (k: string, max: number, ms: number) => boolean) {
+  const key = `${t.id}:ask`;
+  if (process.env.X_BOT_ASK_OFF === "1" || s.done?.includes(key)) return;
+  const { askEnabled, askOnce, botAccess } = await import("./ask");
+  if (!askEnabled()) return;
+  const now = Date.now();
+  const recent = (s.users?.[t.author_id ?? ""] ?? []).filter((at) => now - at < 3600_000);
+  if (recent.length >= PER_USER_HOUR || !allowHit(`xbot:${t.author_id}`, PER_USER_HOUR, 3600_000)) return;
+  s.done = [...(s.done ?? []), key].slice(-500);
+  const question = t.text.replace(/@\w+/g, " ").replace(/\s+/g, " ").trim();
+  const r = await askOnce({ question, access: botAccess(`x:${t.author_id ?? t.id}`), via: "x", style: ASK_STYLE_X, timeoutMs: 90_000 });
+  // Сбой модели молча пропускаем (askOnce уже залогировал и предупредил владельца); кончились вопросы: говорим один раз.
+  if (!r.ok && !(r.limited && r.remaining <= 0)) return;
+  const text = r.ok ? askReplyText(r.text || "I could not find an answer in CrawlHive data for that.", site) : askReplyText(r.error.replace(/crawlhive\.xyz\/pricing/, "").replace(/[\s:]+$/, "."), site).replace(/\/ask$/, "/pricing");
+  try {
+    await x("POST", "/tweets", { text, reply: { in_reply_to_tweet_id: t.id } });
+  } catch (e) {
+    // 429 отдаём наверх (круг прерывается и сохраняется), прочее не должно ронять весь круг.
+    if ((e as { status?: number }).status === 429) throw e;
+    console.warn("[xbot] ask reply", (e as Error).message);
+    return;
+  }
+  s.count = (s.count ?? 0) + 1;
+  s.users = { ...s.users, [t.author_id ?? ""]: [...recent, now] };
+  console.log(`[xbot] answered question ${t.id}${r.ok ? "" : " (ask limit)"}`);
+}
+
 // ---------- дневная сводка ----------
 // Раз в сутки (X_BOT_DIGEST_HOUR UTC, по умолчанию 15) отдельный пост: сколько монет бот проверил за 24 часа,
 // сколько DANGER / RISKY / CLEAN, и лучший улов — монета с DANGER или RISKY за 24-72 часа, которая потом
@@ -256,6 +306,12 @@ async function handle(t: Tweet, refs: Map<string, Tweet>, s: State, site: string
     if (addr) from = author.username;
   }
   if (!addr) {
+    // Монеты в треде нет, а в упоминании вопрос: отвечает Ask (только упоминания бота, под постами основного молчим).
+    const bare = t.text.replace(/@\w+/g, " ").replace(/https?:\/\/\S+/g, " ").trim();
+    if (!main && !onlyTags) {
+      const { looksLikeQuestion } = await import("./ask");
+      if (looksLikeQuestion(bare)) return askReply(t, s, site, allowHit);
+    }
     // Позвали бота, а монеты нигде нет: один раз на тред подсказываем, а не молчим.
     const key = `${t.conversation_id ?? t.id}:none`;
     if (main || !onlyTags || s.done?.includes(key)) return;

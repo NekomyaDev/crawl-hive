@@ -139,7 +139,14 @@ function signalMessage(sig: Signal) {
 
 // Сообщение: привязка кошелька (/start <код>, /stop, /status) — здесь, остальное — в telegram-public.ts.
 async function handleUpdate(u: {
-  message?: { chat: { id: number; type: string }; text?: string; message_id: number; from?: { id: number; first_name?: string; username?: string } };
+  message?: {
+    chat: { id: number; type: string };
+    text?: string;
+    message_id: number;
+    message_thread_id?: number;
+    from?: { id: number; first_name?: string; username?: string };
+    reply_to_message?: { text?: string; caption?: string; from?: { is_bot?: boolean; username?: string } };
+  };
   callback_query?: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } };
   inline_query?: { id: string; query: string };
   chat_member?: import("./group-watch").ChatMemberUpdate;
@@ -269,6 +276,7 @@ export function startTelegram() {
   call("setMyCommands", {
     commands: [
       { command: "start", description: "Check a token: send an address, link or $TICKER" },
+      { command: "ask", description: "Ask CrawlHive anything about a token, wallet or dev" },
       { command: "token", description: "$CRAWLHIVE: contract, buy, buybacks" },
       { command: "verify", description: "Unlock your holder tier: no wallet connect, no signing" },
       { command: "signals", description: "Live paper strategy signals for $CRAWLHIVE holders" },
