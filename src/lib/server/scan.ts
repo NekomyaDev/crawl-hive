@@ -18,6 +18,7 @@ import { launchOf, memDb, putLaunch } from "./memory-db";
 import { buildEvmMap, evmMapSupported } from "./scan-evm-map";
 import { lpSupported, traceLp, type LpReport } from "./scan-lp";
 import { larpVerdict, type LarpVerdict } from "./larpcheck";
+import { safeCombinedScore, type CombinedScore } from "./combined-score";
 import { trustEnabled, trustScore, type TrustScore } from "./trust";
 import { compareToLast, recordSnapshot, type SinceLast } from "./scan-memory";
 import { traceDev, type DevReport } from "./scan-dev";
@@ -70,6 +71,7 @@ export interface ScanResult {
   operators?: OperatorReport; // связанные кошельки, склеенные в владельцев, и их история на других токенах
   larp?: LarpVerdict; // второе мнение Larpcheck о проекте за токеном (со ссылкой на их проверку)
   trust?: TrustScore; // третий вердикт: общий балл CrawlHive и Larpcheck (только с TRUST_SCORE=1)
+  combined?: CombinedScore; // «CrawlHive x Larpcheck»: публичный балл с поправкой на ларп (combined-score.ts), виден всем
   lp?: LpReport; // кто держит ликвидность: сожжена, залочена (до какого числа) или в кошельке
   evm?: EvmReport; // Robinhood Chain: держатели, honeypot, владелец контракта
   xray?: XRayView; // Contract X-Ray: рычаги владельца из байткода (EVM) или расширений Token-2022 (Solana)
@@ -871,6 +873,9 @@ export async function runScan(
       else delete result.trust;
     }
   }
+  // Общий вердикт с Larpcheck: от уже готового публичного балла, без новых запросов к Larpcheck.
+  const combined = safeCombinedScore(result, larp);
+  if (combined) result.combined = combined;
   // Память токена: что изменилось с прошлого скана, затем запоминаем текущий снимок.
   const since = compareToLast(result);
   if (since?.changes.length) result.since = since;

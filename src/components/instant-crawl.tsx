@@ -8,6 +8,7 @@ import { BubbleMap, type BubbleMapData } from "@/components/bubble-map";
 import { LaunchEvidence, type LaunchData } from "@/components/launch-evidence";
 import { LarpLine, type LarpLineData } from "@/components/larp-line";
 import { TrustScore, type TrustData } from "@/components/trust-score";
+import { CombinedScoreCard, type CombinedData } from "@/components/combined-score";
 import { SinceLastScan, type SinceData } from "@/components/since-last-scan";
 import { SecondLook } from "@/components/second-look";
 import { DumpHeadline, DumpProjection, type DumpData } from "@/components/dump-projection";
@@ -74,6 +75,7 @@ interface Result {
   lp?: { status: string; lockedPct: number | null; unlockAt?: number; locker?: string; pullable?: { who: string; pct: number } };
   larp?: LarpLineData;
   trust?: TrustData;
+  combined?: CombinedData;
   since?: SinceData;
   v3?: { scoreV3: number; verdictV3: SecondLookData["verdict"]; reasonsV3: string[] };
   dump?: DumpData;
@@ -401,6 +403,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
           {open && <SecondLook v={lookV3(r.v3)} className="mt-1.5" />}
         </div>
       </div>
+      {r.combined && <CombinedScoreCard c={r.combined} />}
       {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} />}
       {r.trust && <TrustScore t={r.trust} />}
       {open && <SinceLastScan s={r.since} />}

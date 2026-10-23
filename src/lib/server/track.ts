@@ -60,6 +60,10 @@ export interface TrackEntry {
   vv1?: TrackVerdict; // вердикт v1
   s3?: number; // теневая оценка v3 (score-v3.ts)
   v3?: "CLEAN" | "OK" | "RISKY" | "DANGER";
+  // С 23.10: общий вердикт «CrawlHive x Larpcheck» (combined-score.ts), только когда у скана был вердикт Larpcheck:
+  // без него общий балл равен публичному, и записывать его незачем. Нужен, чтобы сравнить общий вердикт с v2.
+  sc?: number;
+  vc?: "CLEAN" | "OK" | "RISKY" | "DANGER";
 }
 
 // Все записи Track Record (для разовых задач вроде поиска первого появления токена).
@@ -86,6 +90,7 @@ export function trackVerdict(r: {
   v1?: { score: number | null; verdict: TrackVerdict };
   v2?: { scoreV2: number; verdictV2: NonNullable<TrackEntry["v2"]>; dumpWallets: number | null };
   v3?: { scoreV3: number; verdictV3: NonNullable<TrackEntry["v3"]> };
+  combined?: { score: number; verdict: NonNullable<TrackEntry["vc"]>; coverage: string };
 }, src: TrackEntry["src"]) {
   const price0 = Number(r.market?.priceUsd);
   const liq0 = Number(r.market?.liquidityUsd);
@@ -100,7 +105,7 @@ export function trackVerdict(r: {
   }
   const fdv0 = Number(r.market?.fdv) > 0 ? Math.round(Number(r.market?.fdv)) : undefined;
   const age0 = r.market?.ageHours;
-  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}), ...(age0 !== undefined && age0 >= 0 ? { a0: Math.round(age0 * 10) / 10 } : {}), ...v2Fields(r.v2), ...modelFields(r) });
+  list.unshift({ id: r.id, chain: r.chain, symbol: r.symbol, name: r.name?.slice(0, 40), verdict: r.verdict, score: r.score, src, at: now, price0, liq0, m: METHOD, ...(fdv0 ? { fdv0 } : {}), ...(age0 !== undefined && age0 >= 0 ? { a0: Math.round(age0 * 10) / 10 } : {}), ...v2Fields(r.v2), ...modelFields(r), ...(r.combined?.coverage === "crawlhive + larpcheck" ? { sc: r.combined.score, vc: r.combined.verdict } : {}) });
   save(list);
 }
 

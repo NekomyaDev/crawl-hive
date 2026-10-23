@@ -632,6 +632,28 @@ const SCHEMAS = {
     },
     required: ["total", "holding", "added", "soldPart", "soldAll", "movedOut", "unknown", "buyers"],
   },
+  CombinedScore: {
+    type: "object",
+    description:
+      "CrawlHive x Larpcheck combined verdict. Starts from the CrawlHive score (on-chain: snipers, bundles, dev history, LP control). If Larpcheck flags the project as a larp or a scam (LARP, LIKELY LARP, SCAM, or their score under 25), the score is capped at 30 (DANGER). A bad Larpcheck coin stamp takes 10 points. A confident Larpcheck REAL or LIKELY REAL (score 70+, fair coin) adds 5, but never when CrawlHive has a hard flag (LP can be pulled, honeypot, open mint, freeze, young and linked, risky contract power), a DANGER verdict or a coin under 30 minutes old (those are at most RISKY 54). Without Larpcheck data it equals the CrawlHive score. Larpcheck by Galt: larpcheck.app.",
+    properties: {
+      score: { type: "integer", minimum: 0, maximum: 100 },
+      verdict: { type: "string", enum: ["CLEAN", "OK", "RISKY", "DANGER"], description: "Bands: 70+ CLEAN, 55+ OK, 40+ RISKY, below 40 DANGER" },
+      parts: {
+        type: "object",
+        properties: {
+          crawlhive: { type: "object", properties: { score: { type: "integer" }, verdict: { type: "string" } } },
+          larpcheck: {
+            type: ["object", "null"],
+            properties: { verdict: { type: "string" }, score: { type: ["integer", "null"] }, coin: { type: "string", description: "Larpcheck coin stamp" }, url: { type: "string", format: "uri", description: "Their full check" } },
+          },
+        },
+      },
+      reasons: { type: "array", items: { type: "string" }, description: "What changed the score first, then the CrawlHive on-chain reason" },
+      coverage: { type: "string", enum: ["crawlhive + larpcheck", "crawlhive only"] },
+    },
+    required: ["score", "verdict", "parts", "reasons", "coverage"],
+  },
   ScanBrief: {
     type: "object",
     additionalProperties: true,
@@ -640,6 +662,7 @@ const SCHEMAS = {
       score: { type: ["integer", "null"], minimum: 0, maximum: 100 },
       verdict: { type: "string", enum: ["CLEAN", "OK", "RISKY", "DANGER", "TOO_EARLY"] },
       reason: { type: "string" },
+      combined: { $ref: "#/components/schemas/CombinedScore" },
       flags: { type: "array", items: { type: "string" } },
       market: { type: "object" },
       holders: { type: "object" },

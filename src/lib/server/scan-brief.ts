@@ -2,6 +2,7 @@
 // и платных запросов x402 (/api/x402/scan), чтобы агент получал одно и то же, как бы ни пришёл.
 import "server-only";
 import type { ScanResult } from "./scan";
+import { combinedScore } from "./combined-score";
 import type { XBuzz } from "./scan-x";
 import type { DumpProjection } from "./scan-dump";
 import type { FirstBuyersReport } from "./scan-first-buyers";
@@ -12,6 +13,8 @@ export function scanBrief(r: ScanResult) {
     score: r.score,
     verdict: r.verdict,
     reason: r.reason,
+    // «CrawlHive x Larpcheck»: старые сохранённые сканы без поля досчитываем на лету из их же вердикта Larpcheck.
+    combined: r.combined ?? combinedScore(r, r.larp) ?? undefined,
     flags: r.factors.filter((f) => f.impact !== 0).map((f) => `${f.label} (${f.impact > 0 ? "+" : ""}${f.impact}): ${f.note}`),
     market: r.market,
     holders: r.holders,

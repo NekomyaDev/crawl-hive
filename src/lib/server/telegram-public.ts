@@ -15,6 +15,7 @@ import { TOKEN } from "@/lib/token";
 import { lookV3, secondLookWhy, secondLookWorse } from "@/lib/second-look";
 import type { ScanResult } from "./scan";
 import { dumpWho, firstBuyersBrief } from "./scan-brief";
+import { combinedScore } from "./combined-score";
 import { FREE_RADAR_DELAY_MIN, type Tier } from "./tiers";
 import { looksLikeQuestion as looksLikeQ, type AskTurn } from "./ask";
 import { call, esc, send, sendPhoto, siteUrl, telegramBotName, telegramMainApp, type Keyboard } from "./telegram";
@@ -176,6 +177,7 @@ function caption(r: ScanResult, take: { take: string; conf: number } | null, com
     ...flags.map((f) => `▫️ ${esc(f.label)}${compact ? "" : `: ${esc(f.note).slice(0, 80)}`}`),
     xrayLine(r, compact),
     secondLookLine(r),
+    combinedLine(r),
     ...more,
     take ? `⚡ Jev: <b>${TAKE_LABEL[take.take] ?? take.take}</b> · ${Math.round(take.conf * 100)}% sure` : "",
     compact ? "" : `<code>${esc(r.id)}</code>`,
@@ -184,6 +186,12 @@ function caption(r: ScanResult, take: { take: string; conf: number } | null, com
     .join("\n");
   const full = build(extra);
   return (full.length <= 1000 ? full : build([])).slice(0, 1000);
+}
+
+// Общий вердикт «CrawlHive x Larpcheck» одной строкой, только когда у скана есть вердикт Larpcheck.
+function combinedLine(r: ScanResult) {
+  const c = r.combined ?? combinedScore(r, r.larp);
+  return c?.coverage === "crawlhive + larpcheck" ? `🤝 Combined with Larpcheck: <b>${c.verdict} ${c.score}</b>` : "";
 }
 
 // «Второй взгляд» v3 - одной строкой и только когда он строже публичного вердикта (теперь это v2).

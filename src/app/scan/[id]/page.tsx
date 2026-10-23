@@ -16,6 +16,8 @@ import { XVoices } from "@/components/x-voices";
 import { XRayPanel } from "@/components/xray-panel";
 import { LarpLine } from "@/components/larp-line";
 import { TrustScore } from "@/components/trust-score";
+import { CombinedScoreCard } from "@/components/combined-score";
+import { combinedScore } from "@/lib/server/combined-score";
 import { DumpHeadline } from "@/components/dump-projection";
 import { TopFlags } from "@/components/scan-factors";
 import { ScanDeep } from "@/components/scan-deep";
@@ -52,6 +54,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
   const r = savedScan(id);
   if (!r) redirect(`/?scan=${encodeURIComponent(id)}`);
   const color = VERDICT_COLOR[r.verdict];
+  // Старые сохранённые сканы без общего вердикта досчитываем из их же вердикта Larpcheck (запросов нет).
+  const combined = r.combined ?? combinedScore(r, r.larp);
   const m = r.market;
   const age = m?.ageHours === undefined ? "-" : m.ageHours < 48 ? `${m.ageHours.toFixed(1)}h` : `${Math.round(m.ageHours / 24)}d`;
 
@@ -91,7 +95,8 @@ async function ScanView({ params }: { params: Promise<{ id: string }> }) {
           </div>
         </div>
 
-        {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} className="mt-5" />}
+        {combined && <CombinedScoreCard c={combined} className="mt-5" />}
+        {r.larp && <LarpLine l={r.larp} ours={{ verdict: r.verdict, factors: r.factors }} className="mt-3" />}
         {r.trust && <TrustScore t={r.trust} className="mt-3" />}
 
         <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs sm:grid-cols-6">
