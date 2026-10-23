@@ -10,29 +10,31 @@ import { APP_URL, COMMUNITY_URL, TelegramIcon } from "./telegram-cta";
 import { useWallet } from "./wallet-provider";
 import { useApi } from "@/lib/client/use-api";
 import { Button } from "./ui/button";
+import { LangSwitcher, useT } from "./lang-provider";
+import type { DictKey } from "@/lib/i18n";
 
 const LINKS = [
-  { href: "/", label: "Swarm", icon: LayoutGrid, color: "text-honey" },
-  { href: "/spawn", label: "Spawn", icon: Plus, color: "text-coral" },
-  { href: "/my", label: "My Crawlers", icon: Bug, color: "text-lime" },
-  { href: "/signals", label: "My Signals", icon: Radio, color: "text-teal" },
-  { href: "/launch", label: "Clean Launch", icon: Rocket, color: "text-coral" },
-  { href: "/radar", label: "Launch Radar", icon: Radar, color: "text-lime" },
-  { href: "/narratives", label: "Narrative Radar", icon: Sparkles, color: "text-violet" },
-  { href: "/track", label: "Track Record", icon: Target, color: "text-honey" },
-  { href: "/rugs", label: "Rug Feed", icon: Skull, color: "text-danger", badge: "NEW" },
-  { href: "/paper", label: "Auto Trading", icon: Bot, color: "text-lime", badge: "PAPER" },
-  { href: "/hunt", label: "Gem Hunter", icon: Trophy, color: "text-honey", badge: "NEW" },
-  { href: "/replay", label: "Gem & Rug Replay", icon: History, color: "text-pink" },
-  { href: "/extension", label: "Extension", icon: Puzzle, color: "text-lime" },
-  { href: "/brain", label: "Brain API", icon: Brain, color: "text-pink" },
-  { href: "/ask", label: "Ask CrawlHive", icon: MessageSquare, color: "text-pink", badge: "AI" },
-  { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-lime" },
-  { href: "/pricing", label: "Pricing", icon: Gem, color: "text-sky" },
-  { href: "/agents", label: "For Agents", icon: Bot, color: "text-teal" },
-  { href: "/market", label: "Marketplace", icon: Store, color: "text-pink" },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy, color: "text-sky" },
-  { href: "/governance", label: "Governance", icon: Landmark, color: "text-violet" },
+  { href: "/", label: "nav.swarm" as DictKey, icon: LayoutGrid, color: "text-honey" },
+  { href: "/spawn", label: "nav.spawn" as DictKey, icon: Plus, color: "text-coral" },
+  { href: "/my", label: "nav.my" as DictKey, icon: Bug, color: "text-lime" },
+  { href: "/signals", label: "nav.signals" as DictKey, icon: Radio, color: "text-teal" },
+  { href: "/launch", label: "nav.launch" as DictKey, icon: Rocket, color: "text-coral" },
+  { href: "/radar", label: "nav.radar" as DictKey, icon: Radar, color: "text-lime" },
+  { href: "/narratives", label: "nav.narratives" as DictKey, icon: Sparkles, color: "text-violet" },
+  { href: "/track", label: "nav.track" as DictKey, icon: Target, color: "text-honey" },
+  { href: "/rugs", label: "nav.rugs" as DictKey, icon: Skull, color: "text-danger", badge: "NEW" },
+  { href: "/paper", label: "nav.paper" as DictKey, icon: Bot, color: "text-lime", badge: "PAPER" },
+  { href: "/hunt", label: "nav.hunt" as DictKey, icon: Trophy, color: "text-honey", badge: "NEW" },
+  { href: "/replay", label: "nav.replay" as DictKey, icon: History, color: "text-pink" },
+  { href: "/extension", label: "nav.extension" as DictKey, icon: Puzzle, color: "text-lime" },
+  { href: "/brain", label: "nav.brain" as DictKey, icon: Brain, color: "text-pink" },
+  { href: "/ask", label: "nav.ask" as DictKey, icon: MessageSquare, color: "text-pink", badge: "AI" },
+  { href: "/watchlist", label: "nav.watchlist" as DictKey, icon: Eye, color: "text-lime" },
+  { href: "/pricing", label: "nav.pricing" as DictKey, icon: Gem, color: "text-sky" },
+  { href: "/agents", label: "nav.agents" as DictKey, icon: Bot, color: "text-teal" },
+  { href: "/market", label: "nav.market" as DictKey, icon: Store, color: "text-pink" },
+  { href: "/leaderboard", label: "nav.leaderboard" as DictKey, icon: Trophy, color: "text-sky" },
+  { href: "/governance", label: "nav.governance" as DictKey, icon: Landmark, color: "text-violet" },
 ];
 
 // Бейдж тарифа (Holder, Pro, Whale): видно, что бонусы включены. Ведёт на страницу тарифов.
@@ -50,16 +52,17 @@ function HolderBadge() {
 
 function WalletButton({ compact = false }: { compact?: boolean }) {
   const { address, info, mode, signedIn, connect, signIn, disconnect } = useWallet();
+  const { t } = useT();
   if (!address)
     return (
       <div className="flex w-full flex-col gap-1.5">
         <Button onClick={() => connect()} size="sm" className="w-full">
-          <Wallet className="size-4" /> Connect
+          <Wallet className="size-4" /> {t("wallet.connect")}
         </Button>
         {/* Подсказка у кнопки: что на самом деле происходит при подключении. */}
         {!compact && (
           <Link href="/#wallet-safety" className="flex items-center justify-center gap-1 text-[11px] text-muted hover:text-lime">
-            <ShieldCheck className="size-3" /> Is it safe? Read-only until you pay
+            <ShieldCheck className="size-3" /> {t("wallet.safeLong")}
           </Link>
         )}
       </div>
@@ -72,15 +75,15 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
           {signedIn && <HolderBadge />}
         </div>
         {signedIn ? (
-          <div className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} credits</div>
+          <div className="num text-xs text-honey">{info ? fmt(info.balance) : "…"} {t("wallet.credits")}</div>
         ) : (
           <button onClick={() => signIn().catch(() => {})} className="text-xs font-medium text-honey hover:underline">
-            Sign in to continue
+            {t("wallet.signInContinue")}
           </button>
         )}
         {!compact && <div className="text-[10px] text-muted">{mode === "phantom" ? "Phantom · Solana" : mode === "evm" ? "EVM wallet · Robinhood Chain" : "Demo wallet"}</div>}
       </div>
-      <button onClick={disconnect} className="text-muted hover:text-fg" title="Disconnect">
+      <button onClick={disconnect} className="text-muted hover:text-fg" title={t("wallet.disconnect")}>
         <LogOut className="size-4" />
       </button>
     </div>
@@ -111,6 +114,7 @@ export function Nav() {
 
 export function NavShell({ path }: { path: string }) {
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const { t } = useT();
   return (
     <>
       {/* десктоп: боковая панель */}
@@ -133,7 +137,7 @@ export function NavShell({ path }: { path: string }) {
             >
               {active(href) && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-gradient-to-b from-honey to-pink" />}
               <Icon className={cn("size-4", color)} />
-              {label}
+              {t(label)}
               {badge && <span className="ml-auto rounded bg-lime/15 px-1 py-px text-[9px] font-bold text-lime">{badge}</span>}
             </Link>
           ))}
@@ -152,6 +156,7 @@ export function NavShell({ path }: { path: string }) {
           <Link href="/#treasury" className="ml-auto rounded-md border border-honey/50 bg-honey/10 px-2 py-1 text-[11px] font-bold text-honey">
             ${TOKEN.symbol}
           </Link>
+          <LangSwitcher compact />
           <div className="w-40">
             <WalletButton compact />
           </div>
@@ -166,7 +171,7 @@ export function NavShell({ path }: { path: string }) {
                 active(href) ? "bg-honey/10 text-honey" : "text-muted",
               )}
             >
-              {label}
+              {t(label)}
             </Link>
           ))}
         </nav>
@@ -180,14 +185,15 @@ export function NavShell({ path }: { path: string }) {
 const TOP_BTN = "inline-flex h-12 items-center gap-2 rounded-xl border px-5 text-base font-semibold whitespace-nowrap transition-colors";
 function TopWallet() {
   const { address, info, signedIn, connect, signIn, disconnect } = useWallet();
+  const { t } = useT();
   if (!address)
     return (
       <div className="flex items-center gap-2">
-        <Link href="/#wallet-safety" className="hidden items-center gap-1 text-xs text-muted hover:text-lime xl:flex" title="Read-only until you pay">
-          <ShieldCheck className="size-3" /> Is it safe?
+        <Link href="/#wallet-safety" className="hidden items-center gap-1 text-xs text-muted hover:text-lime xl:flex" title={t("wallet.safeTitle")}>
+          <ShieldCheck className="size-3" /> {t("wallet.safe")}
         </Link>
         <Button onClick={() => connect()} className="h-12 rounded-xl px-6 text-base font-bold">
-          <Wallet className="size-5" /> Connect wallet
+          <Wallet className="size-5" /> {t("wallet.connectWallet")}
         </Button>
       </div>
     );
@@ -197,14 +203,14 @@ function TopWallet() {
       {signedIn ? (
         <>
           <HolderBadge />
-          <span className="num text-sm text-honey">{info ? fmt(info.balance) : "…"} credits</span>
+          <span className="num text-sm text-honey">{info ? fmt(info.balance) : "…"} {t("wallet.credits")}</span>
         </>
       ) : (
         <button onClick={() => signIn().catch(() => {})} className="text-xs font-medium text-honey hover:underline">
-          Sign in
+          {t("wallet.signIn")}
         </button>
       )}
-      <button onClick={disconnect} className="text-muted hover:text-fg" title="Disconnect">
+      <button onClick={disconnect} className="text-muted hover:text-fg" title={t("wallet.disconnect")}>
         <LogOut className="size-4" />
       </button>
     </div>
@@ -212,6 +218,7 @@ function TopWallet() {
 }
 
 export function TopBar() {
+  const { t } = useT();
   return (
     <div data-chrome className="mb-6 hidden flex-wrap items-center justify-end gap-3 lg:flex">
       <Link href="/#treasury" className={cn(TOP_BTN, "border-honey/50 bg-honey/10 text-honey hover:bg-honey/20")}>
@@ -219,15 +226,16 @@ export function TopBar() {
         <span className="rounded bg-honey px-1.5 py-px text-[9px] font-bold tracking-wide text-black">LIVE</span>
       </Link>
       <a href={APP_URL} target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-[#229ED9]/50 bg-[#229ED9]/15 text-white hover:bg-[#229ED9]/25")}>
-        <TelegramIcon className="size-5 text-[#5bc4f5]" /> Telegram app
+        <TelegramIcon className="size-5 text-[#5bc4f5]" /> {t("top.tgApp")}
       </a>
       <a href={COMMUNITY_URL} target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-[#229ED9]/50 bg-[#229ED9]/15 text-white hover:bg-[#229ED9]/25")}>
-        <TelegramIcon className="size-5 text-[#5bc4f5]" /> Community
+        <TelegramIcon className="size-5 text-[#5bc4f5]" /> {t("top.community")}
       </a>
       <a href="https://x.com/crawlhivebot" target="_blank" rel="noreferrer" className={cn(TOP_BTN, "border-white/25 bg-white/[0.06] text-white hover:bg-white/[0.12]")}>
-        <span className="text-base leading-none font-black">𝕏</span> X bot
+        <span className="text-base leading-none font-black">𝕏</span> {t("top.xbot")}
         <span className="rounded bg-white px-1.5 py-px text-[9px] font-bold tracking-wide text-black">NEW</span>
       </a>
+      <LangSwitcher />
       <TopWallet />
     </div>
   );

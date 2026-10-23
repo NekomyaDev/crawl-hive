@@ -6,7 +6,9 @@ import "server-only";
 import { onPaperEvent, type ExitReason, type PaperEvent } from "./paper-engine";
 import { TOKEN } from "@/lib/token";
 import { esc, send, siteUrl } from "./telegram";
-import { chatTier, prefs, prefsAll, setPrefs } from "./telegram-public";
+import { chatLang, chatTier, prefs, prefsAll, setPrefs } from "./telegram-public";
+import { tt } from "./tg-i18n";
+import type { Lang } from "@/lib/i18n/langs";
 import { tierAtLeast } from "./tiers";
 
 // Сигнальные стратегии: самые устойчивые сейчас. Новая сигнальная стратегия = новый id в списке.
@@ -86,32 +88,23 @@ export function startSignalPush() {
 
 // ---------- /signals ----------
 
-const INTRO = () =>
-  [
-    "🤖 <b>Strategy signals</b>",
-    `When one of our signal strategies (${SIGNAL_STRATEGIES.map(code).join(", ")}) opens or closes a position in the Paper Engine, you get it here the moment it happens.`,
-    "These are paper trades: no real money moves. Paper, not financial advice.",
-    `Track every strategy live: ${siteUrl()}/paper`,
-  ].join("\n");
+// Вступление на языке чата (tg-i18n.ts).
+const INTRO = (l: Lang) =>
+  [tt(l, "sig.title"), tt(l, "sig.body", { list: SIGNAL_STRATEGIES.map(code).join(", ") }), tt(l, "sig.paper"), tt(l, "sig.live", { url: `${siteUrl()}/paper` })].join("\n");
+const toggle = (l: Lang, on: boolean) => [[on ? { text: tt(l, "btn.off"), callback_data: "s:off" } : { text: tt(l, "btn.on"), callback_data: "s:on" }]];
 
 async function holderOnly(chat: string) {
   if (tierAtLeast(await chatTier(chat).catch(() => "free" as const), "holder")) return true;
-  send(
-    chat,
-    `🤖 <b>Strategy signals</b> are for $${TOKEN.symbol} holders (Holder tier and up): live Paper Engine trades from our most robust strategies, pushed here. Paper, not financial advice.\nAlready holding? Send /verify &lt;address&gt; to unlock your tier here.`,
-    [[{ text: "💎 See tiers", url: `${siteUrl()}/pricing` }]],
-  );
+  const l = chatLang(chat);
+  send(chat, tt(l, "sig.holders", { symbol: TOKEN.symbol }), [[{ text: tt(l, "sig.tiers"), url: `${siteUrl()}/pricing` }]]);
   return false;
 }
 
 export async function setSignals(chat: string, on: boolean) {
   if (on && !(await holderOnly(chat))) return;
   setPrefs(chat, { signals: on });
-  send(
-    chat,
-    on ? `✅ Strategy signals are on.\n\n${INTRO()}\n\nSend /signals off to stop.` : "Strategy signals are off. Send /signals on to turn them back on.",
-    [[on ? { text: "🔕 Turn off", callback_data: "s:off" } : { text: "🔔 Turn on", callback_data: "s:on" }]],
-  );
+  const l = chatLang(chat);
+  send(chat, on ? `${tt(l, "sig.onNow")}\n\n${INTRO(l)}\n\n${tt(l, "sig.offHint")}` : tt(l, "sig.offNow"), toggle(l, on));
 }
 
 export async function signalsCommand(chat: string, arg: string) {
@@ -119,5 +112,6 @@ export async function signalsCommand(chat: string, arg: string) {
   if (a === "on" || a === "off") return setSignals(chat, a === "on");
   if (!(await holderOnly(chat))) return;
   const on = !!prefs(chat).signals;
-  send(chat, `${INTRO()}\n\nStatus: ${on ? "on" : "off"}.`, [[on ? { text: "🔕 Turn off", callback_data: "s:off" } : { text: "🔔 Turn on", callback_data: "s:on" }]]);
+  const l = chatLang(chat);
+  send(chat, `${INTRO(l)}\n\n${tt(l, "sig.status", { s: tt(l, on ? "on" : "off") })}`, toggle(l, on));
 }

@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { PricingClient } from "@/components/pricing-client";
 import { BurnLog } from "@/components/burn-log";
 import { InviteCard } from "@/components/invite-card";
+import { T } from "@/components/lang-provider";
 
 export const metadata: Metadata = {
   title: "Pricing · CrawlHive",
@@ -16,10 +17,12 @@ export default function PricingPage() {
       <PageHeader
         title={
           <>
-            💎 <span className="text-gradient">Pricing</span>
+            💎 <span className="text-gradient">
+              <T k="price.title" />
+            </span>
           </>
         }
-        sub="Scanning stays free. Hold $CRAWLHIVE for Holder and Whale perks, or burn it for Pro. Every Pro payment is a public burn."
+        sub={<T k="price.sub" />}
       />
       <PricingClient />
       <div className="mt-6">

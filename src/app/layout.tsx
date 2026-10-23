@@ -8,6 +8,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { Mascot } from "@/components/mascot";
 import { TelegramFab } from "@/components/telegram-cta";
 import { RefCapture } from "@/components/ref-capture";
+import { LangProvider, T } from "@/components/lang-provider";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="hive-bg min-h-full font-sans">
+        <LangProvider>
         <WalletProvider>
           <ToastProvider>
             <div className="flex min-h-screen flex-col lg:flex-row">
@@ -44,21 +46,23 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 <TopBar />
                 <div className="flex-1">{children}</div>
                 <footer data-chrome className="mt-10 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4 text-[11px] text-muted">
-                  <span>Signals are information, not financial advice.</span>
+                  <span>
+                    <T k="footer.disclaimer" />
+                  </span>
                   <Link href="/terms" className="hover:text-fg">
-                    Terms &amp; risks
+                    <T k="footer.terms" />
                   </Link>
                   <a href="https://github.com/h100envy/crawl-hive" target="_blank" rel="noreferrer" className="hover:text-fg">
-                    Open source
+                    <T k="footer.source" />
                   </a>
                   <a href="https://t.me/crawlhive" target="_blank" rel="noreferrer" className="hover:text-fg">
-                    Telegram community
+                    <T k="footer.tg" />
                   </a>
                   <a href="https://x.com/crawlhivexyz" target="_blank" rel="noreferrer" className="hover:text-fg">
                     X
                   </a>
                   <a href="https://x.com/crawlhivebot" target="_blank" rel="noreferrer" className="hover:text-fg">
-                    X bot @crawlhivebot
+                    <T k="footer.xbot" />
                   </a>
                 </footer>
               </main>
@@ -68,6 +72,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <RefCapture />
           </ToastProvider>
         </WalletProvider>
+        </LangProvider>
       </body>
     </html>
   );

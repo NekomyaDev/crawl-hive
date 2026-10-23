@@ -9,30 +9,27 @@ import { PageHeader } from "@/components/page-header";
 import { useWallet } from "@/components/wallet-provider";
 import { sessionHeaders } from "@/lib/client/api";
 import { cn } from "@/lib/utils";
+import { useT } from "@/components/lang-provider";
+import type { DictKey, TFn } from "@/lib/i18n";
 
 interface Turn { role: "user" | "assistant"; text: string }
 interface Status { enabled?: boolean; disabled?: boolean; tier?: string; limit?: number; remaining?: number; maxChars?: number }
 
 const MAX_CHARS = 1000;
 const HISTORY = 8;
-const PASTE = "<paste address>";
-// Подсказки: с PASTE вставляются в поле с выделенным местом для адреса, остальные отправляются сразу.
-const CHIPS = [
-  { label: "Is <paste address> safe?", text: `Is ${PASTE} safe?` },
-  { label: "What did this dev launch before?", text: `What did the dev ${PASTE} launch before?` },
-  { label: "How accurate is the scanner since Oct 22?", text: "How accurate is the scanner since Oct 22?" },
-  { label: "What narratives are hot now?", text: "What narratives are hot now?" },
-];
-
-const TOOL_LABEL: Record<string, string> = {
-  scan_token: "Scanning the token",
-  wallet_profile: "Checking the wallet in Brain",
-  dev_profile: "Looking up the dev",
-  track_record: "Reading the Track Record",
-  narratives: "Reading Narrative Radar",
-  recent_launches: "Reading Launch Radar",
-  paper_trading_summary: "Reading paper trading",
+// Подсказки: с местом для адреса вставляются в поле с выделенным местом, остальные отправляются сразу.
+// Текст подсказки на языке интерфейса; место для адреса тоже переведено, поэтому ищем его по переводу.
+const chips = (t: TFn) => {
+  const paste = t("ask.paste");
+  return [
+    { label: t("ask.chip1", { paste }), text: t("ask.chip1", { paste }) },
+    { label: t("ask.chip2label"), text: t("ask.chip2", { paste }) },
+    { label: t("ask.chip3"), text: t("ask.chip3") },
+    { label: t("ask.chip4"), text: t("ask.chip4") },
+  ];
 };
+
+const TOOLS = ["scan_token", "wallet_profile", "dev_profile", "track_record", "narratives", "recent_launches", "paper_trading_summary"];
 
 // Ссылки в ответе кликабельные; точку или скобку в конце предложения в ссылку не берём.
 function Linked({ text, open }: { text: string; open?: (url: string) => void }) {
@@ -69,6 +66,8 @@ export function AskChat({ headers, openLink, compact = false, refreshKey, prefil
   const [err, setErr] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  const { t, lang } = useT();
+  const PASTE = t("ask.paste");
   const hdrs = useCallback(() => ({ "Content-Type": "application/json", ...(headers ? headers() : sessionHeaders()) }), [headers]);
 
   // Остаток вопросов зависит от кошелька: перечитываем при входе и выходе.
@@ -115,7 +114,7 @@ export function AskChat({ headers, openLink, compact = false, refreshKey, prefil
         return copy;
       });
     try {
-      const res = await fetch("/api/ask", { method: "POST", headers: hdrs(), body: JSON.stringify({ question, history }) });
+      const res = await fetch("/api/ask", { method: "POST", headers: hdrs(), body: JSON.stringify({ question, history, lang }) });
       if (!res.ok || !res.body) {
         const d = await res.json().catch(() => ({}));
         if (d.disabled) setStatus({ disabled: true });
@@ -170,8 +169,8 @@ export function AskChat({ headers, openLink, compact = false, refreshKey, prefil
     return (
       <Card className="flex flex-col items-center gap-3 px-6 py-16 text-center">
         <MessageSquare className="size-8 text-pink" />
-        <div className="font-semibold">Ask CrawlHive is coming soon</div>
-        <p className="max-w-md text-sm text-muted">An AI chat that answers from CrawlHive scans, Brain memory, Track Record, Narrative Radar and Launch Radar. It is not switched on yet.</p>
+        <div className="font-semibold">{t("ask.soon")}</div>
+        <p className="max-w-md text-sm text-muted">{t("ask.soonDesc")}</p>
       </Card>
     );
 
@@ -182,10 +181,10 @@ export function AskChat({ headers, openLink, compact = false, refreshKey, prefil
         {!turns.length && (
           <div className="py-6 text-center">
             <MessageSquare className="mx-auto size-7 text-pink" />
-            <div className="mt-2 font-semibold">Ask about any token, wallet or dev</div>
-            <p className="mx-auto mt-1 max-w-md text-sm text-muted">Answers come only from what the swarm has seen: scans, Brain memory, Track Record, narratives and launches.</p>
+            <div className="mt-2 font-semibold">{t("ask.emptyTitle")}</div>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted">{t("ask.emptyDesc")}</p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
-              {CHIPS.map((c) => (
+              {chips(t).map((c) => (
                 <button
                   key={c.label}
                   onClick={() => ask(c.text)}
@@ -214,7 +213,7 @@ export function AskChat({ headers, openLink, compact = false, refreshKey, prefil
         {busy && (
           <div className="flex items-center gap-2 text-xs text-muted">
             <Loader2 className="size-3.5 animate-spin text-pink" />
-            {tool ? `${TOOL_LABEL[tool] ?? "Working"}...` : "Thinking..."}
+            {tool ? `${TOOLS.includes(tool) ? t(`ask.tool.${tool}` as DictKey) : t("ask.working")}...` : t("ask.thinking")}
           </div>
         )}
         {err && <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{err}</div>}
@@ -239,18 +238,19 @@ export function AskChat({ headers, openLink, compact = false, refreshKey, prefil
               }
             }}
             rows={compact ? 1 : 2}
-            placeholder={out ? "No questions left today" : "Ask about a token, wallet, dev or narrative"}
+            placeholder={out ? t("ask.noLeft") : t("ask.placeholder")}
             disabled={out}
             className="min-h-10 flex-1 resize-none rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-pink/60"
           />
-          <Button type="submit" disabled={busy || out || !q.trim()} className="h-10" aria-label="Send">
+          <Button type="submit" disabled={busy || out || !q.trim()} className="h-10" aria-label={t("ask.send")}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
           </Button>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted">
-          <span>Answers come from CrawlHive data. Not financial advice.</span>
+          <span>{t("ask.footer")}</span>
           <span className="num">
-            {status.remaining ?? 0} of {status.limit ?? 0} questions left today{status.tier ? ` · ${status.tier}` : ""}
+            {t("ask.left", { n: status.remaining ?? 0, limit: status.limit ?? 0 })}
+            {status.tier ? ` · ${status.tier}` : ""}
           </span>
         </div>
       </form>
@@ -260,6 +260,7 @@ export function AskChat({ headers, openLink, compact = false, refreshKey, prefil
 
 export function AskView() {
   const { address, signedIn } = useWallet();
+  const { t } = useT();
   return (
     <>
       <PageHeader
@@ -269,7 +270,7 @@ export function AskView() {
             <span className="rounded bg-pink/15 px-1.5 py-0.5 text-[11px] font-bold text-pink">AI</span>
           </span>
         }
-        sub="Ask in plain words. The answer uses only CrawlHive data: token scans, Brain memory of wallets and devs, Track Record, Narrative Radar and Launch Radar. Free: 3 questions a day, Holder 20, Pro 40, Whale 60."
+        sub={t("ask.sub")}
       />
       <AskChat refreshKey={`${address}:${signedIn}`} prefillFromUrl />
     </>

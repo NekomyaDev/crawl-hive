@@ -9,6 +9,8 @@ import { VerdictPill, pct } from "@/components/verdict";
 import { ProofCard } from "@/components/proof-card";
 import { useApi } from "@/lib/client/use-api";
 import { cn, fmt, short, timeAgo } from "@/lib/utils";
+import { useT } from "@/components/lang-provider";
+import { DATE_LOCALE, type Lang } from "@/lib/i18n";
 
 interface Row {
   id: string;
@@ -97,7 +99,7 @@ function Rows({ rows, empty }: { rows: Row[]; empty: string }) {
 }
 
 const FILLING_MIN = 20; // меньше закрытых монет с переключения - подпись «статистика заполняется»
-const day = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const day = (t: number, lang: Lang = "en") => new Date(t).toLocaleDateString(DATE_LOCALE[lang], { month: "short", day: "numeric" });
 const MODEL_LABEL: Record<string, string> = { v1: "Old score (v1)", v2: "Risk score v2 (public)", v3: "Second look v3 (beta)" };
 const rate = (x: number | null) => (x == null ? "-" : `${Math.round(x)}%`);
 
@@ -105,19 +107,20 @@ const rate = (x: number | null) => (x == null ? "-" : `${Math.round(x)}%`);
 function CompareCard() {
   const { data } = useApi<Compare>("/api/track/compare", 120000);
   const [all, setAll] = useState(false);
+  const { t, lang } = useT();
   const part = all ? data?.allTime : data?.sinceSwitch;
   return (
     <Card className="mb-5">
       <CardHeader
-        title="Which score is right? v1 vs v2 vs v3"
+        title={t("track.compare")}
         sub={
           all
-            ? "All time, wherever a coin has that score. v2 exists since Oct 21, v3 since Oct 22, so the old score has way more coins."
-            : `Same coins, all three scores, since ${data?.switchAt ? day(data.switchAt) : "the switch"}. This fills in as coins hit their 24 hours${data ? `: ${data.sinceSwitch.settled} settled, ${data.open} still running` : ""}.`
+            ? t("track.compareAll")
+            : `${t("track.compareSince", { date: data?.switchAt ? day(data.switchAt, lang) : t("track.theSwitch") })}${data ? t("track.compareCount", { settled: data.sinceSwitch.settled, open: data.open }) : ""}.`
         }
         action={
           <button type="button" onClick={() => setAll(!all)} className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg">
-            {all ? "Since the switch" : "All time"}
+            {all ? t("track.sinceSwitch") : t("track.allTime")}
           </button>
         }
       />
@@ -125,12 +128,12 @@ function CompareCard() {
         <table className="w-full min-w-[520px] text-left text-xs">
           <thead className="text-muted">
             <tr>
-              <th className="pb-2 font-medium">Score · verdict</th>
-              <th className="pb-2 text-right font-medium">Coins</th>
-              <th className="pb-2 text-right font-medium">Rugged</th>
-              <th className="pb-2 text-right font-medium">Dumped</th>
-              <th className="pb-2 text-right font-medium">Hit +50%</th>
-              <th className="pb-2 text-right font-medium">Median 24h</th>
+              <th className="pb-2 font-medium">{t("track.col.verdict")}</th>
+              <th className="pb-2 text-right font-medium">{t("track.col.coins")}</th>
+              <th className="pb-2 text-right font-medium">{t("track.col.rugged")}</th>
+              <th className="pb-2 text-right font-medium">{t("track.col.dumped")}</th>
+              <th className="pb-2 text-right font-medium">{t("track.col.hit")}</th>
+              <th className="pb-2 text-right font-medium">{t("track.col.median")}</th>
             </tr>
           </thead>
           {(["v1", "v2", "v3"] as const).map((m) => (
@@ -152,7 +155,7 @@ function CompareCard() {
           ))}
         </table>
         <p className="mt-3 text-[11px] text-muted">
-          A good score has a low rug rate on CLEAN and a high one on DANGER. v3 is a hypothesis: most of its on-chain signals only exist since Oct 20, so it could not be backtested. We judge it here, forward.
+          {t("track.compareNote")}
         </p>
       </div>
     </Card>
@@ -163,9 +166,10 @@ export default function TrackPage() {
   const { data } = useApi<Data>("/api/track", 60000);
   // Публичная статистика: с переключения на v2 (старые вердикты другой модели не смешиваем), старая - по кнопке.
   const [old, setOld] = useState(false);
+  const { t, lang } = useT();
   const hasEra = !!data?.byPublic;
   const era = hasEra ? (old ? data!.byOld! : data!.byPublic!) : (data?.by ?? []);
-  const eraHint = !hasEra ? null : old ? `old score, before ${data?.switchAt ? day(data.switchAt) : "the switch"}` : `risk score v2, since ${data?.switchAt ? day(data.switchAt) : "today"}`;
+  const eraHint = !hasEra ? null : old ? t("track.eraOld", { date: data?.switchAt ? day(data.switchAt, lang) : t("track.theSwitch") }) : t("track.eraNew", { date: data?.switchAt ? day(data.switchAt, lang) : t("track.today") });
   const by = new Map(era.map((b) => [b.verdict, b]));
   const group = (vs: string[]) => {
     const xs = vs.map((v) => by.get(v)).filter(Boolean) as By[];
@@ -183,23 +187,23 @@ export default function TrackPage() {
   return (
     <>
       <PageHeader
-        title="Track Record"
-        sub={`Every verdict is checked against the real price for ${data?.windowHours ?? 24} hours after the scan. A token counts as dumped when it falls ${Math.abs(data?.dumpPct ?? 50)}% below the scan price or its liquidity is pulled. Hits and misses, nothing hidden, and every record is committed to Solana.`}
+        title={t("track.title")}
+        sub={t("track.sub", { hours: data?.windowHours ?? 24, pct: Math.abs(data?.dumpPct ?? 50) })}
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Verdicts tracked" value={shownTotal != null ? fmt(shownTotal) : "-"} hint={shownSince ? `since ${day(shownSince)}` : "starting now"} tone="honey" />
-        <Stat label="DANGER that dumped" value={share(bad.dumped, bad.settled) == null ? "-" : `${share(bad.dumped, bad.settled)}%`} hint={`${bad.dumped} of ${bad.settled} settled${eraHint ? ` · ${eraHint}` : ""}`} tone="coral" />
-        <Stat label="CLEAN / OK that dumped" value={share(good.dumped, good.settled) == null ? "-" : `${share(good.dumped, good.settled)}%`} hint={`${good.dumped} of ${good.settled} settled${eraHint ? ` · ${eraHint}` : ""}`} tone="teal" />
+        <Stat label={t("track.tracked")} value={shownTotal != null ? fmt(shownTotal) : "-"} hint={shownSince ? t("track.since", { date: day(shownSince, lang) }) : t("track.startingNow")} tone="honey" />
+        <Stat label={t("track.dangerDumped")} value={share(bad.dumped, bad.settled) == null ? "-" : `${share(bad.dumped, bad.settled)}%`} hint={`${t("track.settledOf", { a: bad.dumped, b: bad.settled })}${eraHint ? ` · ${eraHint}` : ""}`} tone="coral" />
+        <Stat label={t("track.cleanDumped")} value={share(good.dumped, good.settled) == null ? "-" : `${share(good.dumped, good.settled)}%`} hint={`${t("track.settledOf", { a: good.dumped, b: good.settled })}${eraHint ? ` · ${eraHint}` : ""}`} tone="teal" />
         <Stat
-          label="Crawler signals hit"
+          label={t("track.signalsHit")}
           value={sig?.scored ? `${share(sig.hits, sig.scored)}%` : "-"}
-          hint={sig ? `${sig.hits} of ${sig.scored} · median peak ${pct(sig.medianPeak)}` : undefined}
+          hint={sig ? t("track.signalsHint", { a: sig.hits, b: sig.scored, peak: pct(sig.medianPeak) }) : undefined}
           tone="lime"
         />
       </div>
       {filling && (
         <p className="-mt-3 mb-5 text-xs text-muted">
-          New score since {data?.switchAt ? day(data.switchAt) : "Oct 22"}, stats are filling up: {settledNow} {settledNow === 1 ? "coin" : "coins"} settled so far, each one needs {data?.windowHours ?? 24} hours. Old score numbers are one click away under By verdict.
+          {t("track.filling", { date: data?.switchAt ? day(data.switchAt, lang) : day(Date.UTC(2026, 9, 22), lang), n: settledNow, hours: data?.windowHours ?? 24 })}
         </p>
       )}
 
@@ -207,12 +211,12 @@ export default function TrackPage() {
 
       <Card className="mb-5">
         <CardHeader
-          title="By verdict"
-          sub={`Settled = 24 hours passed since the scan, rugs included. The gap between DANGER and CLEAN is what the scanner is worth.${eraHint ? ` Showing the ${eraHint}.` : ""}`}
+          title={t("track.byVerdict")}
+          sub={`${t("track.byVerdictSub")}${eraHint ? t("track.showing", { era: eraHint }) : ""}`}
           action={
             hasEra && (
               <button type="button" onClick={() => setOld(!old)} className="shrink-0 rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg">
-                {old ? "Current score" : "Old score"}
+                {old ? t("track.current") : t("track.old")}
               </button>
             )
           }
@@ -227,7 +231,7 @@ export default function TrackPage() {
                   <div className={cn("h-full rounded-full", b.verdict === "DANGER" ? "bg-danger" : b.verdict === "RISKY" ? "bg-honey" : b.verdict === "TOO_EARLY" ? "bg-muted" : "bg-lime")} style={{ width: `${s ?? 0}%` }} />
                 </div>
                 <span className="num w-56 text-right text-xs text-muted">
-                  {s == null ? "no settled yet" : `${s}% dumped`} · {b.settled}/{b.tracked} settled
+                  {s == null ? t("track.noSettled") : t("track.dumpedPct", { s })} · {t("track.settledFrac", { a: b.settled, b: b.tracked })}
                 </span>
               </div>
             );
@@ -239,22 +243,22 @@ export default function TrackPage() {
 
       <div className="mb-5 grid gap-5 xl:grid-cols-2">
         <Card>
-          <CardHeader title="We warned you" sub="DANGER or RISKY, and then it dumped" />
-          <Rows rows={data?.warned ?? []} empty="Nothing settled yet." />
+          <CardHeader title={t("track.warned")} sub={t("track.warnedSub")} />
+          <Rows rows={data?.warned ?? []} empty={t("track.warnedEmpty")} />
         </Card>
         <Card>
-          <CardHeader title="We missed" sub="CLEAN or OK, and it dumped anyway. Shown on purpose." />
-          <Rows rows={data?.missed ?? []} empty="No misses yet." />
+          <CardHeader title={t("track.missed")} sub={t("track.missedSub")} />
+          <Rows rows={data?.missed ?? []} empty={t("track.missedEmpty")} />
         </Card>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <Card>
-          <CardHeader title="Latest verdicts" sub="From user scans, crawler safety checks, Launch Radar and agents" />
-          <Rows rows={data?.recent ?? []} empty="The first verdicts show up here as soon as someone scans a token." />
+          <CardHeader title={t("track.latest")} sub={t("track.latestSub")} />
+          <Rows rows={data?.recent ?? []} empty={t("track.latestEmpty")} />
         </Card>
         <Card>
-          <CardHeader title="Crawler signals" sub="Private signals: tickers hidden, outcomes public" />
+          <CardHeader title={t("track.signals")} sub={t("track.signalsSub")} />
           <ul className="divide-y divide-line/60">
             {(sig?.recent ?? []).map((r) => (
               <li key={r.crawlerId + r.ts} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">

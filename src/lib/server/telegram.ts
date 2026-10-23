@@ -9,6 +9,7 @@ import { randomBytes } from "node:crypto";
 import type { Signal } from "../types";
 import { SIGNAL_KIND_LABEL } from "../spec";
 import { launchHref } from "../narrative";
+import { LANGS } from "../i18n/langs";
 import { expiringCrawlers, getMeta, metaEntries, onLiveSignal, setMeta } from "./store";
 
 const API = process.env.TELEGRAM_API_URL?.trim() || "https://api.telegram.org"; // подмена — только для тестов
@@ -151,11 +152,11 @@ async function handleUpdate(u: {
     text?: string;
     message_id: number;
     message_thread_id?: number;
-    from?: { id: number; first_name?: string; username?: string };
+    from?: { id: number; first_name?: string; username?: string; language_code?: string };
     reply_to_message?: { text?: string; caption?: string; from?: { is_bot?: boolean; username?: string } };
   };
-  callback_query?: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } };
-  inline_query?: { id: string; query: string };
+  callback_query?: { id: string; data?: string; from?: { id: number; language_code?: string }; message?: { chat: { id: number } } };
+  inline_query?: { id: string; query: string; from?: { language_code?: string } };
   chat_member?: import("./group-watch").ChatMemberUpdate;
   my_chat_member?: import("./group-watch").ChatMemberUpdate;
 }) {
@@ -283,23 +284,13 @@ export function startTelegram() {
   import("./tg-digest").then((m) => m.startDigest()).catch((e) => console.warn("[telegram] digest", (e as Error).message));
   setInterval(() => pub().then((p) => p.buybackReminder()).catch((e) => console.warn("[telegram] buyback", (e as Error).message)), 60_000);
   // В меню только главное: проверка токена и поддержка. Остальные команды работают, просто не мешают.
-  call("setMyCommands", {
-    commands: [
-      { command: "start", description: "Check a token: send an address, link or $TICKER" },
-      { command: "ask", description: "Ask CrawlHive anything about a token, wallet or dev" },
-      { command: "token", description: "$CRAWLHIVE: contract, buy, buybacks" },
-      { command: "verify", description: "Unlock your holder tier: no wallet connect, no signing" },
-      { command: "signals", description: "Live paper strategy signals for $CRAWLHIVE holders" },
-      { command: "digest", description: "Daily digest: rugs caught, best signals, narratives" },
-      { command: "narratives", description: "Narrative Radar: what is starting to spread on X" },
-      { command: "narrativealerts", description: "Alerts when a coin launches on a narrative" },
-      { command: "track", description: "Track a wallet: buy and sell alerts with a verdict. No address: Track Record" },
-      { command: "untrack", description: "Stop tracking a wallet" },
-      { command: "tracked", description: "Wallets you track and your plan limit" },
-      { command: "invite", description: "Invite friends: more Ask questions and tracked wallets" },
-      { command: "support", description: "Write to the CrawlHive team" },
-    ],
-  }).catch(() => {});
+  // Меню по умолчанию на английском, плюс своё для каждого языка (Telegram сам показывает по языку клиента).
+  import("./tg-i18n")
+    .then(({ menuFor }) => {
+      call("setMyCommands", { commands: menuFor("en") }).catch(() => {});
+      for (const l of LANGS) if (l !== "en") call("setMyCommands", { commands: menuFor(l), language_code: l }).catch(() => {});
+    })
+    .catch(() => {});
   // Кнопка меню чата открывает мини-апп.
   call("setChatMenuButton", { menu_button: { type: "web_app", text: "Open app", web_app: { url: `${siteUrl()}/tg` } } }).catch((e) => console.warn("[telegram] menu button", (e as Error).message));
   call("setMyDescription", {

@@ -6,7 +6,8 @@ import "server-only";
 import { TOKEN } from "@/lib/token";
 import { digestData, type DigestData } from "./daily";
 import { esc, onChatBlocked, send, siteUrl, type Keyboard } from "./telegram";
-import { chatTier, inTopic, isAdmin, prefs, prefsAll, rememberTopic, setPrefs } from "./telegram-public";
+import { chatLang, chatTier, inTopic, isAdmin, prefs, prefsAll, rememberTopic, setPrefs } from "./telegram-public";
+import { tt } from "./tg-i18n";
 import { getMeta, metaEntries, setMeta } from "./store";
 import { tierAtLeast } from "./tiers";
 
@@ -143,22 +144,21 @@ const when = () => `${String(DIGEST_HOUR_UTC).padStart(2, "0")}:00 UTC`;
 export async function digestCommand(chat: string, arg: string, group?: { userId?: number; thread?: number }) {
   const a = arg.trim().toLowerCase();
   const extra = group?.thread ? { message_thread_id: group.thread } : {};
+  const l = chatLang(chat);
   if (a === "on" || a === "off") {
-    if (group && !(await isAdmin(chat, group.userId))) return send(chat, "Only group admins can change this.", undefined, extra);
+    if (group && !(await isAdmin(chat, group.userId))) return send(chat, tt(l, "adminsOnly"), undefined, extra);
     const on = a === "on";
     setPrefs(chat, { digest: on });
     if (group && on) rememberTopic(chat, "digest", group.thread);
     return send(
       chat,
-      on
-        ? `✅ Daily digest is on: every day at ${when()} ${group ? "this chat" : "you"} get${group ? "s" : ""} the rugs we caught, the best paper signals, top narratives and burns.\nSend /digest off to stop.`
-        : "Daily digest is off. Send /digest on to turn it back on.",
+      on ? tt(l, group ? "dig.onGroup" : "dig.onYou", { when: when() }) : tt(l, "dig.offNow"),
       undefined,
       extra,
     );
   }
   const on = await wants(chat);
-  const status = `Daily digest: <b>${on ? "on" : "off"}</b>, every day at ${when()}. ${group ? "Admins: " : ""}/digest ${on ? "off" : "on"}`;
+  const status = tt(l, "dig.status", { s: tt(l, on ? "on" : "off"), when: when(), admins: group ? tt(l, "dig.admins") : "", next: on ? "off" : "on" });
   // В группе только статус, чтобы команда не превращалась в спам; в личке сразу показываем сегодняшний дайджест.
   if (group) return send(chat, status, undefined, extra);
   const d = await digestData();

@@ -9,6 +9,8 @@ import { Card, CardHeader, Stat } from "@/components/ui/card";
 import { VerdictPill, pct } from "@/components/verdict";
 import { useApi } from "@/lib/client/use-api";
 import { cn, fmt, short, timeAgo } from "@/lib/utils";
+import { useT } from "@/components/lang-provider";
+import type { DictKey } from "@/lib/i18n";
 
 type Win = "24h" | "7d" | "all";
 interface Item {
@@ -51,8 +53,8 @@ interface Data {
 
 const DAY = 24 * 3600_000;
 const WIN_MS: Record<Win, number> = { "24h": DAY, "7d": 7 * DAY, all: Infinity };
-const WIN_LABEL: Record<Win, string> = { "24h": "24h", "7d": "7 days", all: "All time" };
-const CHAIN_LABEL: Record<string, string> = { all: "All chains", solana: "Solana", robinhood: "Robinhood", bsc: "BSC", base: "Base" };
+const WIN_LABEL: Record<Win, DictKey> = { "24h": "rugs.w24h", "7d": "rugs.w7d", all: "rugs.wall" };
+const CHAIN_LABEL: Record<string, string> = { solana: "Solana", robinhood: "Robinhood", bsc: "BSC", base: "Base" };
 
 // Часы в короткую подпись: 25 мин, 3.4 ч, 2 д.
 function dur(h: number | null) {
@@ -85,6 +87,7 @@ function What({ r }: { r: Item }) {
 }
 
 function RugRow({ r }: { r: Item }) {
+  const { t } = useT();
   return (
     <li className={cn("px-4 py-3 text-sm", r.warned ? "bg-danger/[0.03]" : "opacity-70")}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -92,9 +95,9 @@ function RugRow({ r }: { r: Item }) {
           <Link href={`/scan/${r.id}`} className="truncate font-semibold hover:text-honey">${r.symbol}</Link>
           <span className="num text-[11px] text-muted">{CHAIN_LABEL[r.chain] ?? r.chain} · {short(r.id)}</span>
           {r.warned ? (
-            <span className="whitespace-nowrap rounded bg-lime/15 px-1.5 py-px text-[10px] font-bold tracking-wide text-lime">WE WARNED</span>
+            <span className="whitespace-nowrap rounded bg-lime/15 px-1.5 py-px text-[10px] font-bold tracking-wide text-lime">{t("rugs.weWarned")}</span>
           ) : (
-            <span className="whitespace-nowrap rounded border border-line px-1.5 py-px text-[10px] font-semibold tracking-wide text-muted">MISSED</span>
+            <span className="whitespace-nowrap rounded border border-line px-1.5 py-px text-[10px] font-semibold tracking-wide text-muted">{t("rugs.missed")}</span>
           )}
         </span>
         <span className="flex shrink-0 items-center gap-2 text-xs">
@@ -119,6 +122,8 @@ export default function RugsPage() {
   const [chain, setChain] = useState("all");
   const [win, setWin] = useState<Win>("7d");
   const [warnedOnly, setWarnedOnly] = useState(false);
+  const { t } = useT();
+  const winText = t(WIN_LABEL[win]).toLowerCase();
 
   const st = data?.stats[chain];
   const cur = st?.[win];
@@ -133,42 +138,42 @@ export default function RugsPage() {
       <PageHeader
         title={
           <span className="flex items-center gap-2">
-            <Skull className="size-7 text-danger" /> Rug Feed
+            <Skull className="size-7 text-danger" /> {t("rugs.title")}
           </span>
         }
-        sub="Coins that rugged or dumped after someone scanned them, live from the Track Record. A rug means liquidity was pulled with the price, or every pool vanished. A dump means the price fell 50% below the scan price within 24 hours. We show the verdict we gave before it happened."
+        sub={t("rugs.sub")}
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat
-          label="Flagged before it happened"
+          label={t("rugs.flagged")}
           value={cur?.warnedPct != null ? `${cur.warnedPct}%` : "-"}
-          hint={cur ? `${cur.warned} of ${cur.total} were DANGER, RISKY or TOO EARLY · ${WIN_LABEL[win].toLowerCase()}` : undefined}
+          hint={cur ? t("rugs.flaggedHint", { warned: cur.warned, total: cur.total, win: winText }) : undefined}
           tone="lime"
         />
-        <Stat label="Rugs and dumps, 24h" value={st ? fmt(st["24h"].total) : "-"} hint={st ? `${st["24h"].rugs} rugs · ${st["24h"].warned} warned in advance` : undefined} tone="coral" />
-        <Stat label="Rugs and dumps, 7 days" value={st ? fmt(st["7d"].total) : "-"} hint={st ? `${st["7d"].rugs} rugs · ${st["7d"].warned} warned in advance` : undefined} tone="pink" />
-        <Stat label="Median scan to rug" value={dur(cur?.medianHoursToRug ?? null)} hint={cur ? `over ${cur.rugs} confirmed rugs · ${WIN_LABEL[win].toLowerCase()}` : undefined} tone="honey" />
+        <Stat label={t("rugs.day")} value={st ? fmt(st["24h"].total) : "-"} hint={st ? t("rugs.dayHint", { rugs: st["24h"].rugs, warned: st["24h"].warned }) : undefined} tone="coral" />
+        <Stat label={t("rugs.week")} value={st ? fmt(st["7d"].total) : "-"} hint={st ? t("rugs.dayHint", { rugs: st["7d"].rugs, warned: st["7d"].warned }) : undefined} tone="pink" />
+        <Stat label={t("rugs.median")} value={dur(cur?.medianHoursToRug ?? null)} hint={cur ? t("rugs.medianHint", { rugs: cur.rugs, win: winText }) : undefined} tone="honey" />
       </div>
 
       <Card>
         <CardHeader
-          title="Latest rugs and dumps"
-          sub={data ? `Newest first · updates every minute · last update ${timeAgo(data.updatedAt)}` : "Loading…"}
+          title={t("rugs.latest")}
+          sub={data ? t("rugs.latestSub", { ago: timeAgo(data.updatedAt) }) : t("rugs.loading")}
         />
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
           {["all", ...(data?.chains ?? [])].map((c) => (
-            <Chip key={c} on={chain === c} onClick={() => setChain(c)}>{CHAIN_LABEL[c] ?? c}</Chip>
+            <Chip key={c} on={chain === c} onClick={() => setChain(c)}>{c === "all" ? t("rugs.allChains") : (CHAIN_LABEL[c] ?? c)}</Chip>
           ))}
           <span className="mx-1 hidden h-4 w-px bg-line sm:block" />
           {(["24h", "7d", "all"] as Win[]).map((w) => (
-            <Chip key={w} on={win === w} onClick={() => setWin(w)}>{WIN_LABEL[w]}</Chip>
+            <Chip key={w} on={win === w} onClick={() => setWin(w)}>{t(WIN_LABEL[w])}</Chip>
           ))}
           <span className="mx-1 hidden h-4 w-px bg-line sm:block" />
-          <Chip on={warnedOnly} onClick={() => setWarnedOnly(!warnedOnly)}>We warned only</Chip>
+          <Chip on={warnedOnly} onClick={() => setWarnedOnly(!warnedOnly)}>{t("rugs.warnedOnly")}</Chip>
         </div>
         {!data ? (
-          <p className="px-4 py-6 text-center text-sm text-muted">Loading the feed…</p>
+          <p className="px-4 py-6 text-center text-sm text-muted">{t("rugs.loadingFeed")}</p>
         ) : rows.length ? (
           <ul className="divide-y divide-line/60">
             {rows.map((r) => (
@@ -176,12 +181,16 @@ export default function RugsPage() {
             ))}
           </ul>
         ) : (
-          <p className="px-4 py-6 text-center text-sm text-muted">No rugs or dumps here for this filter. Quiet is good.</p>
+          <p className="px-4 py-6 text-center text-sm text-muted">{t("rugs.empty")}</p>
         )}
       </Card>
 
       <p className="mt-4 text-[11px] text-muted">
-        Misses are shown on purpose: CLEAN or OK coins that rugged anyway stay in the feed, just dimmed. One row per token, latest scan. Coins under ${fmt(data?.minLiq0 ?? 1000)} starting liquidity are left out. Full method on the <Link href="/track" className="hover:text-honey underline">Track Record</Link> page.
+        {t("rugs.note", { liq: fmt(data?.minLiq0 ?? 1000) })}{" "}
+        <Link href="/track" className="hover:text-honey underline">
+          {t("rugs.noteLink")}
+        </Link>
+        {t("rugs.noteEnd") === "." ? "." : ` ${t("rugs.noteEnd")}`}
       </p>
     </>
   );

@@ -18,6 +18,7 @@ import { radarFeed } from "./radar";
 import { paperEngineStats } from "./paper-engine";
 import { withDeadline } from "./x402";
 import { askBonus } from "./referrals";
+import { isLang, type Lang } from "@/lib/i18n/langs";
 
 export const askEnabled = () => !!process.env.ANTHROPIC_API_KEY?.trim();
 const model = () => process.env.ASK_MODEL?.trim() || "claude-opus-5-5";
@@ -119,8 +120,9 @@ export function refundQuestion(a: AskAccess) {
 
 export interface AskTurn { role: "user" | "assistant"; text: string }
 
-export function parseAsk(raw: unknown): { question: string; history: AskTurn[] } {
-  const b = (raw ?? {}) as { question?: unknown; history?: unknown };
+// lang: необязательная подсказка языка интерфейса сайта (en, es, pt, ru, tr, zh); незнакомое значение отбрасываем.
+export function parseAsk(raw: unknown): { question: string; history: AskTurn[]; lang?: Lang } {
+  const b = (raw ?? {}) as { question?: unknown; history?: unknown; lang?: unknown };
   const question = typeof b.question === "string" ? b.question.trim() : "";
   if (!question) throw new ApiError("Type a question");
   if (question.length > ASK_MAX_CHARS) throw new ApiError(`Keep it under ${ASK_MAX_CHARS} characters`);
@@ -130,7 +132,7 @@ export function parseAsk(raw: unknown): { question: string; history: AskTurn[] }
     .slice(-HISTORY_TURNS)
     .map((t) => ({ role: t.role, text: t.text.slice(0, HISTORY_CHARS) }));
   while (history.length && history[0].role !== "user") history.shift(); // первое сообщение модели должно быть от пользователя
-  return { question, history };
+  return { question, history, lang: isLang(b.lang) ? b.lang : undefined };
 }
 
 // ---------- без длинных тире ----------
@@ -369,7 +371,16 @@ export type AskEvent = { type: "text"; text: string } | { type: "tool"; name: st
 // Все результаты одного раунда возвращаются одним сообщением пользователя; у упавшего инструмента is_error.
 // via: откуда вопрос (web, tg, x), только для лога; style: добавка к системному промпту под канал (длина, формат),
 // идёт отдельным блоком после кэшируемого, так что кэш инструментов и SYSTEM не ломается.
-export async function runAsk(opts: { question: string; history: AskTurn[]; access: AskAccess; signal?: AbortSignal; via?: string; style?: string }, emit: (e: AskEvent) => void) {
+// Подсказка языка: идёт в некэшируемый хвост системного промпта вместе со style. Язык самого вопроса важнее,
+// подсказка решает, когда по вопросу язык не понять (один адрес, тикер, «?»).
+function langHint(lang?: Lang) {
+  if (!lang) return "";
+  return `The user's interface language is ${LANG_NAME_EN[lang]}. Answer in the language of the user's latest message; if that is unclear (for example only an address or a ticker), answer in ${LANG_NAME_EN[lang]}. Keep verdict words (CLEAN, OK, RISKY, DANGER, TOO EARLY) and crypto terms like rug, dump and sniper as they are.`;
+}
+const LANG_NAME_EN: Record<Lang, string> = { en: "English", es: "Spanish", pt: "Portuguese", ru: "Russian", tr: "Turkish", zh: "Simplified Chinese" };
+
+export async function runAsk(opts: { question: string; history: AskTurn[]; access: AskAccess; signal?: AbortSignal; via?: string; style?: string; lang?: Lang }, emit: (e: AskEvent) => void) {
+  const tail = [opts.style, langHint(opts.lang)].filter(Boolean).join("\n");
   const messages: Anthropic.MessageParam[] = [
     ...opts.history.map((t): Anthropic.MessageParam => ({ role: t.role, content: t.text })),
     { role: "user", content: opts.question },
@@ -384,7 +395,7 @@ export async function runAsk(opts: { question: string; history: AskTurn[]; acces
         model: model(),
         max_tokens: MAX_TOKENS,
         // Кэш: явная метка на конце постоянного префикса (инструменты + system) и автоматическая для хвоста переписки.
-        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }, ...(opts.style ? [{ type: "text" as const, text: opts.style }] : [])],
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }, ...(tail ? [{ type: "text" as const, text: tail }] : [])],
         cache_control: { type: "ephemeral" },
         tools: TOOLS,
         // Последний раунд без вызовов: модель обязана ответить тем, что уже собрала. auto/none работают на всех моделях.
@@ -473,13 +484,13 @@ export type AskOnceResult = { ok: true; text: string; remaining: number } | { ok
 
 // Один вопрос целиком: те же инструменты, системный промпт, лимиты и лог, что у сайта, ответ одной строкой.
 // Вопрос списывается до вызова модели и возвращается, если ответа не вышло. Ошибки не бросает: всё в результате.
-export async function askOnce(opts: { question: string; history?: AskTurn[]; access: AskAccess; via: string; style?: string; timeoutMs?: number }): Promise<AskOnceResult> {
+export async function askOnce(opts: { question: string; history?: AskTurn[]; access: AskAccess; via: string; style?: string; timeoutMs?: number; lang?: Lang }): Promise<AskOnceResult> {
   const left = () => askQuota(opts.access).remaining;
   if (!askEnabled()) return { ok: false, error: "Ask is coming soon", limited: false, remaining: 0 };
   let input: ReturnType<typeof parseAsk>;
   let remaining: number;
   try {
-    input = parseAsk({ question: opts.question, history: opts.history ?? [] });
+    input = parseAsk({ question: opts.question, history: opts.history ?? [], lang: opts.lang });
     remaining = takeQuestion(opts.access);
   } catch (e) {
     if (e instanceof ApiError) return { ok: false, error: e.message, limited: e.status === 429, remaining: left() };

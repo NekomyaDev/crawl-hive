@@ -37,6 +37,7 @@ import { post } from "@/lib/client/api";
 import { spawnWithBurn, type BurnStep } from "@/lib/client/burn";
 import type { PublicCrawler } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
+import { useT } from "@/components/lang-provider";
 
 type Verdict = "CLEAN" | "OK" | "RISKY" | "DANGER" | "TOO_EARLY";
 interface LogLine {
@@ -148,6 +149,7 @@ export function InstantCrawl() {
   const logRef = useRef<HTMLDivElement>(null);
   const { data: recent, reload } = useApi<Recent[]>("/api/scan/recent", 8000);
   const treasury = useTreasury();
+  const { t } = useT();
 
   const scan = useCallback(
     (input: string) => {
@@ -194,11 +196,11 @@ export function InstantCrawl() {
       src.onerror = () => {
         if (src.readyState === EventSource.CLOSED) return;
         if (gotResult) return done();
-        setError((x) => x ?? "Connection lost, try again");
+        setError((x) => x ?? t("scan.lost"));
         done();
       };
     },
-    [running, reload, net],
+    [running, reload, net, t],
   );
 
   // Поиск по X платный, поэтому только по кнопке: отдельный поток /api/scan/x для уже готового вердикта.
@@ -249,12 +251,12 @@ export function InstantCrawl() {
         <div className="relative">
           <div className="mx-auto max-w-3xl text-center">
             <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-bg/60 px-3 py-1 text-xs text-muted">
-              <span className="size-1.5 animate-pulse rounded-full bg-lime" /> free · no wallet · ~10 seconds
+              <span className="size-1.5 animate-pulse rounded-full bg-lime" /> {t("hero.badge")}
             </div>
             <h1 className={cn("leading-[1.05] font-black tracking-tight", active ? "text-3xl lg:text-5xl" : "text-4xl sm:text-5xl lg:text-7xl")}>
-              Is this token <span className="text-gradient">safe?</span>
+              {t("hero.title")} <span className="text-gradient">{t("hero.titleHl")}</span>
             </h1>
-            <p className="mx-auto mt-3 max-w-xl text-base text-muted lg:text-lg">Paste a contract address or $ticker. The swarm checks it and returns a verdict in seconds.</p>
+            <p className="mx-auto mt-3 max-w-xl text-base text-muted lg:text-lg">{t("hero.sub")}</p>
           </div>
           <form
             className="mx-auto mt-7 flex max-w-3xl flex-col gap-2 sm:flex-row"
@@ -268,8 +270,8 @@ export function InstantCrawl() {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="address, link or $TICKER"
-                aria-label="Token address, DexScreener link or ticker"
+                placeholder={t("hero.placeholder")}
+                aria-label={t("hero.aria")}
                 className="num h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted/70 lg:h-16 lg:text-lg"
                 spellCheck={false}
                 autoComplete="off"
@@ -277,12 +279,12 @@ export function InstantCrawl() {
               />
             </div>
             <Button size="lg" className="h-14 rounded-2xl px-8 text-base font-black tracking-wide lg:h-16 lg:px-10 lg:text-lg" disabled={running}>
-              <Radar className={cn("size-5", running && "animate-spin")} /> {running ? "SCANNING…" : "SCAN"}
+              <Radar className={cn("size-5", running && "animate-spin")} /> {running ? t("hero.scanning") : t("hero.scan")}
             </Button>
           </form>
           <div className="mx-auto mt-3 flex max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted">
             <span className="inline-flex flex-wrap items-center justify-center gap-1">
-              $ticker on
+              {t("hero.tickerOn")}
               {NETS.map((n) => (
                 <button
                   key={n.id}
@@ -295,24 +297,24 @@ export function InstantCrawl() {
               ))}
             </span>
             <button type="button" onClick={() => scan(net === "robinhood" ? SAMPLE_RH : net === "bsc" ? SAMPLE_BSC : net === "base" ? SAMPLE_BASE : SAMPLE)} className="text-honey hover:underline" disabled={running}>
-              try a sample →
+              {t("hero.sample")}
             </button>
             <span className="inline-flex items-center gap-1">
-              <ShieldCheck className="size-3.5 text-lime" /> read-only, nothing to sign
+              <ShieldCheck className="size-3.5 text-lime" /> {t("hero.readOnly")}
             </span>
           </div>
           {/* Вторичные ссылки одной тихой строкой под полем: фонд байбека, покупка токена, Telegram. */}
           <div className="mx-auto mt-4 flex max-w-3xl flex-wrap items-center justify-center gap-2 text-[11px]">
             {treasury?.address && (
               <a href="#treasury" className="inline-flex items-center gap-1.5 rounded-full border border-honey/30 px-2.5 py-1 text-honey/90 hover:bg-honey/10">
-                <Flame className="size-3" /> <span className="num font-semibold">{treasury.ethAddress && buybackUsd(treasury) !== null ? usdFmt(buybackUsd(treasury)!) : `${solFmt(buybackFund(treasury))} SOL`}</span> buyback fund
+                <Flame className="size-3" /> <span className="num font-semibold">{treasury.ethAddress && buybackUsd(treasury) !== null ? usdFmt(buybackUsd(treasury)!) : `${solFmt(buybackFund(treasury))} SOL`}</span> {t("hero.buyback")}
               </a>
             )}
             <a href={TOKEN.buy} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-[#ff6b2c]/40 px-2.5 py-1 font-semibold text-[#ff9a5c] hover:bg-[#ff6b2c]/15">
-              ${TOKEN.symbol} is live · buy
+              {t("hero.tokenLive", { symbol: TOKEN.symbol })}
             </a>
             <a href={APP_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-sky/40 px-2.5 py-1 text-sky hover:bg-sky/10">
-              <TelegramIcon className="size-3" /> Telegram app
+              <TelegramIcon className="size-3" /> {t("hero.tgApp")}
             </a>
           </div>
 
@@ -372,9 +374,10 @@ function ScoreRing({ score, verdict }: { score: number | null; verdict: Verdict 
 }
 
 function ResultSkeleton({ running }: { running: boolean }) {
+  const { t } = useT();
   return (
     <div className="grid place-items-center rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">
-      {running ? "Crawlers are working…" : "No result"}
+      {running ? t("scan.working") : t("scan.noResult")}
     </div>
   );
 }
@@ -382,6 +385,7 @@ function ResultSkeleton({ running }: { running: boolean }) {
 function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => void }) {
   const st = VERDICT_STYLE[r.verdict];
   const toast = useToast();
+  const { t } = useT();
   // Полный разбор только от DEEP_SCAN_TIER. Поток /api/scan отдаёт всё (его же читают бот и расширение),
   // так что здесь замок клиентский: данные в памяти браузера есть, просто не рисуются.
   const viewer = useViewerTier();
@@ -409,14 +413,14 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
       {open && <SinceLastScan s={r.since} />}
       <div className="grid grid-cols-3 gap-2 text-center text-xs">
         {[
-          ["Liquidity", usd(m?.liquidityUsd)],
-          ["FDV", usd(m?.fdv)],
-          ["Age", age],
-          ["Vol 1h", usd(m?.volume1h)],
-          ["Buys / sells 1h", m ? `${m.buys1h ?? 0} / ${m.sells1h ?? 0}` : "-"],
+          [t("res.liquidity"), usd(m?.liquidityUsd)],
+          [t("res.fdv"), usd(m?.fdv)],
+          [t("res.age"), age],
+          [t("res.vol1h"), usd(m?.volume1h)],
+          [t("res.buysSells"), m ? `${m.buys1h ?? 0} / ${m.sells1h ?? 0}` : "-"],
           r.evm
-            ? ["Holders", r.evm.holders !== undefined ? r.evm.holders.toLocaleString("en-US") : "-"]
-            : ["Top 10 wallets", r.holders ? `${r.holders.top10.toFixed(0)}%` : "-"],
+            ? [t("res.holders"), r.evm.holders !== undefined ? r.evm.holders.toLocaleString("en-US") : "-"]
+            : [t("res.top10"), r.holders ? `${r.holders.top10.toFixed(0)}%` : "-"],
         ].map(([k, v]) => (
           <div key={k} className="rounded-lg bg-panel-2 px-2 py-1.5">
             <div className="text-[10px] text-muted uppercase">{k}</div>
@@ -487,7 +491,7 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
         href={`/scan/${r.id}#full-analysis`}
         className="flex items-center justify-center gap-1.5 rounded-lg border border-honey/40 bg-honey/10 py-2 text-sm font-semibold text-honey hover:bg-honey/20"
       >
-        See full analysis <ArrowRight className="size-4" />
+        {t("res.full")} <ArrowRight className="size-4" />
       </Link>
       <ShareScan id={r.id} text={shareText(r)} />
       {open ? (
@@ -513,11 +517,11 @@ function ResultCard({ r, x, onCheckX }: { r: Result; x: XState; onCheckX: () => 
             {explorerToken(r.chain, r.id)!.label} <ExternalLink className="size-3" />
           </a>
         )}
-        <button className="ml-auto text-[11px] text-muted hover:text-fg" onClick={() => navigator.clipboard?.writeText(r.id).then(() => toast("Address copied"))}>
+        <button className="ml-auto text-[11px] text-muted hover:text-fg" onClick={() => navigator.clipboard?.writeText(r.id).then(() => toast(t("res.copied")))}>
           {short(r.id)}
         </button>
       </div>
-      <p className="text-[10px] text-muted">Automated checks, not financial advice. A high score is not a guarantee.</p>
+      <p className="text-[10px] text-muted">{t("res.disclaimer")}</p>
     </div>
   );
 }
@@ -548,6 +552,7 @@ function DevFlag({ d }: { d: NonNullable<Result["dev"]> }) {
 
 const MOOD: Record<XBuzz["sentiment"], string> = { bullish: "text-lime", mixed: "text-honey", bearish: "text-danger", quiet: "text-muted" };
 function XPanel({ x, onCheck }: { x: Exclude<XState, undefined>; onCheck: () => void }) {
+  const { t } = useT();
   if (x === null) return null;
   if (x === "offer")
     return (
@@ -556,9 +561,9 @@ function XPanel({ x, onCheck }: { x: Exclude<XState, undefined>; onCheck: () => 
         className="flex w-full items-center justify-between gap-2 rounded-lg border border-sky/40 bg-panel-2/60 p-3 text-left text-xs hover:bg-sky/10"
       >
         <span>
-          <span className="font-semibold">𝕏 Check X</span> <span className="text-muted">· Grok reads who is talking about it, about half a minute</span>
+          <span className="font-semibold">𝕏 {t("res.checkX")}</span> <span className="text-muted">· {t("res.checkXHint")}</span>
         </span>
-        <span className="text-sky">Run →</span>
+        <span className="text-sky">{t("res.run")}</span>
       </button>
     );
   return (
@@ -567,7 +572,7 @@ function XPanel({ x, onCheck }: { x: Exclude<XState, undefined>; onCheck: () => 
         <span className="font-semibold">𝕏 buzz</span>
         {x === "loading" ? (
           <span className="flex items-center gap-1 text-muted">
-            <span className="size-1.5 animate-pulse rounded-full bg-sky" /> Grok is reading X…
+            <span className="size-1.5 animate-pulse rounded-full bg-sky" /> {t("res.grokReading")}
           </span>
         ) : (
           <span className={cn("font-semibold uppercase", MOOD[x.sentiment])}>{x.sentiment}</span>
@@ -615,7 +620,8 @@ function Flag({ ok, label }: { ok: boolean; label: string }) {
 // и поиском по тикеру. Цена — тир Larva.
 function WatchButton({ r }: { r: Result }) {
   const { cfg, unit, simulated, price: priceOf, fmtPrice, signLabel } = usePay();
-  const STEP: Record<BurnStep, string> = { prepare: "Preparing…", sign: signLabel, confirm: "Checking payment…" };
+  const { t } = useT();
+  const STEP: Record<BurnStep, string> = { prepare: t("res.preparing"), sign: signLabel, confirm: t("res.checkingPay") };
   const router = useRouter();
   const toast = useToast();
   const { address, signedIn, connect, signIn } = useWallet();
@@ -643,7 +649,7 @@ function WatchButton({ r }: { r: Result }) {
     try {
       setStep("busy");
       const c = simulated ? await post<PublicCrawler>("/api/crawlers", payload) : await spawnWithBurn(payload, setStep);
-      toast(`A crawler now watches $${r.symbol} for you`);
+      toast(t("res.watching", { symbol: r.symbol }));
       router.push(`/crawler/${c.id}`);
     } catch (e) {
       toast((e as Error).message, "error");
@@ -653,19 +659,20 @@ function WatchButton({ r }: { r: Result }) {
   return (
     <Button size="sm" onClick={watch} disabled={!!step || !cfg}>
       <Eye className="size-4" />
-      {step ? (step === "busy" ? "…" : STEP[step]) : `Watch 30 days · ${fmtPrice(price)} ${unit}`}
+      {step ? (step === "busy" ? "…" : STEP[step]) : t("res.watch", { price: fmtPrice(price), unit })}
     </Button>
   );
 }
 
 function RecentScans({ rows, onOpen }: { rows: Recent[]; onOpen: (id: string) => void }) {
+  const { t } = useT();
   return (
     <div className="mt-4 overflow-hidden rounded-xl border border-line bg-panel/70">
       <div className="flex items-center justify-between border-b border-line px-4 py-2 text-[11px]">
         <span className="flex items-center gap-1.5 text-lime">
-          <span className="size-1.5 rounded-full bg-lime" /> recently scanned
+          <span className="size-1.5 rounded-full bg-lime" /> {t("recent.title")}
         </span>
-        <span className="text-muted">click to open</span>
+        <span className="text-muted">{t("recent.click")}</span>
       </div>
       <div className="divide-y divide-line">
         {rows.slice(0, 5).map((r) => {
@@ -686,7 +693,7 @@ function RecentScans({ rows, onOpen }: { rows: Recent[]; onOpen: (id: string) =>
         })}
       </div>
       <Link href="/market" className="flex items-center justify-center gap-1 border-t border-line py-2 text-xs text-honey hover:bg-panel-2">
-        Want this on autopilot? Pick a ready-made crawler <ArrowRight className="size-3.5" />
+        {t("recent.autopilot")} <ArrowRight className="size-3.5" />
       </Link>
     </div>
   );

@@ -12,6 +12,8 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN } from "@/lib/token";
 import { getMeta, metaEntries, setMeta } from "./store";
 import { esc, send, siteUrl } from "./telegram";
+import { chatLang } from "./telegram-public";
+import { tt } from "./tg-i18n";
 import type { Tier } from "./tiers";
 
 const TTL_MS = 15 * 60_000;
@@ -80,17 +82,20 @@ export async function tierMessage(wallet: string) {
   return [`🏅 <b>${TIER_NAME[t.tier]} unlocked</b> in this chat:`, await perks(t.tier), "", "I re-check the balance as you use the bot: if the tokens leave the wallet, the tier drops."].join("\n");
 }
 
-const intro = (c: Challenge) =>
-  [
-    `🔐 <b>Verify wallet</b> <code>${esc(short(c.wallet))}</code>`,
+// Инструкция на языке чата (tg-i18n.ts).
+const intro = (c: Challenge) => {
+  const l = chatLang(c.chat);
+  return [
+    tt(l, "v.title", { wallet: `<code>${esc(short(c.wallet))}</code>` }),
     "",
-    `Send exactly <b>${solText(c.lamports)} SOL</b> from this wallet <b>to itself</b> (same address as sender and receiver) within 15 minutes.`,
-    "The SOL stays yours, only the network fee (about 0.000005 SOL) is spent. If your wallet will not send to itself, send it to any other address you own.",
+    tt(l, "v.send", { sol: solText(c.lamports) }),
+    tt(l, "v.fee"),
     "",
-    "I check the chain every 30 seconds and message you here when it lands. /verify shows the status, /verify cancel stops.",
+    tt(l, "v.check"),
     "",
-    "⚠️ I never ask for a seed phrase or private key and never ask you to sign anything. Anyone who does is a scammer.",
+    tt(l, "v.scam"),
   ].join("\n");
+};
 
 // /verify [адрес | cancel] в личке.
 export async function handleVerify(chat: string, arg: string) {
@@ -99,7 +104,7 @@ export async function handleVerify(chat: string, arg: string) {
   const mine = list.find((c) => c.chat === chat);
   if (!a) {
     if (!mine)
-      return send(chat, "Send /verify followed by your Solana wallet address, e.g. <code>/verify 7xKX…abcd</code>. No wallet connect, no signing: you prove it is yours with a tiny transfer to yourself, and your $" + TOKEN.symbol + " tier unlocks here.");
+      return send(chat, tt(chatLang(chat), "v.usage", { symbol: TOKEN.symbol }));
     // Ручная проверка не чаще раза в 10 секунд.
     const last = st().pokes.get(chat) ?? 0;
     if (Date.now() - last > 10_000) {
@@ -114,11 +119,11 @@ export async function handleVerify(chat: string, arg: string) {
     return send(chat, mine ? "Verification cancelled." : "Nothing to cancel.");
   }
   if (/seed|private|mnemonic/i.test(a) || a.split(/\s+/).length > 1)
-    return send(chat, "Send only the public wallet address, nothing else. Never share a seed phrase or private key with anyone, including me.");
+    return send(chat, tt(chatLang(chat), "v.onlyAddr"));
   if (/^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(a) || /^\[[\d,\s]+\]$/.test(a))
-    return send(chat, "⚠️ That looks like a private key, not an address. Delete that message, and if anyone else has seen the key, move your funds to a new wallet. I only need the public address.");
+    return send(chat, tt(chatLang(chat), "v.privKey"));
   const wallet = parseSolWallet(a);
-  if (!wallet) return send(chat, "That is not a Solana wallet address. Send the public address of the wallet that holds your $" + TOKEN.symbol + ".");
+  if (!wallet) return send(chat, tt(chatLang(chat), "v.notSol", { symbol: TOKEN.symbol }));
   if (getMeta(`tg:${wallet}`) === chat) return send(chat, `<code>${esc(short(wallet))}</code> is already linked here.\n\n${await tierMessage(wallet)}`);
   if (mine?.wallet === wallet) return send(chat, intro(mine));
 

@@ -1,4 +1,4 @@
-// Ask CrawlHive (ask.ts). GET: включён ли чат и сколько вопросов осталось сегодня. POST { question, history }:
+// Ask CrawlHive (ask.ts). GET: включён ли чат и сколько вопросов осталось сегодня. POST { question, history, lang? }:
 // ответ потоком Server-Sent Events: text (куски ответа), tool (какой инструмент работает), done (остаток), error.
 // Без ANTHROPIC_API_KEY обе ручки отвечают 503 {disabled:true}, страница показывает «coming soon».
 // Кто спрашивает: подписанная сессия сайта или initData мини-аппа Telegram, иначе IP.
