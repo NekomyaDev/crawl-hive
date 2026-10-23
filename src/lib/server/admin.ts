@@ -11,6 +11,16 @@ export function isAdmin(u: { id: number | string; username?: string }) {
   return ids().includes(String(u.id)) || (!!u.username && names().includes(u.username.toLowerCase()));
 }
 
+// Админ на сайте: подписанная сессия кошелька, который привязан к админскому Telegram (личка: chat id = user id),
+// или кошелёк из ADMIN_WALLETS. Своих паролей у сайта нет, поэтому право берём из уже проверенных вещей.
+const adminWallets = () => (process.env.ADMIN_WALLETS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+export function isAdminWallet(wallet: string | null | undefined) {
+  if (!wallet) return false;
+  if (adminWallets().includes(wallet)) return true;
+  const chat = getMeta(`tg:${wallet}`);
+  return !!chat && isAdmin({ id: chat, username: users()[chat]?.u });
+}
+
 // ---------- пользователи Telegram ----------
 
 interface TgUserRec {

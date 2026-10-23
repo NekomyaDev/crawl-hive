@@ -1,10 +1,12 @@
 // Превью ссылки /scan/<адрес> в X и Telegram: брендированная карточка скана. Оценка с кольцом, вердикт, причина,
-// худшие флаги, мини-бабл-карта держателей и второе мнение Larpcheck, если оно есть. Её и шерят из скана.
+// худшие правила оценки v2 с их очками (у скана без v2 - флаги v1), мини-бабл-карта держателей и второе мнение
+// Larpcheck, если оно есть. Её и шерят из скана.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 import { connection } from "next/server";
-import { savedScan } from "@/lib/server/scan";
+import { savedScan, type ScanResult } from "@/lib/server/scan";
+import { V2 } from "@/lib/server/score-v2";
 import { CHAIN_LABEL, VERDICT_COLOR, VERDICT_LABEL } from "@/lib/scan-share";
 
 export const alt = "CrawlHive scan result";
@@ -41,6 +43,44 @@ async function loadFonts() {
 }
 
 const TRUST_COLOR: Record<string, string> = { TRUSTED: "#a3e635", MIXED: "#2dd4bf", CAUTION: HONEY, AVOID: "#f87171" };
+// Три самых весомых правила v2 (те же подписи, что в разборе на странице скана), худшие первыми.
+// Скана без v2 (базовый актив, старый скан) - как раньше, флаги v1 с их очками.
+interface Flag {
+  label: string;
+  impact: number;
+  note: string;
+}
+function topFlags(r: ScanResult): Flag[] {
+  const pick = (xs: Flag[]) => xs.filter((f) => f.impact !== 0).sort((a, b) => a.impact - b.impact).slice(0, 3);
+  if (!r.v2) return pick(r.factors);
+  const out: Flag[] = [];
+  let raw = 0;
+  let cap: string | undefined;
+  for (const x of r.v2.reasonsV2) {
+    if (x.startsWith("capped")) {
+      cap = x.replace(/^capped at \d+: /, "");
+      continue;
+    }
+    const m = x.match(/^([+-]?\d+) (.*)$/);
+    if (!m) continue;
+    const pts = Number(m[1]);
+    raw += pts;
+    const v1 = m[2].match(/^v1 score (\d+)$/);
+    const dumped = m[2].match(/^(\d+) wallets were on tokens that dumped$/);
+    out.push(
+      v1
+        ? { label: `Crawler checks ${v1[1]}/100`, impact: pts, note: "" }
+        : dumped
+          ? { label: "Wallets from dumped coins", impact: pts, note: `${dumped[1]} wallets` }
+          : { label: m[2].charAt(0).toUpperCase() + m[2].slice(1), impact: pts, note: "" },
+    );
+  }
+  // Потолок по жёсткому флагу тоже правило со своими очками: разница между суммой и итогом v2.
+  const clamped = Math.max(0, Math.min(100, V2.base + raw));
+  if (cap && r.v2.scoreV2 < clamped) out.push({ label: `Capped at ${r.v2.scoreV2}`, impact: r.v2.scoreV2 - clamped, note: cap });
+  return pick(out);
+}
+
 const larpColor = (v: string) => (/SCAM|LARP/.test(v) ? "#f87171" : /REAL/.test(v) && !/PARTLY/.test(v) ? "#a3e635" : HONEY);
 
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
@@ -49,7 +89,7 @@ export default async function Image({ params }: { params: Promise<{ id: string }
   const r = savedScan(id);
   const [pic, font] = await Promise.all([mascotSrc(), loadFonts()]);
   const color = r ? VERDICT_COLOR[r.verdict] : HONEY;
-  const flags = r ? [...r.factors].filter((f) => f.impact !== 0).sort((a, b) => a.impact - b.impact).slice(0, 3) : [];
+  const flags = r ? topFlags(r) : [];
   const nodes = (r?.operators?.map?.nodes ?? []).filter((n) => !n.hub).sort((a, b) => b.pct - a.pct).slice(0, 9);
   const maxPct = Math.max(...nodes.map((n) => n.pct), 0.01);
   const ops = r?.operators?.operators.length ?? 0;

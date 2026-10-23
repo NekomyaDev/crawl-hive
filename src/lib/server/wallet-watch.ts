@@ -25,7 +25,7 @@ const PER_WALLET = 50;
 
 interface WatchState {
   trades: Map<string, WalletTrade[]>;
-  hook?: { id: string; addrs: string };
+  hook?: { id: string; addrs: string; checked: number }; // checked - когда сверяли со списком Helius
   started: boolean;
 }
 const g = globalThis as unknown as { __crawlhiveWallets?: WatchState };
@@ -75,41 +75,61 @@ export function ingestHelius(body: unknown) {
 // Сделки кошелька новее метки (курсор краулера).
 export const tradesSince = (wallet: string, since: number) => (st().trades.get(wallet) ?? []).filter((t) => t.at > since);
 
-// Список адресов вебхука = все отслеживаемые кошельки. Меняется — обновляем вебхук; пусто — удаляем его.
-async function syncWebhook() {
+// Список адресов вебхука = все отслеживаемые кошельки. Меняется - обновляем вебхук; пусто - удаляем его.
+// Вебхуки живут в аккаунте Helius ключа: сменили ключ (новый аккаунт) - старых для него нет. Поэтому при старте
+// и потом раз в полчаса берём список вебхуков именно текущего ключа, ищем свой по URL и создаём, если его нет.
+// Список не прочитался - ничего не создаём (иначе дубль); лишние копии с нашим URL удаляем. Ключ в лог не пишем.
+const RECHECK_MS = 30 * 60_000;
+const scrub = (t: string, key: string) => (key ? t.split(key).join("***") : t);
+
+async function syncWebhook(retry = true): Promise<void> {
   const key = heliusKey();
   const secret = webhookSecret();
   if (!key || !secret) return;
   const s = st();
   const addrs = [...watchedWallets()].sort();
   const sig = addrs.join(",");
-  if (s.hook && s.hook.addrs === sig) return;
+  const fresh = s.hook && Date.now() - s.hook.checked < RECHECK_MS;
+  if (fresh && s.hook!.addrs === sig) return;
   const api = (path: string, init?: RequestInit) =>
     fetch(`https://api.helius.xyz/v0/webhooks${path}?api-key=${key}`, { ...init, headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(15_000) });
+  const fail = async (what: string, r: Response) => console.warn(`[wallet-watch] webhook error: ${what} ${r.status} ${scrub((await r.text().catch(() => "")).slice(0, 200), key)}`);
   const url = `${siteUrl()}/api/helius/webhook`;
-  // Ищем свой вебхук среди существующих (после рестарта сервера id в памяти нет).
-  if (!s.hook) {
-    const list = (await (await api("")).json().catch(() => [])) as { webhookID: string; webhookURL: string }[];
-    const mine = Array.isArray(list) ? list.find((h) => h.webhookURL === url) : undefined;
-    if (mine) s.hook = { id: mine.webhookID, addrs: "?" };
+  // Свой вебхук ищем в списке текущего ключа: после рестарта id в памяти нет, а после смены ключа старый id чужой.
+  if (!fresh) {
+    const lr = await api("");
+    if (!lr.ok) return fail("list", lr);
+    const list = (await lr.json().catch(() => null)) as { webhookID: string; webhookURL: string }[] | null;
+    if (!Array.isArray(list)) return console.warn("[wallet-watch] webhook error: list is not an array");
+    const mine = list.filter((h) => h.webhookURL === url);
+    for (const extra of mine.slice(1)) {
+      const dr = await api(`/${extra.webhookID}`, { method: "DELETE" });
+      if (dr.ok) console.log(`[wallet-watch] removed duplicate webhook ${extra.webhookID}`);
+      else await fail("delete duplicate", dr);
+    }
+    // addrs "?" - список адресов там неизвестен, ниже обновим его PUT.
+    s.hook = mine[0] ? { id: mine[0].webhookID, addrs: "?", checked: Date.now() } : undefined;
   }
   if (!addrs.length) {
     if (s.hook) {
-      await api(`/${s.hook.id}`, { method: "DELETE" }).catch(() => null);
-      console.log("[wallets] no wallets to watch, webhook removed");
+      const dr = await api(`/${s.hook.id}`, { method: "DELETE" });
+      if (!dr.ok && dr.status !== 404) return fail("delete", dr);
+      console.log("[wallet-watch] no wallets to watch, webhook removed");
     }
     s.hook = undefined;
     return;
   }
   const body = JSON.stringify({ webhookURL: url, transactionTypes: ["SWAP"], accountAddresses: addrs, webhookType: "enhanced", authHeader: secret });
   const r = s.hook ? await api(`/${s.hook.id}`, { method: "PUT", body }) : await api("", { method: "POST", body });
-  if (!r.ok) {
-    console.warn("[wallets] webhook sync failed", r.status, (await r.text().catch(() => "")).slice(0, 200));
-    return;
+  // Вебхук пропал между проверками (удалили в кабинете) - перечитываем список и создаём заново, один раз.
+  if (r.status === 404 && s.hook && retry) {
+    s.hook = undefined;
+    return syncWebhook(false);
   }
+  if (!r.ok) return fail(s.hook ? "update" : "create", r);
   const j = (await r.json().catch(() => ({}))) as { webhookID?: string };
-  s.hook = { id: j.webhookID ?? s.hook?.id ?? "", addrs: sig };
-  console.log(`[wallets] webhook watches ${addrs.length} wallet${addrs.length > 1 ? "s" : ""}`);
+  s.hook = { id: j.webhookID ?? s.hook?.id ?? "", addrs: sig, checked: Date.now() };
+  console.log(`[wallet-watch] webhook ok ${s.hook.id} (${addrs.length} wallet${addrs.length > 1 ? "s" : ""})`);
 }
 
 export function startWalletWatch() {
@@ -117,9 +137,18 @@ export function startWalletWatch() {
   if (s.started) return;
   s.started = true;
   if (!heliusKey() || !webhookSecret()) {
-    console.log("[wallets] wallet tracker off: set HELIUS_API_KEY (or a Helius SOLANA_RPC_FALLBACK) and HELIUS_WEBHOOK_SECRET");
+    console.log("[wallet-watch] wallet tracker off: set HELIUS_API_KEY (or a Helius SOLANA_RPC_FALLBACK) and HELIUS_WEBHOOK_SECRET");
     return;
   }
-  setTimeout(() => syncWebhook().catch((e) => console.warn("[wallets]", (e as Error).message)), 30_000);
-  setInterval(() => syncWebhook().catch((e) => console.warn("[wallets]", (e as Error).message)), 2 * 60_000);
+  // Один проход за раз: два параллельных POST при пустом списке дали бы два вебхука.
+  let busy = false;
+  const run = () => {
+    if (busy) return;
+    busy = true;
+    syncWebhook()
+      .catch((e) => console.warn("[wallet-watch] webhook error:", scrub((e as Error).message, heliusKey())))
+      .finally(() => (busy = false));
+  };
+  setTimeout(run, 30_000);
+  setInterval(run, 2 * 60_000);
 }

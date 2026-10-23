@@ -1,6 +1,7 @@
 "use client";
 // Gem Hunter: ежедневная игра держателей $CRAWLHIVE. Правила простыми словами, таблица дня (сегодня и вчера),
 // за всё время, победители дней со ссылкой на транзакцию приза, свои итоги и последние сканы. Данные в api/hunt.
+// Админу (флаг admin из api/hunt) у дней без транзакции приза - поле для подписи, запись через POST /api/hunt.
 import Link from "next/link";
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
@@ -9,11 +10,12 @@ import { VerdictPill } from "@/components/verdict";
 import { Button } from "@/components/ui/button";
 import { useWallet } from "@/components/wallet-provider";
 import { useApi } from "@/lib/client/use-api";
+import { post } from "@/lib/client/api";
 import { TOKEN } from "@/lib/token";
 import { cn, fmt, short, timeAgo, timeLeft } from "@/lib/utils";
 import type { HuntBoardRow, HuntData, HuntMe, HuntView, HuntWinner } from "@/lib/server/gem-hunter";
 
-type Data = HuntData & { me: HuntMe | null };
+type Data = HuntData & { me: HuntMe | null; admin?: boolean };
 type Live = Extract<HuntData, { enabled: true }>;
 type Day = Live["today"];
 
@@ -187,6 +189,49 @@ function Prize({ w }: { w: HuntWinner | null }) {
   );
 }
 
+// Подпись Solana: 64 байта в base58, на деле 86-88 знаков; берём с запасом 80-90.
+const SOL_SIG = /^[1-9A-HJ-NP-Za-km-z]{80,90}$/;
+
+// Только для админа: вписать подпись транзакции приза за прошедший день. Сервер проверяет право и формат сам.
+function PrizeTxForm({ day, onSaved }: { day: string; onSaved: () => void }) {
+  const [tx, setTx] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const v = tx.trim();
+  const save = async () => {
+    if (!SOL_SIG.test(v)) return setErr("Not a Solana signature (base58, 80 to 90 characters)");
+    setBusy(true);
+    setErr(null);
+    try {
+      await post("/api/hunt", { day, tx: v });
+      setTx("");
+      onSaved();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <input
+        value={tx}
+        onChange={(e) => {
+          setTx(e.target.value);
+          setErr(null);
+        }}
+        placeholder="Prize tx signature"
+        spellCheck={false}
+        className="num min-w-0 flex-1 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-xs outline-none focus:border-honey/60"
+      />
+      <Button size="sm" onClick={save} disabled={busy || !v}>
+        {busy ? "Saving…" : "Save"}
+      </Button>
+      {err && <span className="w-full text-xs text-danger">{err}</span>}
+    </div>
+  );
+}
+
 function DayCard({ d, me, label }: { d: Day; me?: string; label: string }) {
   const final = Date.now() >= d.finalAt;
   const sub =
@@ -205,7 +250,7 @@ export function HuntView() {
   const { address, signedIn, connect, signIn } = useWallet();
   const [tab, setTab] = useState<"today" | "yesterday" | "all">("today");
   // Адрес в пути только чтобы перезапросить данные после входа: сервер берёт кошелёк из сессии.
-  const { data } = useApi<Data>(`/api/hunt${signedIn ? `?me=${address}` : ""}`, 60_000);
+  const { data, reload } = useApi<Data>(`/api/hunt${signedIn ? `?me=${address}` : ""}`, 60_000);
   const live = data?.enabled ? (data as Live & { me: HuntMe | null }) : null;
   const me = data?.me ?? null;
   const today = live?.today;
@@ -302,6 +347,7 @@ export function HuntView() {
                 <span className="num text-xs">
                   <Prize w={w} />
                 </span>
+                {data?.admin && w.wallet && !w.tx && <PrizeTxForm day={w.day} onSaved={reload} />}
               </li>
             ))}
           </ul>
