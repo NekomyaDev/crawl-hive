@@ -419,8 +419,8 @@ const startedAt = () => {
 // после открытия и закрытия позиции зовёт его. Колбэк откладывается на микрозадачу: к этому моменту транзакция
 // SQLite уже закоммичена, а ошибка или долгий подписчик не ломают тик.
 export type PaperEvent =
-  | { kind: "open"; strategy: string; label: string; token: string; chain: string; symbol: string; verdict: string; score: number | null; price: number; liq: number; features: string; at: number }
-  | { kind: "close"; strategy: string; label: string; token: string; chain: string; symbol: string; reason: ExitReason; netPct: number; pnl: number; at: number };
+  | { kind: "open"; positionId: number; strategy: string; label: string; token: string; chain: string; symbol: string; verdict: string; score: number | null; price: number; liq: number; features: string; at: number }
+  | { kind: "close"; positionId: number; strategy: string; label: string; token: string; chain: string; symbol: string; reason: ExitReason; netPct: number; pnl: number; at: number };
 const hooks = globalThis as unknown as { __crawlhivePaperHooks?: Set<(e: PaperEvent) => void> };
 const paperHooks = () => (hooks.__crawlhivePaperHooks ??= new Set());
 export function onPaperEvent(cb: (e: PaperEvent) => void) {
@@ -633,14 +633,15 @@ export function paperOnSignal(r: ScanResult) {
 function openPosition(s: StrategyConfig, c: { token: string; chain: string; symbol: string; verdict: string; score: number | null }, price: number, liq: number, features: string, now: number) {
   const d = db()!;
   const units = (s.sizeUsd * (1 - FEE)) / (price * (1 + slip(s.sizeUsd, liq) + extraSlip(s.id)));
-  d.prepare(
+  // id позиции уходит в событие: по нему живая торговля (live-trader.ts) сводит покупку и продажу.
+  const ins = d.prepare(
     `INSERT INTO paper_positions (strategy, token, chain, symbol, verdict, score, entry_at, entry_price, size, units, liq0, peak_price, peak_at, last_price, last_liq, last_at, missing, features)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
   ).run(s.id, c.token, c.chain, c.symbol, c.verdict, c.score, now, price, s.sizeUsd, units, liq, price, now, price, liq, now, features);
   cache = null;
   console.log(`[paper] open ${s.id} $${c.symbol} ${c.chain} ${c.verdict}${c.score != null ? ` ${c.score}` : ""} at $${price} liq $${Math.round(liq)}`);
   // Личные стратегии наружу (Telegram и прочие подписчики) не уходят: это не сигналы проекта. Арена только в arena.ts.
-  emitFor(s.id, { kind: "open", strategy: s.id, label: s.label, token: c.token, chain: c.chain, symbol: c.symbol, verdict: c.verdict, score: c.score, price, liq, features, at: now });
+  emitFor(s.id, { kind: "open", positionId: Number(ins.lastInsertRowid), strategy: s.id, label: s.label, token: c.token, chain: c.chain, symbol: c.symbol, verdict: c.verdict, score: c.score, price, liq, features, at: now });
 }
 
 // ---------- подтверждение отложенного входа ----------
@@ -741,7 +742,7 @@ function close(p: PosRow, price: number, liq: number, reason: ExitReason, now: n
     throw e;
   }
   console.log(`[paper] close ${p.strategy} $${p.symbol} ${reason} ${t.net >= 0 ? "+" : ""}${t.net.toFixed(1)}% ($${pnl.toFixed(2)}) after ${Math.round((now - p.entry_at) / 60_000)}m`);
-  emitFor(p.strategy, { kind: "close", strategy: p.strategy, label: labelOf(p.strategy), token: p.token, chain: p.chain, symbol: p.symbol, reason, netPct: r2(t.net), pnl: r2(pnl), at: now });
+  emitFor(p.strategy, { kind: "close", positionId: p.id, strategy: p.strategy, label: labelOf(p.strategy), token: p.token, chain: p.chain, symbol: p.symbol, reason, netPct: r2(t.net), pnl: r2(pnl), at: now });
 }
 
 // Частичная продажа по текущему замеру с теми же издержками, что и полный выход; позиция остаётся открытой.

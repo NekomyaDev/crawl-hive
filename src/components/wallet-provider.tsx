@@ -22,6 +22,8 @@ interface WalletCtx {
   signIn: () => Promise<void>;
   disconnect: () => void;
   refresh: () => Promise<void>;
+  // Подписать произвольное сообщение подключённым кошельком (свежая подпись для опасных действий, например выдачи ключа).
+  signMessage: (msg: Uint8Array) => Promise<Uint8Array>;
   hasPhantom: boolean;
 }
 
@@ -118,6 +120,24 @@ async function requestToken(address: string, signer: (msg: Uint8Array) => Promis
   return token;
 }
 
+// Чем подписывать сообщения: демо-ключом, EVM-кошельком (personal_sign) или Phantom.
+function signerFor(v: Saved): (m: Uint8Array) => Promise<Uint8Array> {
+  return v.mode === "demo" && v.seed
+        ? async (m: Uint8Array) => ed25519.sign(m, fromHex(v.seed!))
+        : v.mode === "evm"
+          ? async (m: Uint8Array) => {
+              const p = evmProvider();
+              if (!p) throw new Error("No EVM wallet found");
+              const sig = (await p.request({ method: "personal_sign", params: [`0x${toHex(m)}`, v.address] })) as string;
+              return fromHex(sig.replace(/^0x/, ""));
+            }
+          : async (m: Uint8Array) => {
+            const p = phantom();
+            if (!p) throw new Error("Phantom not found");
+            return (await p.signMessage(m, "utf8")).signature;
+          };
+}
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<Saved | null>(null);
   const [info, setInfo] = useState<WalletInfo | null>(null);
@@ -135,22 +155,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWith = useCallback(async (v: Saved) => {
-    const signer =
-      v.mode === "demo" && v.seed
-        ? async (m: Uint8Array) => ed25519.sign(m, fromHex(v.seed!))
-        : v.mode === "evm"
-          ? async (m: Uint8Array) => {
-              const p = evmProvider();
-              if (!p) throw new Error("No EVM wallet found");
-              const sig = (await p.request({ method: "personal_sign", params: [`0x${toHex(m)}`, v.address] })) as string;
-              return fromHex(sig.replace(/^0x/, ""));
-            }
-          : async (m: Uint8Array) => {
-            const p = phantom();
-            if (!p) throw new Error("Phantom not found");
-            return (await p.signMessage(m, "utf8")).signature;
-          };
-    const token = await requestToken(v.address, signer);
+    const token = await requestToken(v.address, signerFor(v));
     apply({ ...v, token });
   }, []);
 
@@ -237,13 +242,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (saved) await signInWith(saved);
   };
 
+  const signMessage = async (m: Uint8Array) => {
+    if (!saved) throw new Error("Connect a wallet first");
+    return signerFor(saved)(m);
+  };
+
   const disconnect = () => {
     if (saved?.mode === "phantom") phantom()?.disconnect().catch(() => {});
     apply(null);
   };
 
   return (
-    <Ctx.Provider value={{ address, mode: saved?.mode ?? null, signedIn, info, connect, signIn, disconnect, refresh, hasPhantom }}>
+    <Ctx.Provider value={{ address, mode: saved?.mode ?? null, signedIn, info, connect, signIn, disconnect, refresh, signMessage, hasPhantom }}>
       {children}
       {needPhantom && <PhantomPrompt onClose={() => setNeedPhantom(false)} />}
       {needEvm && <EvmPrompt onClose={() => setNeedEvm(false)} />}

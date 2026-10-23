@@ -12,6 +12,7 @@ export const zh: Dict = {
   "nav.track": "战绩",
   "nav.rugs": "Rug 动态",
   "nav.paper": "自动交易",
+  "nav.live": "实盘交易",
   "nav.arena": "爬虫竞技场",
   "nav.hunt": "金狗猎人",
   "nav.replay": "金狗与 Rug 回放",

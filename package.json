@@ -23,6 +23,7 @@
     "evmole": "0.9.3",
     "lucide-react": "^1.55.0",
     "next": "16.4.1",
+    "qrcode-generator": "1.4.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-force-graph-2d": "^1.29.2",

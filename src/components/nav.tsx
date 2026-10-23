@@ -3,7 +3,7 @@ import { TOKEN } from "@/lib/token";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket, Sparkles, History, Puzzle, Brain, Gem, Eye, MessageSquare, Skull, Swords } from "lucide-react";
+import { Bug, LayoutGrid, Store, Trophy, Landmark, Wallet, LogOut, Plus, Radio, ShieldCheck, Radar, Target, Bot, Rocket, Sparkles, History, Puzzle, Brain, Gem, Eye, MessageSquare, Skull, Swords, Zap } from "lucide-react";
 import { cn, fmt, short } from "@/lib/utils";
 import { Logo } from "./logo";
 import { APP_URL, COMMUNITY_URL, TelegramIcon } from "./telegram-cta";
@@ -24,6 +24,7 @@ const LINKS = [
   { href: "/track", label: "nav.track" as DictKey, icon: Target, color: "text-honey" },
   { href: "/rugs", label: "nav.rugs" as DictKey, icon: Skull, color: "text-danger", badge: "NEW" },
   { href: "/paper", label: "nav.paper" as DictKey, icon: Bot, color: "text-lime", badge: "PAPER" },
+  { href: "/live", label: "nav.live" as DictKey, icon: Zap, color: "text-coral", badge: "BETA" },
   { href: "/arena", label: "nav.arena" as DictKey, icon: Swords, color: "text-coral", badge: "NEW" },
   { href: "/hunt", label: "nav.hunt" as DictKey, icon: Trophy, color: "text-honey", badge: "NEW" },
   { href: "/replay", label: "nav.replay" as DictKey, icon: History, color: "text-pink" },

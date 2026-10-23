@@ -12,6 +12,7 @@ export const en = {
   "nav.track": "Track Record",
   "nav.rugs": "Rug Feed",
   "nav.paper": "Auto Trading",
+  "nav.live": "Live Trading",
   "nav.arena": "Crawler Arena",
   "nav.hunt": "Gem Hunter",
   "nav.replay": "Gem & Rug Replay",

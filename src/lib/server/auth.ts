@@ -11,7 +11,8 @@ import { isEvmAddress, recoverEvmSigner } from "./robinhood";
 const NONCE_TTL_MS = 5 * 60_000;
 const SESSION_TTL_MS = 7 * 86400_000;
 
-const g = globalThis as unknown as { __crawlhiveNonces?: Map<string, { address: string; exp: number; issuedAt: string }> };
+// purpose: у nonce для подтверждения действия (выдача ключа и т.п.); у nonce входа его нет, и они не взаимозаменяемы.
+const g = globalThis as unknown as { __crawlhiveNonces?: Map<string, { address: string; exp: number; issuedAt: string; purpose?: string }> };
 const SITE = () => (process.env.PUBLIC_URL?.trim() || "https://crawlhive.xyz").replace(/\/$/, "");
 const nonces = () => (g.__crawlhiveNonces ??= new Map());
 
@@ -37,26 +38,56 @@ export function issueNonce(address: string) {
   return { nonce, issuedAt, message: signInMessage(address, nonce, issuedAt) };
 }
 
+// Подпись сообщения кошельком: ed25519 для Solana, personal_sign для EVM.
+function signatureOk(address: string, text: string, signatureB64: string) {
+  const sig = Buffer.from(String(signatureB64), "base64");
+  try {
+    return isEvmAddress(address)
+      ? recoverEvmSigner(text, sig) === address
+      : ed25519.verify(sig, new TextEncoder().encode(text), new PublicKey(address).toBytes());
+  } catch {
+    return false;
+  }
+}
+
+// ---------- свежая подпись для опасных действий ----------
+// Сессии мало (токен мог утечь из браузера): действие вроде выдачи ключа требует подписать одноразовый nonce
+// прямо сейчас. Тот же механизм nonce, что у входа, но с purpose: nonce входа сюда не подходит и наоборот.
+
+export const actionMessage = (purpose: string, nonce: string) => `CrawlHive ${purpose} ${nonce}`;
+
+export function issueActionNonce(address: string, purpose: string) {
+  if (!isEvmAddress(address)) new PublicKey(address);
+  const now = Date.now();
+  // Старые nonce того же действия у этого кошелька гасим: живой всегда один.
+  for (const [k, v] of nonces()) if (v.exp < now || (v.address === address && v.purpose === purpose)) nonces().delete(k);
+  const nonce = randomBytes(12).toString("base64url");
+  const exp = now + NONCE_TTL_MS;
+  nonces().set(nonce, { address, exp, issuedAt: new Date(now).toISOString(), purpose });
+  return { nonce, message: actionMessage(purpose, nonce), expiresAt: exp };
+}
+
+// Бросает 401, если nonce чужой, другого действия, просрочен (5 минут) или подпись не та. Nonce одноразовый:
+// гасится до проверки подписи, так что перебор подписей по одному nonce невозможен.
+export function verifyActionSignature(address: string, purpose: string, nonce: unknown, signatureB64: unknown) {
+  if (typeof nonce !== "string" || typeof signatureB64 !== "string" || !nonce || !signatureB64) throw new ApiError("Sign the confirmation message with your wallet first", 401);
+  const n = nonces().get(nonce);
+  if (n) nonces().delete(nonce);
+  if (!n || n.purpose !== purpose || n.address !== address || n.exp < Date.now()) throw new ApiError("Confirmation expired, try again", 401);
+  if (!signatureOk(address, actionMessage(purpose, nonce), signatureB64)) throw new ApiError("Signature does not match the wallet", 401);
+}
+
 function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
 export function verifySignIn(address: string, nonce: string, _clientIssuedAt: string, signatureB64: string) {
   const n = nonces().get(nonce);
-  if (!n || n.address !== address || n.exp < Date.now()) throw new ApiError("Sign-in expired, try again", 401);
+  if (!n || n.purpose || n.address !== address || n.exp < Date.now()) throw new ApiError("Sign-in expired, try again", 401);
   nonces().delete(nonce);
   // Время берём своё, сохранённое вместе с nonce: присланное клиентом позволяло вписать в сообщение что угодно.
   const text = signInMessage(address, nonce, n.issuedAt);
-  const sig = Buffer.from(signatureB64, "base64");
-  let ok = false;
-  try {
-    ok = isEvmAddress(address)
-      ? recoverEvmSigner(text, sig) === address
-      : ed25519.verify(sig, new TextEncoder().encode(text), new PublicKey(address).toBytes());
-  } catch {
-    ok = false;
-  }
-  if (!ok) throw new ApiError("Signature does not match the wallet", 401);
+  if (!signatureOk(address, text, signatureB64)) throw new ApiError("Signature does not match the wallet", 401);
   const payload = Buffer.from(JSON.stringify({ w: address, exp: Date.now() + SESSION_TTL_MS, v: sessionVersion(address) })).toString("base64url");
   return { token: `${payload}.${sign(payload)}` };
 }

@@ -213,6 +213,21 @@ function Legacy({ d }: { d: PaperData }) {
   );
 }
 
+// Плашка про живую торговлю: только когда она включена на сервере (режим не off).
+function LiveBanner() {
+  const { data } = useApi<{ mode: string }>("/api/live", 300_000);
+  if (!data || data.mode === "off") return null;
+  return (
+    <Link href="/live" className="mb-5 flex items-center justify-between gap-3 rounded-lg border border-coral/50 bg-coral/10 px-4 py-3 text-sm hover:bg-coral/15">
+      <span>
+        <b className="text-coral">Live auto trading (beta) for holders</b>
+        <span className="text-muted"> · let a trading wallet follow these strategies with real swaps</span>
+      </span>
+      <span className="shrink-0 text-xs font-semibold text-coral">Open</span>
+    </Link>
+  );
+}
+
 export function PaperView() {
   const { data } = useApi<Data>("/api/paper", 60_000);
   const e = data?.engine;
@@ -239,6 +254,7 @@ export function PaperView() {
           @crawlhivebot
         </a>
       </p>
+      <LiveBanner />
 
       {e && !e.enabled && <p className="mb-5 rounded-lg border border-line bg-panel px-4 py-3 text-sm text-muted">The paper engine is switched off right now. Numbers below are frozen.</p>}
 

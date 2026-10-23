@@ -182,6 +182,9 @@ export function startRadar() {
   }
   setInterval(() => sampleTrack().catch((e) => console.warn("[track]", (e as Error).message)), 5 * 60_000);
   startPaperEngine();
+  // Живая торговля по сигналам Paper Engine: только если LIVE_TRADING явно dryrun или live (по умолчанию off).
+  if (["dryrun", "live"].includes(process.env.LIVE_TRADING?.trim().toLowerCase() ?? "off"))
+    import("./live-trader").then((m) => m.startLiveTrader()).catch((e) => console.warn("[live]", (e as Error).message));
   import("./gem-hunter").then((m) => m.startGemHunter()).catch((e) => console.warn("[hunt]", (e as Error).message));
   console.log("[crawlhive] launch radar and track record started");
 }

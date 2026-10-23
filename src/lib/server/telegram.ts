@@ -277,6 +277,8 @@ export function startTelegram() {
   setInterval(() => pub().then((p) => p.sendFollowups()).catch((e) => console.warn("[telegram] follow-ups", (e as Error).message)), 30 * 60_000);
   // /signals: сделки сигнальных стратегий Paper Engine держателям (колбэк регистрируется в движке).
   import("./tg-signals").then((m) => m.startSignalPush()).catch((e) => console.warn("[telegram] signals", (e as Error).message));
+  // Живая торговля: сделки, отказы, вывод и выдача ключа владельцу торгового кошелька (tg-live.ts, при LIVE_TRADING не off).
+  import("./tg-live").then((m) => m.startLivePush()).catch((e) => console.warn("[telegram] live", (e as Error).message));
   setInterval(() => pub().then((p) => p.pushRadar()).catch((e) => console.warn("[telegram] radar", (e as Error).message)), 60_000);
   // /verify: ищем в сети перевод-доказательство по открытым проверкам.
   setInterval(() => import("./tg-verify").then((v) => v.checkVerifications()).catch((e) => console.warn("[telegram] verify", (e as Error).message)), 30_000);
