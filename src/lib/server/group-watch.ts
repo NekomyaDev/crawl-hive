@@ -2,8 +2,8 @@
 // Каждое событие сразу уходит админам проекта в личку (без троттлинга: такие события редкие и важные).
 // Telegram присылает chat_member только если бот сам админ группы и chat_member есть в allowed_updates.
 import "server-only";
-import { adminRecipients } from "./admin";
-import { esc, send } from "./telegram";
+import { adminRecipients, isAdmin } from "./admin";
+import { call, esc, send } from "./telegram";
 
 interface TgUser {
   id: number;
@@ -70,7 +70,21 @@ const who = (u: TgUser) => `${u.is_bot ? "🤖 " : ""}<b>${esc(u.first_name ?? "
 const rightsOf = (m: Member) => RIGHTS.filter(([k]) => m[k] === true);
 const fmtRights = (rs: typeof RIGHTS) => (rs.length ? rs.map(([, l, r]) => (r ? `⚠️ ${l}` : l)).join(", ") : "none");
 
-function notify(c: ChatMemberUpdate["chat"], lines: string[]) {
+// Следим только за своими группами: владелец (creator) должен быть админом проекта. Наш бот стоит админом и в чужих
+// группах (сканы токенов), их кадровые дела нас не касаются. Владельца кэшируем на час, запрос раз на событие.
+const owners = new Map<number, { at: number; ours: boolean }>();
+async function ours(chatId: number) {
+  const hit = owners.get(chatId);
+  if (hit && Date.now() - hit.at < 3600_000) return hit.ours;
+  const admins = await call<{ status: string; user: TgUser }[]>("getChatAdministrators", { chat_id: chatId }).catch(() => null);
+  const owner = admins?.find((a) => a.status === "creator")?.user;
+  const v = !!owner && isAdmin({ id: owner.id, username: owner.username });
+  if (admins) owners.set(chatId, { at: Date.now(), ours: v });
+  return v;
+}
+
+async function notify(c: ChatMemberUpdate["chat"], lines: string[], force = false) {
+  if (!force && !(await ours(c.id))) return;
   const head = `🛡 <b>${esc(c.title ?? "group")}</b>`;
   const text = [head, ...lines].join("\n");
   for (const chat of adminRecipients()) send(chat, text);
@@ -78,12 +92,20 @@ function notify(c: ChatMemberUpdate["chat"], lines: string[]) {
   console.log(`[group-watch] ${c.title ?? c.id}: ${lines.map((l) => l.replace(/<[^>]+>/g, "")).join(" | ")}`);
 }
 
-export function onChatMember(u: ChatMemberUpdate) {
+export async function onChatMember(u: ChatMemberUpdate) {
   if (u.chat.type === "private" || u.chat.type === "channel") return;
   const o = u.old_chat_member;
   const n = u.new_chat_member;
   const by = u.from.id === n.user.id ? "themselves" : who(u.from);
-  if (n.status === "creator" && o.status !== "creator") return notify(u.chat, [`🚨 <b>Ownership moved</b> to ${who(n.user)}`, `by ${by}`]);
+  // Смена владельца: группа уже может числиться «не нашей», поэтому шлём, если наш админ был владельцем или им стал.
+  if (n.status === "creator" && o.status !== "creator") {
+    owners.delete(u.chat.id);
+    return notify(u.chat, [`🚨 <b>Ownership moved</b> to ${who(n.user)}`, `by ${by}`], isAdmin(n.user) || isAdmin(u.from));
+  }
+  if (o.status === "creator" && n.status !== "creator") {
+    owners.delete(u.chat.id);
+    return notify(u.chat, [`🚨 <b>Owner lost ownership</b>: ${who(n.user)} (now ${esc(n.status)})`, `by ${by}`], isAdmin(o.user));
+  }
   if (ADMIN.has(n.status) && !ADMIN.has(o.status)) {
     return notify(u.chat, [
       `${n.user.is_bot ? "🤖 <b>Bot promoted to admin</b>" : "👮 <b>New admin</b>"}: ${who(n.user)}`,
@@ -112,7 +134,7 @@ export function onChatMember(u: ChatMemberUpdate) {
 }
 
 // Наш бот сам: если его сняли с админки или выкинули, слежка в этой группе перестаёт работать, об этом надо знать.
-export function onMyChatMember(u: ChatMemberUpdate) {
+export async function onMyChatMember(u: ChatMemberUpdate) {
   if (u.chat.type === "private" || u.chat.type === "channel") return;
   const o = u.old_chat_member.status;
   const n = u.new_chat_member.status;
