@@ -810,57 +810,55 @@ db/schema.sql                target Postgres schema
 ## Roadmap
 
 <p align="center">
-  <img src="docs/images/roadmap.png" alt="CrawlHive roadmap: two shipped phases, real users and calls in progress, the hive economy next" width="100%">
+  <img src="docs/images/roadmap.png" alt="CrawlHive roadmap: the scanner and the onchain track record shipped, the holder economy and paper auto trading live now, live auto trading and the combined Larpcheck score next" width="100%">
 </p>
 
-- [x] Swarm map, reputation, marketplace, leaderboard, governance
-- [x] Real on-chain spawn payments through Phantom, server-side verification
-- [x] Real crawlers (X via Grok, Telegram, DexScreener, page changes) with per-crawler specifications
-- [x] Private signal inbox, outcome scoring against real prices
-- [x] Sign-in with a wallet signature
-- [x] Signal delivery to Telegram, renewal reminders
-- [x] Paid 30-day terms with on-chain renewal
-- [x] Production mode: real crawlers only, own domain (crawlhive.xyz), terms & risks
-- [x] Instant Crawl: free token scan without a wallet
-- [x] Ready-made crawlers, buyback treasury counter
-- [x] Instant Crawl: X mentions through Grok, bundle detection (wallets run by one person)
-- [x] Instant Crawl: "who's talking on X" map of the authors posting about a token
-- [x] Instant Crawl: creator history (earlier pump.fun launches and how many graduated), core assets recognised
-- [x] Wallet safety explainer on the home page
-- [x] Robinhood Chain: token scans, crawlers on the chain, ETH payments from MetaMask / Rabby into the same buyback fund
-- [x] Shareable scan pages (`/scan/<address>`) with a generated preview card for X and Telegram
-- [x] Grok Bots: MCP server for Grok Bot, Claude, Cursor; a bot can watch one, several or all of your crawlers
-- [x] Grok Bot on duty: one switch under a crawler, wakes only on new signals
-- [x] Safety scan of every crawler signal, peak-based hit scoring, backoff for failing sources
-- [x] Running costs cut: X check on demand, non-reasoning model, shared caches
-- [x] Contract X-Ray: owner powers from EVM bytecode, risky Token-2022 extensions, drainer code on project sites
-- [x] $CRAWLHIVE launch, buyback & burn from the treasury; first burn on Oct 15 (1.55M burned)
-- [x] Pay per call with x402 (USDC on Solana), Phantom checkout on /agents
-- [x] Onchain proof: Merkle root of every verdict and call written to Solana every 15 minutes
-- [x] A2A agent, official MCP Registry listing, OpenAPI and llms.txt
-- [x] DEX fund with a level ladder; four burns by Oct 17 (4.33M burned in total)
-- [x] Treasury revenue by source; x402 USDC goes into buyback & burn
-- [x] Clean Launch: launch a coin on pump.fun from CrawlHive, scanned at birth
-- [x] Narrative Hunter: X crawler for rising narratives with verified posts
-- [x] Launch this narrative: one click from a narrative signal to a prefilled Clean Launch
-- [x] Narrative Radar: the platform's own narrative hunter, public for everyone
-- [x] Clean Launch on Robinhood Chain (Pons) and BNB Chain (four.meme)
-- [x] Operators, wallet memory, dev pages, snipers, LP lock and unlock dates
-- [x] Narrative Snipe Alerts and Gem & Rug Replay
-- [x] Browser extension, live on the Chrome Web Store
-- [x] Base, snipers on BNB and Base, honest LP check for v3 pools
-- [x] Bubble map on Solana, BNB Chain, Base and Robinhood Chain
+### Phase 1 · The scanner (done)
+
+- [x] Instant scans on Solana, Robinhood Chain, BNB Chain and Base: snipers, bundles, insiders, dev history, LP control, Contract X-Ray, bubble map and operators
+- [x] Wallet and dev memory across tokens and chains, "Seen before"
 - [x] Larpcheck second opinion and "Why they disagree"
-- [x] Share cards v2, Telegram community with topic alerts and burn posts
-- [x] Holder perks; 1% of the supply burned
-- [x] Memory: token snapshots between scans, wallets, funders and devs across tokens and chains, "Seen before" on the bubble map
-- [x] Close the sniper gap on Robinhood Chain (buys a second opinion caught that we missed)
-- [x] Operator watch for Whale holders
-- [x] X mentions bot [@crawlhivebot](https://x.com/crawlhivebot): tag it under a contract, it replies with the verdict and the share card
-- [ ] Paper trading: the swarm trades its own signals with fake money and posts a public P&L
-- [ ] First paid crawlers on mainnet and their public track record
+- [x] Telegram bot, X mentions bot, browser extension, MCP, A2A and x402 pay per call
+- [x] Crawlers: spawn, renew, reputation, marketplace, Narrative Radar and Clean Launch
+
+### Phase 2 · Proof (done)
+
+- [x] Track Record: every verdict checked against the real price 24h later, hits and misses public
+- [x] Onchain proof: Merkle root of every verdict written to Solana every 15 minutes
+- [x] Risk score v2 as the public verdict, built on 3,700 graded scans; Second look (v3) in testing
+- [x] Probable dump and first 20 buyers on every scan
+- [x] Rug Feed: every rug and dump with the verdict we gave before it happened
+
+### Phase 3 · Holder economy (live now)
+
+- [x] $CRAWLHIVE tiers in dollars: Holder ($10 held), Pro ($10 burned a month), Whale ($100 held)
+- [x] Full scan analysis, live Launch Radar and live strategy signals for holders; free users see the radar 15 minutes later
+- [x] Pay for crawler spawns and renewals by burning $CRAWLHIVE at 20% off
+- [x] Buybacks and public burns from treasury revenue
+- [x] Ask CrawlHive: an AI that answers only from CrawlHive data, on the site, in Telegram and on X
+- [x] Wallet tracker with the verdict on every buy, token history pages with holder votes, dev reputation pages
+- [x] Gem Hunter daily game, daily digest in Telegram, referral program with product rewards
+
+### Phase 4 · Auto trading (in progress)
+
+- [x] Paper auto trading in public: 40+ strategies, real fees, slippage and stop fills, robustness stats, partial take profit
+- [x] Strategy builder: holders design their own paper strategies
+- [ ] Combined score with Larpcheck as the entry filter
+- [ ] Live auto trading for holders on the strategies that hold up on paper, with fees taken only from profits and half of them burned
+- [ ] Web trading terminal next to the Telegram bot
+
+### Phase 5 · Ecosystem and partnerships
+
+- [ ] Official partnership with Larpcheck: one combined safety score
+- [ ] CrawlHive scans built into launchpads, trading bots and terminals through the API, MCP and x402
+- [ ] Collaborations with other builders and communities: shared alerts, cross integrations, joint spaces
+- [ ] Become the safety layer inside the ecosystem of a major trading platform
+
+### Phase 6 · Scale
+
+- [ ] More languages for the site and the bots
+- [ ] Browser extension with the full holder analysis on DexScreener and pump.fun
 - [ ] Postgres persistence (`db/schema.sql`)
-- [ ] Spawns paid in $CRAWLHIVE with a token burn (`PAYMENT_TOKEN=token`)
 - [ ] Governance results applied automatically (narrative boosts, reputation weights)
 
 ## Known issues
