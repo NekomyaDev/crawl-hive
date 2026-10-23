@@ -36,6 +36,33 @@ const RIGHTS: [key: string, label: string, risky?: boolean][] = [
   ["can_delete_stories", "Delete stories"],
 ];
 const ADMIN = new Set(["administrator", "creator"]);
+
+// Проверка бота: юзернеймы в Telegram уникальны, поэтому точное совпадение с известным ботом значит «настоящий».
+// Подделки берут похожие имена (Safeguard_bot, SafeguardVerify, MissRose_Bot1): если имя или юзернейм похожи на
+// известный бренд, а юзернейм не из списка, это тревога. Свои доверенные можно дописать в GROUP_WATCH_TRUSTED_BOTS.
+const TRUSTED: Record<string, string> = {
+  safeguard: "Safeguard",
+  safeguardrobot: "Safeguard",
+  missrose_bot: "Rose",
+  combot: "Combot",
+  shieldy_bot: "Shieldy",
+  grouphelpbot: "GroupHelp",
+  crawlhivebot: "CrawlHive",
+};
+const BRANDS = ["safeguard", "safe guard", "rose", "combot", "shieldy", "grouphelp", "crawlhive", "crawl hive", "trending", "verify", "captcha"];
+const trusted = () => {
+  const extra = (process.env.GROUP_WATCH_TRUSTED_BOTS ?? "").split(",").map((x) => x.trim().toLowerCase().replace(/^@/, "")).filter(Boolean);
+  return new Set([...Object.keys(TRUSTED), ...extra]);
+};
+const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/0/g, "o").replace(/1/g, "l");
+function botCheck(u: TgUser): string {
+  const un = (u.username ?? "").toLowerCase();
+  if (un && trusted().has(un)) return `✅ Known bot: ${esc(TRUSTED[un] ?? "@" + un)} (exact username)`;
+  const text = norm(`${u.first_name ?? ""} ${u.username ?? ""}`);
+  const brand = BRANDS.find((b) => text.includes(norm(b)) || text.replace(/ /g, "").includes(norm(b).replace(/ /g, "")));
+  if (brand) return `🚨 <b>LOOKS FAKE</b>: name looks like "${esc(brand)}" but @${esc(u.username ?? "?")} is not the real bot. Remove it now and check who added it.`;
+  return "⚠️ Unknown bot: not on the trusted list. Check it before it gets any rights.";
+}
 const IN = new Set(["member", "administrator", "creator", "restricted"]);
 
 const who = (u: TgUser) => `${u.is_bot ? "🤖 " : ""}<b>${esc(u.first_name ?? "?")}</b>${u.username ? ` @${esc(u.username)}` : ""} <code>${u.id}</code>`;
@@ -56,7 +83,12 @@ export function onChatMember(u: ChatMemberUpdate) {
   const by = u.from.id === n.user.id ? "themselves" : who(u.from);
   if (n.status === "creator" && o.status !== "creator") return notify(u.chat, [`🚨 <b>Ownership moved</b> to ${who(n.user)}`, `by ${by}`]);
   if (ADMIN.has(n.status) && !ADMIN.has(o.status)) {
-    return notify(u.chat, [`${n.user.is_bot ? "🤖 <b>Bot promoted to admin</b>" : "👮 <b>New admin</b>"}: ${who(n.user)}`, `by ${by}`, `Rights: ${fmtRights(rightsOf(n))}`]);
+    return notify(u.chat, [
+      `${n.user.is_bot ? "🤖 <b>Bot promoted to admin</b>" : "👮 <b>New admin</b>"}: ${who(n.user)}`,
+      `by ${by}`,
+      `Rights: ${fmtRights(rightsOf(n))}`,
+      ...(n.user.is_bot ? [botCheck(n.user)] : []),
+    ]);
   }
   if (ADMIN.has(o.status) && !ADMIN.has(n.status)) {
     return notify(u.chat, [`➖ <b>Admin removed</b>: ${who(n.user)} (now ${esc(n.status)})`, `by ${by}`]);
@@ -74,7 +106,7 @@ export function onChatMember(u: ChatMemberUpdate) {
       ...(removed.length ? [`Removed: ${fmtRights(removed)}`] : []),
     ]);
   }
-  if (n.user.is_bot && IN.has(n.status) && !IN.has(o.status)) return notify(u.chat, [`🤖 <b>Bot added</b>: ${who(n.user)}`, `by ${by}`]);
+  if (n.user.is_bot && IN.has(n.status) && !IN.has(o.status)) return notify(u.chat, [`🤖 <b>Bot added</b>: ${who(n.user)}`, `by ${by}`, botCheck(n.user)]);
 }
 
 // Наш бот сам: если его сняли с админки или выкинули, слежка в этой группе перестаёт работать, об этом надо знать.
