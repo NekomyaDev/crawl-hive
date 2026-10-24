@@ -2,6 +2,11 @@
   <img src="docs/images/banner.png" alt="CrawlHive: a swarm of user-owned crawlers hunting memecoin signal on Solana" width="100%">
 </p>
 
+> [!IMPORTANT]
+> **Development has moved to a private repository.** As of October 24, 2026 the full CrawlHive project lives in a private repo, and this public repository is no longer updated. The code here is a snapshot from October 23, 2026, and everything shipped after that (live auto trading, Crawler Arena, the strategy builder and more) is only in the private repo.
+>
+> CrawlHive itself keeps running and shipping: use it on [crawlhive.xyz](https://crawlhive.xyz), in the Telegram bot [@crawlhivebot](https://t.me/crawlhivebot) and on X [@crawlhivexyz](https://x.com/crawlhivexyz).
+
 <p align="center">
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-ffb020?style=flat-square">
   <img alt="Solana" src="https://img.shields.io/badge/Solana-mainnet%20%7C%20devnet-9945FF?style=flat-square&logo=solana&logoColor=white">
