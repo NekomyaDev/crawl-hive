@@ -8,10 +8,11 @@ import { esc, send } from "./telegram";
 import { getMeta, setMeta } from "./store";
 
 const EVERY_MS = 6 * 3600_000;
-const g = globalThis as unknown as { __crawlhiveOps?: Map<string, number> };
+// Своё имя глобала: __crawlhiveOps занят memory-db (там объект запросов, не Map), из-за совпадения падал каждый алерт.
+const g = globalThis as unknown as { __crawlhiveOpsAlert?: Map<string, number> };
 
 export function opsAlert(key: string, text: string, everyMs = EVERY_MS) {
-  const last = (g.__crawlhiveOps ??= new Map());
+  const last = (g.__crawlhiveOpsAlert ??= new Map());
   const now = Date.now();
   const prev = last.get(key) ?? Number(getMeta(`ops:${key}`) ?? 0);
   if (now - prev < everyMs) return;

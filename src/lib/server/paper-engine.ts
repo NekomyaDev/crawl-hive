@@ -132,10 +132,10 @@ export const STRATEGIES: StrategyConfig[] = [
   // 22.10 ночь: стратегии на теневых оценках впереди (s15 +16%, s19 +34%, s24 +21%, s30 +44%, выборки малые), а широкий стоп s23 сполз до -3.8% (стопы по -56%).
   // Проверяем согласие v2 и v3 и быстрый близнец s24.
   { id: "s35", label: "V2 and V3 CLEAN", note: "Both score v2 and score v3 say CLEAN, TP100 SL30, 24h", entry: { verdictsV2: ["CLEAN"], verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
-  { id: "s36", label: "V3 CLEAN TP100 fast", note: "Like S24, prices every 10s, +3% slippage per side", entry: { verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: true },
+  { id: "s36", label: "V3 CLEAN TP100 fast", note: "Like S24, prices every 10s, +3% slippage per side", entry: { verdictsV3: ["CLEAN"] }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, fast: { extraSlipPct: 3 }, enabled: false },
   // 23.10 ночь: быстрый контроль s28 54 сделки -8.4% (PF 0.69) против -4.2% у обычного s6: на случайных монетах скорость не окупает +3%, выключен.
   // Лучший вход пока v2 CLEAN с подтверждением через 10 мин (s19 +24%, PF 2.1, 7 сделок): пробуем то же на v3 и с ранней фиксацией.
-  { id: "s37", label: "V3 CLEAN confirmed 10m", note: "Score v3 says CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdictsV3: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s37", label: "V3 CLEAN confirmed 10m", note: "Score v3 says CLEAN, buy 10 min after the scan only if 80%+ of liquidity is still there, price not down 15% or up 60%, TP100 SL30, 24h", entry: { verdictsV3: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   { id: "s38", label: "V2 CLEAN confirmed 10m TP50", note: "Like S19 but takes profit at +50%, TP50 SL30, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 50, slPct: 30, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // 23.10 ночь: широкий стоп s23 18 сделок -8.3% (PF 0.79) против -3.9% у s6, стопы исполняются около -54%: выключен.
   // Лидер теперь глубокие пулы: s12 +31.2% (9 сделок, PF 3.2), быстрый s32 два TP. Проверяем, тянут ли раннеры дальше и держится ли край на $50k.
@@ -147,7 +147,7 @@ export const STRATEGIES: StrategyConfig[] = [
   { id: "s42", label: "V2 CLEAN 10m half at 2x", note: "Like S19: score v2 CLEAN, 10 min confirmation, stop -30%, sell half at +100%, then stop at entry and 30% trail on the rest, 24h", entry: { verdictsV2: ["CLEAN"], delayMin: 10, confirm: CONFIRM }, exits: { slPct: 30, partial: { atPct: 100, sellPct: 50, breakeven: true }, trailPct: 30, trailArmPct: 100, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
   // 23.10 ночь: контроль s6 сполз до -5.8%. Хуже него: s11 (17 сделок -9.7%, PF 0.64), s13 (16, -10.2%, PF 0.61) и быстрый s29
   // (17, -10.7%, PF 0.69), выключены. CLEAN через 30 мин (s20) единственный из CLEAN в плюсе (+2.7%, 20 сделок): даём ему частичную фиксацию.
-  { id: "s43", label: "CLEAN 30m half at 2x", note: "Like S20: CLEAN, 30 min confirmation, stop -30%, sell half at +100%, then stop at entry and 30% trail on the rest, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { slPct: 30, partial: { atPct: 100, sellPct: 50, breakeven: true }, trailPct: 30, trailArmPct: 100, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
+  { id: "s43", label: "CLEAN 30m half at 2x", note: "Like S20: CLEAN, 30 min confirmation, stop -30%, sell half at +100%, then stop at entry and 30% trail on the rest, 24h", entry: { verdicts: ["CLEAN"], delayMin: 30, confirm: CONFIRM }, exits: { slPct: 30, partial: { atPct: 100, sellPct: 50, breakeven: true }, trailPct: 30, trailArmPct: 100, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: false },
   // 23.10 день: два входа держатся и без двух лучших сделок: s19 (v2 CLEAN через 10 мин, +27%, 9 сделок) и s12 (пул от $100k, +21%, 11).
   // Скрещиваем: v2 CLEAN, подтверждение через 10 мин, пул от $50k, стоп -20% как у s12.
   // 23.10 день: базовый s1 (CLEAN без стопов, 24 ч) 17 сделок -61.5% (5 рагов, остальные по времени) против -5.6% у s6:
@@ -155,6 +155,7 @@ export const STRATEGIES: StrategyConfig[] = [
   // 23.10 вечер: контроль s6 -5.0%. Выключены s21 (CLEAN+OK от $20k, 33 сделки -11.8%, PF 0.66) и быстрый широкий стоп s34
   // (16 сделок -37.5%, стопы исполняются около -57%).
   // 23.10 ночь: s14 (CLEAN от $20k, 43 сделки -9.5%, PF 0.72) и быстрый широкий стоп s33 (18, -40.8%) хуже контроля s6 -4.5%, выключены.
+  // 24.10: контроль s6 -7.1% (341). Хуже него: v3 fast s36 (23 сделки -12.9%), v3 через 10 мин s37 (16, -12.7%), CLEAN 30m half at 2x s43 (16, -10.6%), выключены.
   { id: "s44", label: "V2 CLEAN 10m 50k+", note: "Score v2 CLEAN, 10 min confirmation, liquidity $50k+, TP100 SL20, 24h", entry: { verdictsV2: ["CLEAN"], minLiqUsd: 50_000, delayMin: 10, confirm: CONFIRM }, exits: { tpPct: 100, slPct: 20, maxHoldMin: 24 * H }, sizeUsd: 100, enabled: true },
 ];
 
